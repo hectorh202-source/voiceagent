@@ -1,4 +1,4 @@
-import type { ElevenLabsConfig, OperationalConfig, ServiceTitanConfig, ServiceTitanEnvironment } from "./store";
+import type { getRawElevenLabsSettings, getRawOperationalSettings, getRawServiceTitanSettings } from "./store";
 
 function escapeHtml(value: string): string {
   return value
@@ -64,15 +64,14 @@ export function renderLoginPage(error?: string): string {
 }
 
 interface SettingsPageProps {
-  elevenLabs: ElevenLabsConfig | null;
-  serviceTitan: ServiceTitanConfig | null;
-  operational: OperationalConfig | null;
-  environment: ServiceTitanEnvironment;
+  elevenLabs: ReturnType<typeof getRawElevenLabsSettings>;
+  serviceTitan: ReturnType<typeof getRawServiceTitanSettings>;
+  operational: ReturnType<typeof getRawOperationalSettings>;
   flash?: { type: "success" | "error"; message: string };
 }
 
 export function renderSettingsPage(props: SettingsPageProps): string {
-  const { elevenLabs, serviceTitan, operational, environment, flash } = props;
+  const { elevenLabs, serviceTitan, operational, flash } = props;
 
   return page(
     "Settings",
@@ -85,50 +84,50 @@ export function renderSettingsPage(props: SettingsPageProps): string {
 
     <form method="post" action="/settings">
       <h2>ElevenLabs</h2>
-      <label>API key ${elevenLabs ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
+      <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
 
       <label>Agent ID</label>
-      <input type="text" name="elevenLabsAgentId" value="${escapeHtml(elevenLabs?.agentId ?? "")}" />
+      <input type="text" name="elevenLabsAgentId" value="${escapeHtml(elevenLabs.agentId)}" />
 
       <h2>ServiceTitan</h2>
       <label>Environment</label>
       <select name="serviceTitanEnvironment">
-        <option value="integration" ${environment === "integration" ? "selected" : ""}>Integration / Sandbox</option>
-        <option value="production" ${environment === "production" ? "selected" : ""}>Production</option>
+        <option value="integration" ${serviceTitan.environment === "integration" ? "selected" : ""}>Integration / Sandbox</option>
+        <option value="production" ${serviceTitan.environment === "production" ? "selected" : ""}>Production</option>
       </select>
 
-      <label>Client ID ${serviceTitan ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanClientId" placeholder="${serviceTitan ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
+      <label>Client ID ${serviceTitan.clientIdSet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="serviceTitanClientId" placeholder="${serviceTitan.clientIdSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
 
-      <label>Client secret ${serviceTitan ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanClientSecret" placeholder="${serviceTitan ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
+      <label>Client secret ${serviceTitan.clientSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="serviceTitanClientSecret" placeholder="${serviceTitan.clientSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
 
-      <label>App key ${serviceTitan ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanAppKey" placeholder="${serviceTitan ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
+      <label>App key ${serviceTitan.appKeySet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="serviceTitanAppKey" placeholder="${serviceTitan.appKeySet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
 
       <label>Tenant ID</label>
-      <input type="text" name="serviceTitanTenantId" value="${escapeHtml(serviceTitan?.tenantId ?? "")}" />
+      <input type="text" name="serviceTitanTenantId" value="${escapeHtml(serviceTitan.tenantId)}" />
 
       <label>Default business unit ID</label>
-      <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan?.defaultBusinessUnitId ?? "")}" />
+      <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan.businessUnitId)}" />
 
       <label>Default campaign ID</label>
-      <input type="text" name="serviceTitanCampaignId" value="${escapeHtml(serviceTitan?.defaultCampaignId ?? "")}" />
+      <input type="text" name="serviceTitanCampaignId" value="${escapeHtml(serviceTitan.campaignId)}" />
 
       <label>Default call reason ID</label>
-      <input type="text" name="serviceTitanCallReasonId" value="${escapeHtml(serviceTitan?.defaultCallReasonId ?? "")}" />
+      <input type="text" name="serviceTitanCallReasonId" value="${escapeHtml(serviceTitan.callReasonId)}" />
 
       <label>Default job type ID</label>
-      <input type="text" name="serviceTitanJobTypeId" value="${escapeHtml(serviceTitan?.defaultJobTypeId ?? "")}" />
+      <input type="text" name="serviceTitanJobTypeId" value="${escapeHtml(serviceTitan.jobTypeId)}" />
       <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads created by the agent.</div>
 
       <h2>Operational</h2>
       <label>Emergency transfer number (E.164, e.g. +15551234567)</label>
-      <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational?.emergencyTransferNumber ?? "")}" />
+      <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational.emergencyTransferNumber)}" />
 
-      <label>Tool webhook shared secret ${operational ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="toolWebhookSecret" placeholder="${operational ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
+      <label>Tool webhook shared secret ${operational.toolWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
       <div class="hint">This value must match the "X-Tool-Secret" header you configure on each ElevenLabs webhook tool.</div>
 
       <button type="submit">Save settings</button>

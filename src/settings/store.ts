@@ -44,11 +44,6 @@ export function hasSetting(key: string): boolean {
 
 export type ServiceTitanEnvironment = "integration" | "production";
 
-export interface ElevenLabsConfig {
-  apiKey: string;
-  agentId: string;
-}
-
 export interface ServiceTitanConfig {
   environment: ServiceTitanEnvironment;
   authBaseUrl: string;
@@ -63,11 +58,6 @@ export interface ServiceTitanConfig {
   defaultJobTypeId: string;
 }
 
-export interface OperationalConfig {
-  emergencyTransferNumber: string;
-  toolWebhookSecret: string;
-}
-
 const ST_BASE_URLS: Record<ServiceTitanEnvironment, { auth: string; api: string }> = {
   integration: {
     auth: "https://auth-integration.servicetitan.io",
@@ -79,18 +69,8 @@ const ST_BASE_URLS: Record<ServiceTitanEnvironment, { auth: string; api: string 
   },
 };
 
-export function getElevenLabsConfig(): ElevenLabsConfig | null {
-  const apiKey = getSetting("elevenlabs.apiKey");
-  const agentId = getSetting("elevenlabs.agentId");
-  if (!apiKey || !agentId) return null;
-  return { apiKey, agentId };
-}
-
-export function setElevenLabsConfig(config: ElevenLabsConfig): void {
-  setSetting("elevenlabs.apiKey", config.apiKey);
-  setSetting("elevenlabs.agentId", config.agentId);
-}
-
+// Strict, all-fields-required view used only where a complete config is
+// actually required to make a real API call (see servicetitan/httpClient.ts).
 export function getServiceTitanConfig(): ServiceTitanConfig | null {
   const environment = (getSetting("servicetitan.environment") as ServiceTitanEnvironment | null) ?? "integration";
   const clientId = getSetting("servicetitan.clientId");
@@ -115,36 +95,34 @@ export function getServiceTitanConfig(): ServiceTitanConfig | null {
   };
 }
 
-export function setServiceTitanConfig(config: {
-  environment: ServiceTitanEnvironment;
-  clientId: string;
-  clientSecret: string;
-  appKey: string;
-  tenantId: string;
-  defaultBusinessUnitId: string;
-  defaultCampaignId: string;
-  defaultCallReasonId: string;
-  defaultJobTypeId: string;
-}): void {
-  setSetting("servicetitan.environment", config.environment);
-  setSetting("servicetitan.clientId", config.clientId);
-  setSetting("servicetitan.clientSecret", config.clientSecret);
-  setSetting("servicetitan.appKey", config.appKey);
-  setSetting("servicetitan.tenantId", config.tenantId);
-  setSetting("servicetitan.businessUnitId", config.defaultBusinessUnitId);
-  setSetting("servicetitan.campaignId", config.defaultCampaignId);
-  setSetting("servicetitan.callReasonId", config.defaultCallReasonId);
-  setSetting("servicetitan.jobTypeId", config.defaultJobTypeId);
+// Per-field views used by the settings page itself: each field is read/shown
+// independently, so a partially-filled group never hides fields that *are*
+// saved (unlike getServiceTitanConfig, which intentionally requires all of
+// its fields at once because that's what a real ServiceTitan API call needs).
+export function getRawElevenLabsSettings() {
+  return {
+    apiKeySet: !!getSetting("elevenlabs.apiKey"),
+    agentId: getSetting("elevenlabs.agentId") ?? "",
+  };
 }
 
-export function getOperationalConfig(): OperationalConfig | null {
-  const emergencyTransferNumber = getSetting("operational.emergencyTransferNumber");
-  const toolWebhookSecret = getSetting("operational.toolWebhookSecret");
-  if (!emergencyTransferNumber || !toolWebhookSecret) return null;
-  return { emergencyTransferNumber, toolWebhookSecret };
+export function getRawServiceTitanSettings() {
+  return {
+    environment: (getSetting("servicetitan.environment") as ServiceTitanEnvironment | null) ?? "integration",
+    clientIdSet: !!getSetting("servicetitan.clientId"),
+    clientSecretSet: !!getSetting("servicetitan.clientSecret"),
+    appKeySet: !!getSetting("servicetitan.appKey"),
+    tenantId: getSetting("servicetitan.tenantId") ?? "",
+    businessUnitId: getSetting("servicetitan.businessUnitId") ?? "",
+    campaignId: getSetting("servicetitan.campaignId") ?? "",
+    callReasonId: getSetting("servicetitan.callReasonId") ?? "",
+    jobTypeId: getSetting("servicetitan.jobTypeId") ?? "",
+  };
 }
 
-export function setOperationalConfig(config: OperationalConfig): void {
-  setSetting("operational.emergencyTransferNumber", config.emergencyTransferNumber);
-  setSetting("operational.toolWebhookSecret", config.toolWebhookSecret);
+export function getRawOperationalSettings() {
+  return {
+    emergencyTransferNumber: getSetting("operational.emergencyTransferNumber") ?? "",
+    toolWebhookSecretSet: !!getSetting("operational.toolWebhookSecret"),
+  };
 }

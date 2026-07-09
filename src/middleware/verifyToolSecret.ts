@@ -1,10 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
-import { getOperationalConfig } from "../settings/store";
+import { getSetting } from "../settings/store";
 
 export function verifyToolSecret(req: Request, res: Response, next: NextFunction): void {
-  const operational = getOperationalConfig();
-  if (!operational) {
+  const secret = getSetting("operational.toolWebhookSecret");
+  if (!secret) {
     res.status(503).json({ error: "Server is not configured yet. Visit /settings to finish setup." });
     return;
   }
@@ -16,7 +16,7 @@ export function verifyToolSecret(req: Request, res: Response, next: NextFunction
   }
 
   const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(operational.toolWebhookSecret);
+  const expectedBuf = Buffer.from(secret);
   const isValid =
     providedBuf.length === expectedBuf.length && crypto.timingSafeEqual(providedBuf, expectedBuf);
 
