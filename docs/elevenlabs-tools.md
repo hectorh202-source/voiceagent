@@ -64,7 +64,8 @@ Each of the three tools above is registered on the agent as a **Webhook** tool w
 - Method `POST`, URL pointing at this server's public domain + the path above (e.g. `https://voiceagent.laughslapper.com/tools/lookup-customer`)
 - A header named `X-Tool-Secret`, whose value is a workspace **Secret** (created once in the ElevenLabs dashboard, value = the tool webhook secret from `/settings`) — not typed as a raw literal in the header field itself
 - A body parameter schema matching the request shape above. Each property's **Identifier** must be the exact bare field name (e.g. `phone`, not `{ "phone": string }` — the data type is already declared by a separate dropdown; the Identifier field is only the JSON key name)
-- For `lookup_customer`'s `phone` parameter specifically: bound to the built-in dynamic variable `{{system__caller_id}}` (ElevenLabs auto-populates this from the incoming call) rather than left as a pure "LLM Prompt" field, so it fires automatically without the agent needing to ask
+- For `lookup_customer`'s `phone` parameter specifically: **Value Type** must be set to **"Dynamic Variable"** (not the default "LLM Prompt"), with the variable name entered as the bare identifier `system__caller_id` — **no `{{ }}` braces** in this field, since it's a dedicated variable picker, not free text. This matters: with "LLM Prompt" left selected, the model has to infer a phone number from the transcript, and since the caller never states their number out loud, the model has nothing to fill the field with and silently never calls the tool at all — this is exactly what happened during initial testing (`lookup_customer` never once appeared in `call_log` across several test calls, only `check_availability`/`create_lead` did, until this was fixed). The `{{system__caller_id}}` `{{ }}` syntax is only used when referencing a dynamic variable inside free text, e.g. inside the system prompt.
+- **Data types matter for validation**: this server's body schemas are strict about JSON types (e.g. `isEmergency` must be a real boolean). ElevenLabs' tool-calling has been observed sending boolean-typed fields as the strings `"true"`/`"false"` rather than a JSON boolean — confirmed by a real `create_lead` call that 400'd with `"isEmergency":["Expected boolean, received string"]`. The server now coerces string `"true"`/`"false"` to boolean before validating (see `booleanish` in [`tools/createLead.ts`](../src/tools/createLead.ts)) rather than assuming the dashboard will always send the "correct" JSON type — a good pattern to repeat for any new boolean/number fields added later.
 
 ### Emergency transfer
 
@@ -74,6 +75,10 @@ A built-in **system tool**, `transfer_to_number` (labeled "Transfer to number" i
 - Condition (natural language, evaluated by ElevenLabs' own model): *"The caller describes an emergency — a gas smell, active flooding/water leak, no heat during freezing temperatures, or another situation posing immediate danger or property damage risk."*
 
 This works because the number was imported via ElevenLabs' **native Twilio integration** (Phone Numbers tab → provide Twilio Account SID + Auth Token + the number) — that's what makes both Conference and Blind transfer types available; ElevenLabs configures the Twilio voice webhook automatically, no manual Twilio console changes needed.
+
+### Ending the call
+
+The system prompt (below) instructs the agent to call an `end_call` tool once the caller says goodbye. That's actually the built-in **"End conversation"** system tool, toggled in the same System tools panel as `transfer_to_number` — and it must be explicitly **enabled** there. Early testing hit exactly this: the prompt told the agent to always call `end_call`, but "End conversation" was toggled off, so the agent had no valid way to act on that instruction — the call just dropped abruptly with no spoken goodbye at all, instead of a clean acknowledge-then-hang-up. If a similar abrupt-ending symptom shows up again, check this toggle first before assuming it's a prompt-wording problem.
 
 ### System prompt
 
