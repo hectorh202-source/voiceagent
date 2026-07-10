@@ -17,6 +17,8 @@ const bodySchema = z.object({
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
+    const errorMessage = JSON.stringify(parsed.error.flatten());
+    logToolCall({ toolName: "create_lead", request: req.body, success: false, errorMessage });
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }

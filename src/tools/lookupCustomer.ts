@@ -9,6 +9,8 @@ const bodySchema = z.object({ phone: z.string().min(4) });
 export async function handleLookupCustomer(req: Request, res: Response): Promise<void> {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
+    const errorMessage = JSON.stringify(parsed.error.flatten());
+    logToolCall({ toolName: "lookup_customer", request: req.body, success: false, errorMessage });
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
