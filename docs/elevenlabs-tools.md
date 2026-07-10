@@ -48,11 +48,13 @@ Calls `servicetitan/capacity.ts#checkAvailability`. Deliberately coarse — a si
 
 ```
 POST /tools/create-lead
-Request:  { "phone": string, "name": string, "address": string, "issueDescription": string,
-            "preferredTiming"?: string, "isEmergency"?: boolean }
+Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
+            "zip": string, "issueDescription": string, "preferredTiming"?: string, "isEmergency"?: boolean }
 Response: { "success": boolean, "leadId": string|null, "confirmationMessage": string }
 ```
 Looks up the customer again (reusing `lookupCustomerByPhone`); if not found, creates one; then creates the ServiceTitan Lead. Always returns a caller-appropriate `confirmationMessage`, even on failure, so the agent has something safe to say regardless of what happened underneath.
+
+**Address is 4 separate fields (`street`/`city`/`state`/`zip`), not one combined string.** This wasn't the original design — it started as a single `address` field, but ServiceTitan's customer-creation API requires city/state/zip individually (confirmed via a real `422`-style validation error: `"Locations.Address.City": ["The City field is required."]`, etc.), and reliably splitting a freeform address string like `"4844 Maple Street, Port Charlotte, FL 33950"` back into parts server-side turned out to be unreliable — real test calls produced inconsistent formats (sometimes `"FL 33950"` as one segment, sometimes `"Florida"` and `"33844"` as two separate segments). Having the LLM extract each part directly, with its own Identifier/Description per field in the ElevenLabs tool config, is far more reliable than parsing a combined string after the fact.
 
 ## Agent-side configuration (ElevenLabs dashboard)
 

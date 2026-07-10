@@ -18,7 +18,10 @@ const booleanish = z.preprocess((value) => {
 const bodySchema = z.object({
   phone: z.string().min(4),
   name: z.string().min(1),
-  address: z.string().min(1),
+  street: z.string().min(1),
+  city: z.string().min(1),
+  state: z.string().min(1),
+  zip: z.string().min(1),
   issueDescription: z.string().min(1),
   preferredTiming: z.string().optional(),
   isEmergency: booleanish.optional().default(false),
@@ -32,7 +35,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { phone, name, address, issueDescription, preferredTiming, isEmergency } = parsed.data;
+  const { phone, name, street, city, state, zip, issueDescription, preferredTiming, isEmergency } = parsed.data;
 
   try {
     const existing = await lookupCustomerByPhone(phone);
@@ -40,12 +43,12 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     let locationId: string | undefined;
 
     if (!customerId) {
-      const created = await createCustomer({ name, phone, address: { street: address } });
+      const created = await createCustomer({ name, phone, address: { street, city, state, zip } });
       customerId = created.customerId;
       locationId = created.locationId;
     }
 
-    const summary = `${issueDescription}${
+    const summary = `${issueDescription} at ${street}, ${city}, ${state} ${zip}${
       preferredTiming ? ` — preferred timing: ${preferredTiming}` : ""
     } (via AI receptionist)`;
 

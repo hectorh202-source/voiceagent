@@ -79,7 +79,9 @@ Returns `{ found, customerId, name, address }` — `found: false` with everythin
 
 `POST /crm/v2/tenant/{tenantId}/customers`
 
-Only called when `lookupCustomerByPhone` found no existing match (see `create_lead`'s flow below). Creates a `Residential`-type customer with an embedded address and a `Phone`-type contact. Returns the new customer ID and location ID (ServiceTitan creates a location alongside the customer; if the response doesn't include one for some reason, the code falls back to using the customer ID as the location ID rather than failing outright).
+Only called when `lookupCustomerByPhone` found no existing match (see `create_lead`'s flow below). Creates a `Residential`-type customer with a `Phone`-type contact. Returns the new customer ID and location ID (ServiceTitan creates a location alongside the customer; if the response doesn't include one for some reason, the code falls back to using the customer ID as the location ID rather than failing outright).
+
+**The request body must include a `locations` array, not just a top-level `address` field.** This wasn't obvious from the API surface alone — an earlier version of this code sent only a flat `address` object and got a `400` back: `"Required property 'locations' not found in JSON"`. ServiceTitan models a customer as having one or more physical locations, each with its own address, rather than one address living directly on the customer. The fix sends both: a top-level `address` (harmless/ignored-or-used depending on the tenant) and `locations: [{ name, address }]` with the real address data, since that's what the API actually validates against. City, State, and Zip are all required within that address — see [elevenlabs-tools.md](elevenlabs-tools.md) for why `create_lead`'s tool contract collects those as separate fields rather than one freeform address string.
 
 ### 3. Lead creation — `createLead(input)`
 

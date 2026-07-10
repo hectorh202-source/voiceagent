@@ -57,7 +57,7 @@ This server never touches call audio or Twilio directly — ElevenLabs' native T
    |---|---|---|---|
    | `lookup_customer` | POST | `<ngrok>/tools/lookup-customer` | `{ "phone": string }` — default this param to `{{system__caller_id}}` so it runs silently at call start |
    | `check_availability` | POST | `<ngrok>/tools/check-availability` | `{ "startDate": string, "endDate": string, "jobType"?: string }` |
-   | `create_lead` | POST | `<ngrok>/tools/create-lead` | `{ "phone": string, "name": string, "address": string, "issueDescription": string, "preferredTiming"?: string, "isEmergency"?: boolean }` |
+   | `create_lead` | POST | `<ngrok>/tools/create-lead` | `{ "phone": string, "name": string, "street": string, "city": string, "state": string, "zip": string, "issueDescription": string, "preferredTiming"?: string, "isEmergency"?: boolean }` |
 
    For each tool, add a custom header `X-Tool-Secret` whose value is the tool webhook secret from `/settings`.
 3. **Enable the built-in "Transfer to Human" (`transfer_to_number`) system tool**, pointed at the emergency number, with a condition like "caller describes an emergency (gas smell, active flooding, no heat in freezing weather, etc.)".
