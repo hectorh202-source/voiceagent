@@ -40,7 +40,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
   try {
     const existing = await lookupCustomerByPhone(phone);
     let customerId = existing.customerId;
-    let locationId: string | undefined;
+    let locationId: string | undefined = existing.locationId ?? undefined;
 
     if (!customerId) {
       const created = await createCustomer({ name, phone, address: { street, city, state, zip } });

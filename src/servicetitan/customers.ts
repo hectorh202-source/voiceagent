@@ -4,8 +4,23 @@ import type { STCustomer } from "./types";
 export interface CustomerLookupResult {
   found: boolean;
   customerId: string | null;
+  locationId: string | null;
   name: string | null;
   address: string | null;
+}
+
+async function getPrimaryLocationId(customerId: string): Promise<string | null> {
+  const config = requireServiceTitanConfig();
+  const path = `/crm/v2/tenant/${config.tenantId}/locations`;
+  try {
+    const result = await stRequest<{ data: { id: number }[] }>(config, "GET", path, {
+      params: { customerId, pageSize: 1 },
+    });
+    const location = result.data?.[0];
+    return location ? String(location.id) : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizePhone(phone: string): string {
@@ -40,16 +55,20 @@ export async function lookupCustomerByPhone(phone: string): Promise<CustomerLook
 
   const match = customers[0];
   if (!match) {
-    return { found: false, customerId: null, name: null, address: null };
+    return { found: false, customerId: null, locationId: null, name: null, address: null };
   }
 
   const address = match.address
     ? [match.address.street, match.address.city, match.address.state].filter(Boolean).join(", ")
     : null;
 
+  const customerId = String(match.id);
+  const locationId = await getPrimaryLocationId(customerId);
+
   return {
     found: true,
-    customerId: String(match.id),
+    customerId,
+    locationId,
     name: match.name ?? null,
     address,
   };
