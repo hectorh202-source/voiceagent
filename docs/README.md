@@ -1,7 +1,25 @@
 # Technical docs
 
-Deeper write-ups on specific subsystems, for anyone picking up this project who wants to understand how (and why) something was built the way it was — not just what the code does.
+Deeper write-ups on specific subsystems, for anyone picking up this project who wants to understand how (and why) something was built the way it was — not just what the code does. Start with the overview, then read whichever chapter matches what you're touching.
 
-- [SQLite storage system](sqlite-storage.md) — the settings/credentials store, encryption, admin auth, and session persistence, all backed by one local SQLite file.
+## Start here
 
-Add new docs here as the project grows (e.g. a future doc on the ServiceTitan API client, or on the ElevenLabs tool-calling contract) and link them above.
+- **[Architecture overview](architecture-overview.md)** — the big picture: how Twilio, ElevenLabs, this server, and ServiceTitan fit together, end-to-end request flows, code layout, and the deployment topology.
+
+## Core systems (this codebase)
+
+- **[SQLite storage system](sqlite-storage.md)** — the single local database: encrypted credential storage, admin password hashing, call/tool logging, and persisted web sessions.
+- **[The `/settings` app](settings-app.md)** — the credentials web UI built on top of that storage: routes, admin login flow, and how per-field saves work (and the bug that shaped that design).
+
+## Integrations (external systems this talks to)
+
+- **[ServiceTitan integration](servicetitan-integration.md)** — OAuth token handling, customer lookup/creation, lead creation, capacity checks, and why this deliberately never books live appointments.
+- **[ElevenLabs tools & agent configuration](elevenlabs-tools.md)** — the three webhook tools this server exposes, the tool-auth header scheme, and a reference for how the ElevenLabs-side agent (system prompt, transfer rule, tool definitions) is configured — since that half lives outside this repo entirely.
+
+## Operations
+
+- **[Deployment](deployment.md)** — Docker/Caddy/VPS setup: why Docker, the two-container topology, volumes and what's at stake if they're lost, DNS, firewall, and day-to-day operational commands.
+
+---
+
+Add new docs here as the project grows and link them into the right section above. If a doc's scope changes enough that it no longer fits its section, move it — this index should always reflect what's actually true, not just append forever.
