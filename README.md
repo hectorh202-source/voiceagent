@@ -2,6 +2,8 @@
 
 An inbound AI receptionist for a ServiceTitan-using home services business. Calls are answered by an [ElevenLabs Conversational AI](https://elevenlabs.io/docs/eleven-agents) agent; the agent calls back into this server for three things during the conversation: looking up the caller in ServiceTitan, checking rough appointment availability, and creating a ServiceTitan CRM Lead for staff to confirm. No live schedule changes are made — leads are always confirmed by a human.
 
+See [docs/](docs/README.md) for deeper technical write-ups on specific subsystems (e.g. how the SQLite-backed settings/credentials store works).
+
 ## How it fits together
 
 ```
