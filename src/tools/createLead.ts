@@ -5,13 +5,23 @@ import { createLead as createServiceTitanLead } from "../servicetitan/leads";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError } from "../servicetitan/httpClient";
 
+// ElevenLabs' tool-calling occasionally sends boolean-typed fields as the
+// strings "true"/"false" rather than a JSON boolean — accept both forms.
+const booleanish = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "true") return true;
+    if (value.toLowerCase() === "false") return false;
+  }
+  return value;
+}, z.boolean());
+
 const bodySchema = z.object({
   phone: z.string().min(4),
   name: z.string().min(1),
   address: z.string().min(1),
   issueDescription: z.string().min(1),
   preferredTiming: z.string().optional(),
-  isEmergency: z.boolean().optional().default(false),
+  isEmergency: booleanish.optional().default(false),
 });
 
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {
