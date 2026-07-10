@@ -42,6 +42,16 @@ export function hasSetting(key: string): boolean {
   return getSetting(key) !== null;
 }
 
+// Persisted so login sessions survive server restarts/redeploys instead of
+// being invalidated by a freshly-generated secret every time the process starts.
+export function getOrCreateSessionSecret(): string {
+  const existing = getSetting("internal.sessionSecret");
+  if (existing) return existing;
+  const secret = crypto.randomBytes(32).toString("hex");
+  setSetting("internal.sessionSecret", secret);
+  return secret;
+}
+
 export type ServiceTitanEnvironment = "integration" | "production";
 
 export interface ServiceTitanConfig {

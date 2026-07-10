@@ -1,11 +1,12 @@
 import express from "express";
 import session from "express-session";
-import crypto from "node:crypto";
 import { env } from "./config/env";
 import "./db/index";
 import { requestLogger } from "./middleware/requestLogger";
 import { settingsRouter } from "./settings/routes";
 import { toolsRouter } from "./tools/router";
+import { SqliteSessionStore } from "./settings/sessionStore";
+import { getOrCreateSessionSecret } from "./settings/store";
 
 const app = express();
 
@@ -15,10 +16,11 @@ app.use(requestLogger);
 
 app.use(
   session({
-    secret: crypto.randomBytes(32).toString("hex"),
+    store: new SqliteSessionStore(),
+    secret: getOrCreateSessionSecret(),
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: "lax" },
+    cookie: { httpOnly: true, sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 },
   }),
 );
 

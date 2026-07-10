@@ -18,5 +18,11 @@ export function bootstrapSchema(db: DatabaseSync): void {
       success INTEGER NOT NULL,
       error_message TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      session_json TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
   `);
 }
