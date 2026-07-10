@@ -70,18 +70,21 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Create
   const config = requireServiceTitanConfig();
   const path = `/crm/v2/tenant/${config.tenantId}/customers`;
 
+  const address = {
+    street: input.address.street,
+    city: input.address.city ?? "",
+    state: input.address.state ?? "",
+    zip: input.address.zip ?? "",
+    country: "USA",
+  };
+
   const response = await stRequest<{ id: number; locations?: { id: number }[] }>(config, "POST", path, {
     data: {
       name: input.name,
       type: "Residential",
-      address: {
-        street: input.address.street,
-        city: input.address.city ?? "",
-        state: input.address.state ?? "",
-        zip: input.address.zip ?? "",
-        country: "USA",
-      },
+      address,
       contacts: [{ type: "Phone", value: input.phone }],
+      locations: [{ name: input.name, address }],
     },
   });
 
