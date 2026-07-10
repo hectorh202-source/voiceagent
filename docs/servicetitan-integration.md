@@ -91,6 +91,8 @@ The core "book me" operation. Fields sent: `customerId`, `locationId`, and four 
 
 This function never throws on a ServiceTitan-side failure — it catches, logs the error server-side, and returns `{ success: false, leadId: null }` so the calling tool handler can give the caller a graceful "a team member will follow up" response instead of a dead call.
 
+**Follow-up date fallback**: ServiceTitan requires either a `callReasonId` or a `followUpDate` on every lead — confirmed via a real `400`: `"Follow up date or Call Reason ID is required."` We don't have a real scheduled date from the call (`preferredTiming` is freeform text like "afternoons this week," not an actual date), so when `defaultCallReasonId` isn't configured in `/settings`, the code defaults `followUpDate` to one day out (`Date.now() + 24h`). This is a hardcoded value, not a `/settings` field — deliberately, since it's only satisfying a ServiceTitan API technicality (any value works; a human confirms the real appointment regardless) rather than a business decision that needs regular tuning, and it becomes moot entirely once a Call Reason ID is set. If it ever needs to change, it's a one-line edit at the top of the `followUpDate` calculation in [`servicetitan/leads.ts`](../src/servicetitan/leads.ts).
+
 ### 4. Capacity check (read-only) — `checkAvailability(startDate, endDate)`
 
 `GET /dispatch/v2/tenant/{tenantId}/capacity`
