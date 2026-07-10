@@ -1,4 +1,4 @@
-import { requireServiceTitanConfig, stRequest } from "./httpClient";
+import { requireServiceTitanConfig, stRequest, describeError } from "./httpClient";
 
 export interface CreateLeadInput {
   customerId: string;
@@ -31,7 +31,7 @@ export async function createLead(input: CreateLeadInput): Promise<CreateLeadResu
     });
     return { success: true, leadId: String(response.id) };
   } catch (error) {
-    console.error("createLead failed", error);
+    console.error("createLead failed:", describeError(error));
     return { success: false, leadId: null };
   }
 }

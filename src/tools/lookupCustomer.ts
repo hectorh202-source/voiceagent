@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { lookupCustomerByPhone } from "../servicetitan/customers";
 import { logToolCall } from "../db/callLog";
-import { ServiceTitanNotConfiguredError } from "../servicetitan/httpClient";
+import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
 
 const bodySchema = z.object({ phone: z.string().min(4) });
 
@@ -22,7 +22,7 @@ export async function handleLookupCustomer(req: Request, res: Response): Promise
     res.json(result);
   } catch (error) {
     const status = error instanceof ServiceTitanNotConfiguredError ? 503 : 502;
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof ServiceTitanNotConfiguredError ? error.message : describeError(error);
     logToolCall({ toolName: "lookup_customer", phone, request: parsed.data, success: false, errorMessage: message });
     res.status(status).json({ error: message });
   }

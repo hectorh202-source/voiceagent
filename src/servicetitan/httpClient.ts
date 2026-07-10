@@ -33,3 +33,13 @@ export async function stRequest<T>(
   });
   return response.data;
 }
+
+// axios' default error.message (e.g. "Request failed with status code 400")
+// discards ServiceTitan's actual response body, which is where the useful
+// validation detail lives — surface that instead wherever we log errors.
+export function describeError(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response?.data) {
+    return JSON.stringify(error.response.data);
+  }
+  return error instanceof Error ? error.message : "Unknown error";
+}

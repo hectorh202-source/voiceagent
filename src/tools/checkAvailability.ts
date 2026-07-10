@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { checkAvailability } from "../servicetitan/capacity";
 import { logToolCall } from "../db/callLog";
-import { ServiceTitanNotConfiguredError } from "../servicetitan/httpClient";
+import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
 
 const bodySchema = z.object({
   startDate: z.string(),
@@ -25,7 +25,7 @@ export async function handleCheckAvailability(req: Request, res: Response): Prom
     res.json(result);
   } catch (error) {
     const status = error instanceof ServiceTitanNotConfiguredError ? 503 : 502;
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof ServiceTitanNotConfiguredError ? error.message : describeError(error);
     logToolCall({ toolName: "check_availability", request: parsed.data, success: false, errorMessage: message });
     res.status(status).json({ error: message });
   }

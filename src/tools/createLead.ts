@@ -3,7 +3,7 @@ import { z } from "zod";
 import { lookupCustomerByPhone, createCustomer } from "../servicetitan/customers";
 import { createLead as createServiceTitanLead } from "../servicetitan/leads";
 import { logToolCall } from "../db/callLog";
-import { ServiceTitanNotConfiguredError } from "../servicetitan/httpClient";
+import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
 
 // ElevenLabs' tool-calling occasionally sends boolean-typed fields as the
 // strings "true"/"false" rather than a JSON boolean — accept both forms.
@@ -63,7 +63,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     res.json(response);
   } catch (error) {
     const status = error instanceof ServiceTitanNotConfiguredError ? 503 : 502;
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof ServiceTitanNotConfiguredError ? error.message : describeError(error);
     logToolCall({ toolName: "create_lead", phone, request: parsed.data, success: false, errorMessage: message });
     res.status(status).json({
       success: false,
