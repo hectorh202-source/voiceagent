@@ -8,6 +8,26 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// SQLite's datetime('now') stores UTC with no timezone marker (e.g.
+// "2026-07-11 22:24:11") — parse it as UTC explicitly, then render in the
+// business's local timezone in a human-friendly format (e.g. "7/11/2026,
+// 6:24:11 PM"), which is what en-US locale formatting produces by default.
+function formatCallTime(sqliteDatetime: string): string {
+  const date = new Date(sqliteDatetime.replace(" ", "T") + "Z");
+  if (Number.isNaN(date.getTime())) return sqliteDatetime;
+  return date.toLocaleString("en-US", { timeZone: "America/New_York" });
+}
+
+// Formats a US phone number as +1(XXX) XXX-XXXX regardless of how it was
+// originally stored (with/without +1, dashes, spaces) — falls back to the
+// raw value for anything that isn't a recognizable 10-digit US number.
+function formatPhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const tenDigits = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (tenDigits.length !== 10) return phone;
+  return `+1(${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6)}`;
+}
+
 const styles = `
   body { font-family: -apple-system, Segoe UI, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; background: #f5f5f7; }
   h1 { font-size: 1.3rem; }
@@ -89,17 +109,17 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
 
     <div class="card">
       <h2>Call Details</h2>
-      ${row("Call Time", escapeHtml(vm.callTime))}
+      ${row("Call Time", escapeHtml(formatCallTime(vm.callTime)))}
       ${row("Company", escapeHtml(vm.company))}
       ${row("Name", escapeHtml(vm.customerName ?? "—"))}
-      ${row("Phone", escapeHtml(vm.phone ?? "—"))}
+      ${row("Phone", escapeHtml(vm.phone ? formatPhoneNumber(vm.phone) : "—"))}
       ${row("Address", escapeHtml(vm.address ?? "—"))}
       ${row("Email", escapeHtml(vm.email))}
       ${row("Property Type", escapeHtml(vm.propertyType))}
       ${row("Emergency", vm.isEmergency === null ? "—" : vm.isEmergency ? "Yes" : "No")}
       ${row("ST Lead", leadLink)}
       ${row("Is Transferred", vm.isTransferred ? "Yes" : "No")}
-      ${row("Forwarded Phone Number", escapeHtml(vm.forwardedNumber ?? "—"))}
+      ${row("Forwarded Phone Number", escapeHtml(vm.forwardedNumber ? formatPhoneNumber(vm.forwardedNumber) : "—"))}
       ${row("Transfer Destination", escapeHtml(vm.transferDestination ?? "—"))}
     </div>
 
