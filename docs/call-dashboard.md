@@ -32,6 +32,17 @@ Implemented directly with Node's built-in `crypto` in [`webhooks/signature.ts`](
 
 The signing secret is a new `/settings` field ("Post-call webhook secret"), same encrypted-storage pattern as every other credential, with its own "Generate a new random secret" button (`POST /settings/generate-post-call-secret`) mirroring the existing tool-webhook-secret flow.
 
+### Configuring this in the ElevenLabs dashboard — the exact path
+
+This took real trial and error to find, since ElevenLabs' webhook configuration is split across multiple screens that look similar but aren't. In order:
+
+1. **Workspace Settings → Webhooks → Create a Webhook.** Give it a name (e.g. "Post-call transcription"), set the callback URL to `https://voiceagent.laughslapper.com/webhooks/elevenlabs/post-call`, and set **Webhook Auth Method: HMAC** — this generates the shared secret shown once, which goes into `/settings`. **This step alone does nothing** — creating the endpoint here doesn't attach it to anything yet.
+2. Still in Workspace Settings, there's a general **"Post-Call Webhook"** section with a "Select Webhook" dropdown — this sets the *workspace default*. Selecting it here looked right but a checkbox change here (specifically toggling "Audio") didn't persist across refreshes for us — possibly a per-agent-override quirk, possibly a UI bug, unconfirmed.
+3. **The step that actually mattered: the agent's own "Security" tab** (not in the main left-sidebar list alongside Agent/Workflow/Tools/etc. — it's nested further in) has its **own** Post-Call Webhook selector, with **"Webhook Events"** checkboxes for **Transcript** and **Audio**, and its own save action. This is the one that needs Transcript (required) and Audio (if you want recordings) checked, and needs to actually persist a real save — confirmed working once done here specifically, not at the workspace-level screen from step 2.
+4. Don't confuse any of this with **"Add webhook tool"** (a tool the LLM calls mid-conversation) or a **Speech-to-Text API webhook** ("Transcription completed" under a generic endpoint's event checkboxes) — both surfaced during setup and look superficially similar but are unrelated features.
+
+If a future ElevenLabs redesign moves these around again, the way to confirm it's working regardless of where the toggle lives: place a test call, then check whether a new row landed in `elevenlabs_calls` (`docker compose exec app node -e "..."`, querying that table) — an empty result means the webhook isn't actually configured to fire yet, no matter what the dashboard UI appears to show.
+
 ## Correlating with our own data — by conversation ID, not re-extraction
 
 Name, phone, address, and whether it was an emergency all already flow through our own `create_lead` tool call during the conversation — there was no reason to have ElevenLabs re-extract the same information via their separate Data Collection feature. Instead:
@@ -43,7 +54,7 @@ Name, phone, address, and whether it was an emergency all already flow through o
 
 ## Known gaps to verify against a real call
 
-- **`termination_reason` values** are stored raw/unmapped — the exact enum ElevenLabs uses wasn't in their docs. Whatever value shows up on a real call should inform whether a friendlier label mapping is worth adding later.
+- **`termination_reason` values** are stored raw/unmapped — confirmed via a real call to be a plain descriptive sentence (e.g. `"end_call tool was called."`), not a short enum code, so displaying it raw (as currently implemented) reads fine as-is with no mapping needed.
 - **Transfer detection is best-effort**: `findTransferInfo()` in `callDetails.ts` scans the transcript's `tool_calls` for anything with "transfer" in its name and pulls a phone-number-shaped field from its parameters. ElevenLabs doesn't document a dedicated top-level field for this, so this may need adjusting once a real transferred call's payload has been inspected.
 - **The ServiceTitan Lead URL** (`https://go.servicetitan.com/#/Lead/Index/{leadId}`) is a best guess based on the Job URL pattern seen in a reference screenshot from a different ServiceTitan integration — not yet confirmed against a real lead. Verify by opening it once you have a real `leadId`.
 - **Company name is hardcoded** ("TitanZ Plumbing and Air Conditioning") in `callDetails.ts` — not a `/settings` field, since it's cosmetic and not tenant-configurable elsewhere yet.
