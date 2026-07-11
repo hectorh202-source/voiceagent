@@ -141,13 +141,13 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <label>Emergency transfer number (E.164, e.g. +15551234567)</label>
       <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational.emergencyTransferNumber)}" />
 
-      <label>Time zone</label>
+      <label>Dashboard display time zone</label>
       <select name="timezone">
         ${TIMEZONE_OPTIONS.map(
           (tz) => `<option value="${tz}" ${operational.timezone === tz ? "selected" : ""}>${tz}</option>`,
         ).join("")}
       </select>
-      <div class="hint">Used to display call times on the dashboard in the right local time.</div>
+      <div class="hint">Only affects how call times are formatted on this dashboard. This is separate from the agent's own time zone setting in ElevenLabs, which controls the agent's time-awareness during calls (greetings, business hours, relative dates) — changing one does not change the other.</div>
 
       <label>Tool webhook shared secret ${operational.toolWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
