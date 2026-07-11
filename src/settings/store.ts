@@ -127,6 +127,7 @@ export function getRawServiceTitanSettings() {
     campaignId: getSetting("servicetitan.campaignId") ?? "",
     callReasonId: getSetting("servicetitan.callReasonId") ?? "",
     jobTypeId: getSetting("servicetitan.jobTypeId") ?? "",
+    tagName: getSetting("servicetitan.tagName") ?? "",
   };
 }
 

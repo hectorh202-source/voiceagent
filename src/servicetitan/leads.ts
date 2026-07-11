@@ -1,4 +1,6 @@
 import { requireServiceTitanConfig, stRequest, describeError } from "./httpClient";
+import { findTagTypeIdByName } from "./tags";
+import { getSetting } from "../settings/store";
 
 export interface CreateLeadInput {
   customerId: string;
@@ -24,6 +26,19 @@ export async function createLead(input: CreateLeadInput): Promise<CreateLeadResu
     ? undefined
     : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
+  // Tags identify leads created by this AI receptionist so the business can
+  // tell at a glance (and once converted to a job) that it came from this
+  // channel. Configured by name in /settings rather than by ID, since
+  // ServiceTitan's own UI doesn't surface tag-type IDs anywhere.
+  const tagName = getSetting("servicetitan.tagName");
+  let tagTypeId: number | null = null;
+  if (tagName) {
+    tagTypeId = await findTagTypeIdByName(tagName);
+    if (!tagTypeId) {
+      console.error(`createLead: configured tag name "${tagName}" was not found in ServiceTitan tag types`);
+    }
+  }
+
   try {
     const response = await stRequest<{ id: number }>(config, "POST", path, {
       data: {
@@ -33,6 +48,7 @@ export async function createLead(input: CreateLeadInput): Promise<CreateLeadResu
         campaignId: config.defaultCampaignId ? Number(config.defaultCampaignId) : undefined,
         callReasonId: config.defaultCallReasonId ? Number(config.defaultCallReasonId) : undefined,
         jobTypeId: config.defaultJobTypeId ? Number(config.defaultJobTypeId) : undefined,
+        tagTypeIds: tagTypeId ? [tagTypeId] : undefined,
         followUpDate,
         priority: input.isEmergency ? "Urgent" : "Normal",
         summary: input.summary,

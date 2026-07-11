@@ -122,6 +122,10 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <input type="text" name="serviceTitanJobTypeId" value="${escapeHtml(serviceTitan.jobTypeId)}" />
       <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads created by the agent.</div>
 
+      <label>Lead tag name (optional)</label>
+      <input type="text" name="serviceTitanTagName" value="${escapeHtml(serviceTitan.tagName)}" placeholder="e.g. AI Voice Agent" />
+      <div class="hint">Enter the exact name of an existing ServiceTitan tag (Settings → Tags) — no ID needed. Every lead this agent creates will be tagged with it, so it's identifiable once it becomes a job.</div>
+
       <h2>Operational</h2>
       <label>Emergency transfer number (E.164, e.g. +15551234567)</label>
       <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational.emergencyTransferNumber)}" />

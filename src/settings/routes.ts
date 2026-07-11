@@ -120,6 +120,7 @@ settingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet("servicetitan.campaignId", body.serviceTitanCampaignId);
   maybeSet("servicetitan.callReasonId", body.serviceTitanCallReasonId);
   maybeSet("servicetitan.jobTypeId", body.serviceTitanJobTypeId);
+  maybeSet("servicetitan.tagName", body.serviceTitanTagName);
 
   maybeSet("operational.emergencyTransferNumber", body.emergencyTransferNumber);
   maybeSet("operational.toolWebhookSecret", body.toolWebhookSecret);
