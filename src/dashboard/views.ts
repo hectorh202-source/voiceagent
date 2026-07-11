@@ -28,6 +28,10 @@ function formatPhoneNumber(phone: string): string {
   return `+1(${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6)}`;
 }
 
+function humanizeSummary(summary: string): string {
+  return summary.replace(/\buser\b/g, "customer").replace(/\bUser\b/g, "Customer");
+}
+
 const styles = `
   body { font-family: -apple-system, Segoe UI, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; background: #f5f5f7; }
   h1 { font-size: 1.3rem; }
@@ -125,7 +129,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
 
     <div class="card">
       <h2>Call Summary</h2>
-      <p>${escapeHtml(vm.summary ?? "No summary available yet.")}</p>
+      <p>${escapeHtml(vm.summary ? humanizeSummary(vm.summary) : "No summary available yet.")}</p>
     </div>
 
     <div class="card">
