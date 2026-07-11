@@ -10,6 +10,7 @@ Deeper write-ups on specific subsystems, for anyone picking up this project who 
 
 - **[SQLite storage system](sqlite-storage.md)** — the single local database: encrypted credential storage, admin password hashing, call/tool logging, and persisted web sessions.
 - **[The `/settings` app](settings-app.md)** — the credentials web UI built on top of that storage: routes, admin login flow, and how per-field saves work (and the bug that shaped that design).
+- **[Per-call record page](call-dashboard.md)** — `dashboard.laughslapper.com/calls/:id`: ingesting ElevenLabs' post-call webhooks (transcript, recording, summary), correlating them with our own `create_lead` data, and the signature verification scheme.
 
 ## Integrations (external systems this talks to)
 

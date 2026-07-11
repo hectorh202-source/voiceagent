@@ -1,0 +1,70 @@
+# Per-call record page
+
+A single-call detail page — `https://dashboard.laughslapper.com/calls/{conversationId}` — showing everything about one AI-handled call: recording, transcript, AI summary, whether it was transferred, and a link to the ServiceTitan Lead it produced. Meant to be linked to directly (e.g. pasted into a ServiceTitan lead's notes), not browsed from a list — there's no call-list/index view yet (see [Deferred](#deferred) below).
+
+## Why this needed a new data pipeline
+
+The three ElevenLabs tool webhooks (`lookup_customer`/`check_availability`/`create_lead`, see [elevenlabs-tools.md](elevenlabs-tools.md)) only fire *during* a call, for specific actions the agent decides to take. They give us zero visibility into the recording, the full transcript, the AI-generated summary, or how/why the call ended. That data only exists in ElevenLabs' **post-call webhooks** — a completely separate mechanism that fires once, after the call is already over.
+
+## Two webhook event types, one endpoint
+
+`POST /webhooks/elevenlabs/post-call` ([`webhooks/postCall.ts`](../src/webhooks/postCall.ts)) receives both of ElevenLabs' post-call webhook types, distinguished by a `type` field in the payload:
+
+- **`post_call_transcription`** — `data.conversation_id`, the full `transcript` array (each turn has `role`, `message`, `time_in_call_secs`, and optionally `tool_calls`), `data.analysis.transcript_summary`, and `data.metadata.termination_reason`. Upserted into the `elevenlabs_calls` table via `upsertCallTranscription()`.
+- **`post_call_audio`** — a *separate* webhook delivery, `data.conversation_id` + `data.full_audio` (base64-encoded MP3, the entire call). Decoded and written to `data/recordings/{conversationId}.mp3` (inside the same Docker volume as everything else — no docker-compose changes needed), path recorded via `setCallAudioPath()`.
+
+These two can arrive in either order (or one without the other, e.g. if only transcription webhooks are enabled) — both DB helpers `INSERT ... ON CONFLICT DO UPDATE` on `conversation_id` so neither clobbers the other's half of the row. The **entire raw payload** is also stored (`raw_payload_json`), not just the fields we picked out — ElevenLabs' documentation didn't fully specify `termination_reason`'s possible values or exactly how a `transfer_to_number` invocation shows up structurally, so nothing is lost if the initial field-mapping turns out to need adjusting once real payloads are seen.
+
+## Signature verification — implemented directly, not via SDK
+
+ElevenLabs signs these requests with an `elevenlabs-signature` header, but their prose docs don't spell out the exact algorithm — so this was confirmed by reading their **official JS SDK's source** (`WebhooksClient.constructEvent` in `@elevenlabs/elevenlabs-js`) rather than guessing. The scheme, Stripe-style:
+
+```
+header:  t=<unix_seconds>,v0=<hex_signature>
+signed message: "<unix_seconds>.<raw_request_body>"
+signature: hex(HMAC-SHA256(secret, message))
+tolerance: reject if the timestamp is more than 30 minutes old (replay protection)
+```
+
+Implemented directly with Node's built-in `crypto` in [`webhooks/signature.ts`](../src/webhooks/signature.ts) — the `@elevenlabs/elevenlabs-js` package was evaluated and **deliberately not added as a dependency**, since the verification logic is a few lines of `crypto.createHmac`, consistent with how this project already does AES-256-GCM encryption and scrypt password hashing with zero crypto libraries beyond Node's own.
+
+**This requires the raw, unparsed request body**, which Express's `express.json()` normally discards after parsing. [`index.ts`](../src/index.ts) captures it for every request via the `verify` callback: `express.json({ verify: (req, _res, buf) => { req.rawBody = buf } })` — a small addition to already-shared middleware, not a route-specific hack.
+
+The signing secret is a new `/settings` field ("Post-call webhook secret"), same encrypted-storage pattern as every other credential, with its own "Generate a new random secret" button (`POST /settings/generate-post-call-secret`) mirroring the existing tool-webhook-secret flow.
+
+## Correlating with our own data — by conversation ID, not re-extraction
+
+Name, phone, address, and whether it was an emergency all already flow through our own `create_lead` tool call during the conversation — there was no reason to have ElevenLabs re-extract the same information via their separate Data Collection feature. Instead:
+
+- `create_lead`'s tool schema gained an optional `conversationId` field ([`tools/createLead.ts`](../src/tools/createLead.ts)), bound on the ElevenLabs side to the built-in dynamic variable **`system__conversation_id`** (same technique as `phone` → `system__caller_id` elsewhere) — confirmed to exist via ElevenLabs' dynamic-variables docs.
+- It rides along in the already-logged request JSON in `call_log` — no schema change needed there.
+- [`db/callLog.ts`](../src/db/callLog.ts)'s `findCreateLeadLogByConversationId()` does a `LIKE '%conversationId%'` match against `request_json` to find the right row — a plain substring match rather than a dedicated indexed/extracted column, since conversation IDs are unique enough that false positives aren't a practical concern at this scale.
+- [`dashboard/callDetails.ts`](../src/dashboard/callDetails.ts)'s `buildCallDetailViewModel()` joins the `elevenlabs_calls` row with that `call_log` row to assemble everything the page needs — this is the one function to look at if a field on the page is wrong or missing.
+
+## Known gaps to verify against a real call
+
+- **`termination_reason` values** are stored raw/unmapped — the exact enum ElevenLabs uses wasn't in their docs. Whatever value shows up on a real call should inform whether a friendlier label mapping is worth adding later.
+- **Transfer detection is best-effort**: `findTransferInfo()` in `callDetails.ts` scans the transcript's `tool_calls` for anything with "transfer" in its name and pulls a phone-number-shaped field from its parameters. ElevenLabs doesn't document a dedicated top-level field for this, so this may need adjusting once a real transferred call's payload has been inspected.
+- **The ServiceTitan Lead URL** (`https://go.servicetitan.com/#/Lead/Index/{leadId}`) is a best guess based on the Job URL pattern seen in a reference screenshot from a different ServiceTitan integration — not yet confirmed against a real lead. Verify by opening it once you have a real `leadId`.
+- **Company name is hardcoded** ("TitanZ Plumbing and Air Conditioning") in `callDetails.ts` — not a `/settings` field, since it's cosmetic and not tenant-configurable elsewhere yet.
+
+## Auth and access
+
+`/calls/*` routes require the same admin session as `/settings` (`requireAdminSession` middleware) — these pages show real customer PII (name, phone, address, call recordings), so they're gated the same way credentials are, not left open just because they're meant to be linked from ServiceTitan.
+
+One UX gap this surfaced and fixed: `requireAdminSession` previously always redirected to a bare `/settings/login` with no memory of where you were headed, which is fine for `/settings` itself (nobody deep-links into it) but wrong for `/calls/:id` links opened cold. It now redirects to `/settings/login?returnTo=<original path>`, threaded through the login form as a hidden field and validated as a same-site relative path before being used as the post-login redirect target (guards against an open-redirect via a crafted `returnTo` value) — see `requireAdminSession.ts` and the `/login` handlers in `settings/routes.ts`.
+
+## Deployment
+
+Same app container, one more Caddy site block:
+```
+dashboard.laughslapper.com {
+	reverse_proxy app:3000
+}
+```
+Caddy auto-provisions a separate Let's Encrypt cert for this second hostname. Express doesn't branch on hostname at all — `/calls/*` would work identically on either domain; `dashboard.laughslapper.com` is just the intended/documented one. Requires one more DNS A record (`dashboard` → the same VPS IP), same as `voiceagent` was added earlier.
+
+## Deferred
+
+- A full multi-call list/browse/search dashboard — this phase is deliberately just the single-call detail page.
+- Real-time/automatic Lead→Job conversion tracking (the ST link always points at the Lead we create, never a Job).

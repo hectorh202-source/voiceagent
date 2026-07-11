@@ -48,7 +48,7 @@ export function renderSetupPage(error?: string): string {
   );
 }
 
-export function renderLoginPage(error?: string): string {
+export function renderLoginPage(error?: string, returnTo?: string): string {
   return page(
     "Log in",
     `
@@ -57,6 +57,7 @@ export function renderLoginPage(error?: string): string {
     <form method="post" action="/settings/login">
       <label>Admin password</label>
       <input type="password" name="password" required autofocus />
+      ${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />` : ""}
       <button type="submit">Log in</button>
     </form>
   `,
@@ -134,11 +135,19 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
       <div class="hint">This value must match the "X-Tool-Secret" header you configure on each ElevenLabs webhook tool.</div>
 
+      <label>Post-call webhook secret ${operational.postCallWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
+      <input type="password" name="postCallWebhookSecret" placeholder="${operational.postCallWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
+      <div class="hint">This must match the signing secret shown when you create the post-call webhook in ElevenLabs' Workspace Settings → Webhooks.</div>
+
       <button type="submit">Save settings</button>
     </form>
 
     <form method="post" action="/settings/generate-secret">
       <button type="submit">Generate a new random tool webhook secret</button>
+    </form>
+
+    <form method="post" action="/settings/generate-post-call-secret">
+      <button type="submit">Generate a new random post-call webhook secret</button>
     </form>
   `,
   );

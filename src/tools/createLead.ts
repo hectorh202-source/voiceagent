@@ -25,6 +25,9 @@ const bodySchema = z.object({
   issueDescription: z.string().min(1),
   preferredTiming: z.string().optional(),
   isEmergency: booleanish.optional().default(false),
+  // Rides along so the /calls/:conversationId dashboard page can correlate
+  // this lead with the ElevenLabs post-call webhook data for the same call.
+  conversationId: z.string().optional(),
 });
 
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {

@@ -24,5 +24,16 @@ export function bootstrapSchema(db: DatabaseSync): void {
       session_json TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS elevenlabs_calls (
+      conversation_id TEXT PRIMARY KEY,
+      agent_id TEXT,
+      received_at TEXT NOT NULL DEFAULT (datetime('now')),
+      transcript_json TEXT,
+      summary TEXT,
+      termination_reason TEXT,
+      raw_payload_json TEXT NOT NULL,
+      audio_path TEXT
+    );
   `);
 }

@@ -58,22 +58,29 @@ settingsRouter.post("/setup", (req, res) => {
   res.redirect("/settings");
 });
 
+// Only allow redirecting back to a same-site relative path — guards against
+// an open redirect via a crafted returnTo value like "//evil.example.com".
+function isSafeReturnPath(value: string | undefined): value is string {
+  return !!value && value.startsWith("/") && !value.startsWith("//");
+}
+
 settingsRouter.get("/login", (req, res) => {
   if (!isAdminPasswordSet()) {
     res.redirect("/settings/setup");
     return;
   }
-  res.send(renderLoginPage());
+  const returnTo = req.query.returnTo;
+  res.send(renderLoginPage(undefined, typeof returnTo === "string" ? returnTo : undefined));
 });
 
 settingsRouter.post("/login", (req, res) => {
-  const { password } = req.body as { password?: string };
+  const { password, returnTo } = req.body as { password?: string; returnTo?: string };
   if (password && verifyAdminPassword(password)) {
     req.session.isAdmin = true;
-    res.redirect("/settings");
+    res.redirect(isSafeReturnPath(returnTo) ? returnTo : "/settings");
     return;
   }
-  res.send(renderLoginPage("Incorrect password."));
+  res.send(renderLoginPage("Incorrect password.", returnTo));
 });
 
 settingsRouter.post("/logout", (req, res) => {
@@ -124,6 +131,7 @@ settingsRouter.post("/", requireAdminSession, (req, res) => {
 
   maybeSet("operational.emergencyTransferNumber", body.emergencyTransferNumber);
   maybeSet("operational.toolWebhookSecret", body.toolWebhookSecret);
+  maybeSet("operational.postCallWebhookSecret", body.postCallWebhookSecret);
 
   req.session.flash = { type: "success", message: "Settings saved." };
   res.redirect("/settings");
@@ -135,6 +143,16 @@ settingsRouter.post("/generate-secret", requireAdminSession, (req, res) => {
   req.session.flash = {
     type: "success",
     message: `New tool webhook secret: ${secret} — copy it into ElevenLabs now, it will be masked after you leave this page.`,
+  };
+  res.redirect("/settings");
+});
+
+settingsRouter.post("/generate-post-call-secret", requireAdminSession, (req, res) => {
+  const secret = crypto.randomBytes(24).toString("hex");
+  setSetting("operational.postCallWebhookSecret", secret);
+  req.session.flash = {
+    type: "success",
+    message: `New post-call webhook secret: ${secret} — copy it into ElevenLabs' webhook settings now, it will be masked after you leave this page.`,
   };
   res.redirect("/settings");
 });

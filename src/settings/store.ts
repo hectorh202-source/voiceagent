@@ -135,5 +135,6 @@ export function getRawOperationalSettings() {
   return {
     emergencyTransferNumber: getSetting("operational.emergencyTransferNumber") ?? "",
     toolWebhookSecretSet: !!getSetting("operational.toolWebhookSecret"),
+    postCallWebhookSecretSet: !!getSetting("operational.postCallWebhookSecret"),
   };
 }

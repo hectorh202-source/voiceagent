@@ -11,5 +11,6 @@ export function requireAdminSession(req: Request, res: Response, next: NextFunct
     next();
     return;
   }
-  res.redirect("/settings/login");
+  const returnTo = encodeURIComponent(req.originalUrl);
+  res.redirect(`/settings/login?returnTo=${returnTo}`);
 }
