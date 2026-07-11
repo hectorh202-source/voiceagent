@@ -15,8 +15,14 @@ const app = express();
 // Captures the raw request body alongside express's usual JSON parsing —
 // needed to verify ElevenLabs' post-call webhook signature, which is
 // computed over the exact raw bytes, not a re-serialized JSON object.
+//
+// The 50mb limit matters specifically for the post-call audio webhook: a
+// full call's recording arrives base64-encoded inside the JSON body, and
+// express's 100kb default silently rejected anything longer than a few
+// seconds of audio — short test calls worked, real-length calls didn't.
 app.use(
   express.json({
+    limit: "50mb",
     verify: (req, _res, buf) => {
       (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
     },
