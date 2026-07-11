@@ -50,6 +50,16 @@ A recording was initially reported as "cut off after 3 seconds" — that turned 
 
 Short test calls' audio arrived fine; real-length calls' never did — `audio_path` stayed `null` with no error visible anywhere. Cause: Express's `express.json()` defaults to a **100KB request body limit**. `post_call_audio` webhooks carry the entire call's recording base64-encoded inline in the JSON body — trivial for a few seconds of audio, but a real conversation's audio easily exceeds 100KB, silently rejected before ever reaching the webhook handler (no log line, no error — the request never got past Express's body parser). Fixed with `express.json({ limit: "50mb", ... })` in [`index.ts`](../src/index.ts). Verified locally by sending a signed 1.4MB payload (well over the old default) and confirming it's accepted and the decoded file is written correctly.
 
+#### If a call's recording ever goes missing again (max length reached)
+
+The `50mb` cap is what limits how long a single call's recording can be before its post-call webhook gets silently rejected the same way the 100KB default did. To raise it:
+
+1. Open [`src/index.ts`](../src/index.ts) and find the `express.json({ limit: "50mb", ... })` call near the top.
+2. Change `"50mb"` to a larger value (Express accepts strings like `"100mb"`) — no other file needs to change; Caddy and Docker don't impose their own body-size limits here, so this one setting is the only cap in the whole request path.
+3. Rebuild and redeploy (`docker compose up -d --build`).
+
+Rough sizing: base64 encoding inflates the raw audio by ~33%, so a `50mb` limit holds roughly ~37MB of actual MP3 data before the 33% overhead. At typical phone-call-quality bitrates this comfortably covers well over an hour of audio — if you're hitting the limit, it likely means either a genuinely very long call, or ElevenLabs encoding at a much higher bitrate than expected. The symptom to watch for is the same as the original bug: `audio_path` stays `null` for a specific call with no error anywhere in `docker compose logs app`, since an oversized request is rejected before our code ever logs anything about it.
+
 If a future ElevenLabs redesign moves the webhook-configuration UI around again, the way to confirm it's working regardless of where the toggle lives: place a test call, then check whether a new row landed in `elevenlabs_calls` (`docker compose exec app node -e "..."`, querying that table) — an empty result means the webhook isn't actually configured to fire yet, no matter what the dashboard UI appears to show.
 
 ## Correlating with our own data — by conversation ID, not re-extraction
