@@ -8,6 +8,16 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const TIMEZONE_OPTIONS = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+];
+
 const layoutStyles = `
   body { font-family: -apple-system, Segoe UI, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
   h1 { font-size: 1.4rem; }
@@ -130,6 +140,14 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <h2>Operational</h2>
       <label>Emergency transfer number (E.164, e.g. +15551234567)</label>
       <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational.emergencyTransferNumber)}" />
+
+      <label>Time zone</label>
+      <select name="timezone">
+        ${TIMEZONE_OPTIONS.map(
+          (tz) => `<option value="${tz}" ${operational.timezone === tz ? "selected" : ""}>${tz}</option>`,
+        ).join("")}
+      </select>
+      <div class="hint">Used to display call times on the dashboard in the right local time.</div>
 
       <label>Tool webhook shared secret ${operational.toolWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />

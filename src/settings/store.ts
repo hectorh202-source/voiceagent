@@ -136,5 +136,10 @@ export function getRawOperationalSettings() {
     emergencyTransferNumber: getSetting("operational.emergencyTransferNumber") ?? "",
     toolWebhookSecretSet: !!getSetting("operational.toolWebhookSecret"),
     postCallWebhookSecretSet: !!getSetting("operational.postCallWebhookSecret"),
+    timezone: getSetting("operational.timezone") ?? "America/New_York",
   };
+}
+
+export function getAgentTimezone(): string {
+  return getSetting("operational.timezone") ?? "America/New_York";
 }

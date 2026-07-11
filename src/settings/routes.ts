@@ -130,6 +130,7 @@ settingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet("servicetitan.tagName", body.serviceTitanTagName);
 
   maybeSet("operational.emergencyTransferNumber", body.emergencyTransferNumber);
+  setSetting("operational.timezone", body.timezone || "America/New_York");
   maybeSet("operational.toolWebhookSecret", body.toolWebhookSecret);
   maybeSet("operational.postCallWebhookSecret", body.postCallWebhookSecret);
 

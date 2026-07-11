@@ -1,4 +1,5 @@
 import type { CallDetailViewModel } from "./callDetails";
+import { getAgentTimezone } from "../settings/store";
 
 function escapeHtml(value: string): string {
   return value
@@ -10,12 +11,13 @@ function escapeHtml(value: string): string {
 
 // SQLite's datetime('now') stores UTC with no timezone marker (e.g.
 // "2026-07-11 22:24:11") — parse it as UTC explicitly, then render in the
-// business's local timezone in a human-friendly format (e.g. "7/11/2026,
-// 6:24:11 PM"), which is what en-US locale formatting produces by default.
+// business's configured local timezone in a human-friendly format (e.g.
+// "7/11/2026, 6:24:11 PM"), which is what en-US locale formatting produces
+// by default.
 function formatCallTime(sqliteDatetime: string): string {
   const date = new Date(sqliteDatetime.replace(" ", "T") + "Z");
   if (Number.isNaN(date.getTime())) return sqliteDatetime;
-  return date.toLocaleString("en-US", { timeZone: "America/New_York" });
+  return date.toLocaleString("en-US", { timeZone: getAgentTimezone() });
 }
 
 // Formats a US phone number as +1(XXX) XXX-XXXX regardless of how it was
