@@ -56,7 +56,7 @@ Name, phone, address, and whether it was an emergency all already flow through o
 
 - **`termination_reason` values** are stored raw/unmapped — confirmed via a real call to be a plain descriptive sentence (e.g. `"end_call tool was called."`), not a short enum code, so displaying it raw (as currently implemented) reads fine as-is with no mapping needed.
 - **Transfer detection is best-effort**: `findTransferInfo()` in `callDetails.ts` scans the transcript's `tool_calls` for anything with "transfer" in its name and pulls a phone-number-shaped field from its parameters. ElevenLabs doesn't document a dedicated top-level field for this, so this may need adjusting once a real transferred call's payload has been inspected.
-- **The ServiceTitan Lead URL** (`https://go.servicetitan.com/#/Lead/Index/{leadId}`) is a best guess based on the Job URL pattern seen in a reference screenshot from a different ServiceTitan integration — not yet confirmed against a real lead. Verify by opening it once you have a real `leadId`.
+- **The ServiceTitan Lead URL** — confirmed working against a real sandbox lead, with one correction: the web UI hostname differs by environment. Integration/sandbox tenants live at `integration.servicetitan.com`, production at `go.servicetitan.com` (the pattern originally assumed for all environments, based on a reference screenshot from a different integration). `callDetails.ts` now picks the right host from the `servicetitan.environment` setting (`ST_WEB_HOSTS` map) rather than hardcoding production's domain.
 - **Company name is hardcoded** ("TitanZ Plumbing and Air Conditioning") in `callDetails.ts` — not a `/settings` field, since it's cosmetic and not tenant-configurable elsewhere yet.
 
 ## Auth and access

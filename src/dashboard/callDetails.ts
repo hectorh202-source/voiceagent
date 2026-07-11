@@ -1,5 +1,14 @@
 import { getCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId } from "../db/callLog";
+import { getRawServiceTitanSettings } from "../settings/store";
+
+// ServiceTitan's web UI hostname differs by environment: the integration/
+// sandbox tenant lives under integration.servicetitan.com, while production
+// tenants use go.servicetitan.com — confirmed by hitting a real sandbox lead.
+const ST_WEB_HOSTS: Record<string, string> = {
+  integration: "integration.servicetitan.com",
+  production: "go.servicetitan.com",
+};
 
 interface TranscriptTurn {
   role: string;
@@ -103,7 +112,9 @@ export function buildCallDetailViewModel(conversationId: string): CallDetailView
     }
   }
 
-  const leadUrl = leadId ? `https://go.servicetitan.com/#/Lead/Index/${leadId}` : null;
+  const stEnvironment = getRawServiceTitanSettings().environment;
+  const stWebHost = ST_WEB_HOSTS[stEnvironment] ?? ST_WEB_HOSTS.production;
+  const leadUrl = leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = { isTransferred: false, forwardedNumber: null as string | null, transferDestination: null as string | null };
