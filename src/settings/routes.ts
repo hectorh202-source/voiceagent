@@ -147,12 +147,3 @@ settingsRouter.post("/generate-secret", requireAdminSession, (req, res) => {
   res.redirect("/settings");
 });
 
-settingsRouter.post("/generate-post-call-secret", requireAdminSession, (req, res) => {
-  const secret = crypto.randomBytes(24).toString("hex");
-  setSetting("operational.postCallWebhookSecret", secret);
-  req.session.flash = {
-    type: "success",
-    message: `New post-call webhook secret: ${secret} — copy it into ElevenLabs' webhook settings now, it will be masked after you leave this page.`,
-  };
-  res.redirect("/settings");
-});

@@ -145,10 +145,6 @@ export function renderSettingsPage(props: SettingsPageProps): string {
     <form method="post" action="/settings/generate-secret">
       <button type="submit">Generate a new random tool webhook secret</button>
     </form>
-
-    <form method="post" action="/settings/generate-post-call-secret">
-      <button type="submit">Generate a new random post-call webhook secret</button>
-    </form>
   `,
   );
 }

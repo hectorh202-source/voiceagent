@@ -30,7 +30,7 @@ Implemented directly with Node's built-in `crypto` in [`webhooks/signature.ts`](
 
 **This requires the raw, unparsed request body**, which Express's `express.json()` normally discards after parsing. [`index.ts`](../src/index.ts) captures it for every request via the `verify` callback: `express.json({ verify: (req, _res, buf) => { req.rawBody = buf } })` — a small addition to already-shared middleware, not a route-specific hack.
 
-The signing secret is a new `/settings` field ("Post-call webhook secret"), same encrypted-storage pattern as every other credential, with its own "Generate a new random secret" button (`POST /settings/generate-post-call-secret`) mirroring the existing tool-webhook-secret flow.
+The signing secret is a new `/settings` field ("Post-call webhook secret"), same encrypted-storage pattern as every other credential — just a plain save, deliberately **without** a "generate random" button. That pattern exists for the tool webhook secret because we invent that value and paste it into ElevenLabs; here the relationship is reversed — ElevenLabs generates this secret when you create the webhook (HMAC auth method), and you paste *its* value into `/settings`. A "generate random" button here would silently create a value that no longer matches what ElevenLabs actually signs with, breaking verification — so it was removed after initially being added by mistake, mirroring the tool-secret flow without checking whether that pattern actually applied.
 
 ### Configuring this in the ElevenLabs dashboard — the exact path
 
