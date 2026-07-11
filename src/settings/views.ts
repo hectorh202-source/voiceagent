@@ -142,7 +142,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <button type="submit">Save settings</button>
     </form>
 
-    <form method="post" action="/settings/generate-secret">
+    <form method="post" action="/settings/generate-secret" onsubmit="return confirm('This will invalidate the current tool webhook secret immediately. The agent\\'s tools will fail until you update the new secret in ElevenLabs. Continue?')">
       <button type="submit">Generate a new random tool webhook secret</button>
     </form>
   `,
