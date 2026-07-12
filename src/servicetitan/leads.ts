@@ -14,6 +14,26 @@ export interface CreateLeadResult {
   leadId: string | null;
 }
 
+// Updates an already-created Lead's summary — used once, by the post-call
+// webhook, to swap the short constructed narrative for the real AI-generated
+// call summary once it's available (see webhooks/postCall.ts). This is the
+// only place this app ever writes to a Lead after creating it.
+//
+// Unverified against the real API: going on ServiceTitan's typical CRM v2
+// convention (PATCH for a partial update) rather than confirmed behavior —
+// if this 404s/405s in practice, the likely fix is PUT with a full lead
+// payload instead of just { summary }, or a slightly different path.
+export async function updateLeadSummary(businessId: number, leadId: string, summary: string): Promise<boolean> {
+  try {
+    const config = requireServiceTitanConfig(businessId);
+    await stRequest(config, "PATCH", `/crm/v2/tenant/${config.tenantId}/leads/${leadId}`, { data: { summary } });
+    return true;
+  } catch (error) {
+    console.error("updateLeadSummary failed:", describeError(error));
+    return false;
+  }
+}
+
 export async function createLead(businessId: number, input: CreateLeadInput): Promise<CreateLeadResult> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/leads`;

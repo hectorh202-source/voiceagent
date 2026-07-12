@@ -4,6 +4,9 @@ import path from "node:path";
 import { getBusinessSetting } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath } from "../db/callRecords";
+import { findCreateLeadLogByConversationId } from "../db/callLog";
+import { buildLeadSummary } from "../servicetitan/leadSummary";
+import { updateLeadSummary } from "../servicetitan/leads";
 import { env } from "../config/env";
 
 interface TranscriptTurn {
@@ -37,7 +40,58 @@ type PostCallPayload = PostCallTranscriptionPayload | PostCallAudioPayload;
 
 const recordingsDir = path.join(path.dirname(env.DATABASE_PATH), "recordings");
 
-export function handlePostCallWebhook(req: Request, res: Response): void {
+// Once the real AI call summary is available, swap it in for the short
+// constructed narrative used when the lead was first created (mid-call, via
+// tools/createLead.ts — before this summary existed). Never throws — a
+// failure here is logged and doesn't affect the webhook's response to
+// ElevenLabs, since the transcript/summary itself was already received and
+// stored successfully regardless of whether this follow-up ServiceTitan
+// write works.
+async function updateLeadWithRealSummary(
+  businessId: number,
+  conversationId: string,
+  aiSummary: string,
+): Promise<void> {
+  const leadLog = findCreateLeadLogByConversationId(businessId, conversationId);
+  if (!leadLog) return;
+
+  try {
+    const request = JSON.parse(leadLog.request_json) as {
+      street?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      phone?: string;
+    };
+    const response = leadLog.response_json
+      ? (JSON.parse(leadLog.response_json) as { leadId?: string | null; email?: string | null })
+      : null;
+    const leadId = response?.leadId;
+    if (!leadId || !request.street || !request.city || !request.state || !request.zip || !request.phone) {
+      return;
+    }
+
+    const summary = buildLeadSummary(businessId, {
+      narrative: aiSummary,
+      street: request.street,
+      city: request.city,
+      state: request.state,
+      zip: request.zip,
+      phone: request.phone,
+      email: response?.email ?? null,
+      conversationId,
+    });
+
+    const updated = await updateLeadSummary(businessId, leadId, summary);
+    if (!updated) {
+      console.error(`Failed to update lead ${leadId} with real call summary for conversation ${conversationId}`);
+    }
+  } catch (error) {
+    console.error("updateLeadWithRealSummary failed:", error);
+  }
+}
+
+export async function handlePostCallWebhook(req: Request, res: Response): Promise<void> {
   const business = req.business;
   if (!business) {
     res.status(404).end();
@@ -75,6 +129,10 @@ export function handlePostCallWebhook(req: Request, res: Response): void {
       terminationReason: data.metadata?.termination_reason ?? null,
       rawPayloadJson: JSON.stringify(payload),
     });
+
+    if (data.analysis?.transcript_summary) {
+      await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);
+    }
   } else if (payload.type === "post_call_audio") {
     const { data } = payload;
     if (!fs.existsSync(recordingsDir)) {
