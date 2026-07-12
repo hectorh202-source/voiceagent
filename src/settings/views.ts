@@ -93,7 +93,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
     </div>
     ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
 
-    <form method="post" action="/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
+    <form method="post" action="/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
       <h2>ElevenLabs</h2>
       <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
@@ -121,7 +121,10 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <input type="password" name="serviceTitanAppKey" placeholder="${serviceTitan.appKeySet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
 
       <label>Tenant ID</label>
-      <input type="text" name="serviceTitanTenantId" value="${escapeHtml(serviceTitan.tenantId)}" />
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="tenantIdInput" name="serviceTitanTenantId" value="${escapeHtml(serviceTitan.tenantId)}" readonly style="background:#eee; color:#666; flex:1;" />
+        <button type="button" onclick="const i=document.getElementById('tenantIdInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.tenantIdChanged=true; this.disabled=true;">Change</button>
+      </div>
 
       <label>Default business unit ID</label>
       <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan.businessUnitId)}" />
