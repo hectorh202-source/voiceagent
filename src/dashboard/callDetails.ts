@@ -1,6 +1,7 @@
 import { getCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
+import type { Business } from "../db/businesses";
 
 // ServiceTitan's web UI hostname differs by environment: the integration/
 // sandbox tenant lives under integration.servicetitan.com, while production
@@ -18,6 +19,7 @@ interface TranscriptTurn {
 }
 
 export interface CallDetailViewModel {
+  businessId: number;
   conversationId: string;
   callTime: string;
   company: string;
@@ -37,8 +39,6 @@ export interface CallDetailViewModel {
   terminationReason: string | null;
   hasAudio: boolean;
 }
-
-const COMPANY_NAME = "TitanZ Plumbing and Air Conditioning";
 
 function formatTime(secs: number | undefined): string {
   if (secs === undefined || !Number.isFinite(secs)) return "";
@@ -72,11 +72,11 @@ function findTransferInfo(turns: TranscriptTurn[]): {
   return { isTransferred: false, forwardedNumber: null, transferDestination: null };
 }
 
-export function buildCallDetailViewModel(conversationId: string): CallDetailViewModel | null {
-  const callRecord = getCallRecord(conversationId);
+export function buildCallDetailViewModel(business: Business, conversationId: string): CallDetailViewModel | null {
+  const callRecord = getCallRecord(business.id, conversationId);
   if (!callRecord) return null;
 
-  const leadLog = findCreateLeadLogByConversationId(conversationId);
+  const leadLog = findCreateLeadLogByConversationId(business.id, conversationId);
   let customerName: string | null = null;
   let phone: string | null = null;
   let address: string | null = null;
@@ -112,7 +112,7 @@ export function buildCallDetailViewModel(conversationId: string): CallDetailView
     }
   }
 
-  const stEnvironment = getRawServiceTitanSettings().environment;
+  const stEnvironment = getRawServiceTitanSettings(business.id).environment;
   const stWebHost = ST_WEB_HOSTS[stEnvironment] ?? ST_WEB_HOSTS.production;
   const leadUrl = leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null;
 
@@ -131,9 +131,10 @@ export function buildCallDetailViewModel(conversationId: string): CallDetailView
   }
 
   return {
+    businessId: business.id,
     conversationId,
     callTime: callRecord.received_at,
-    company: COMPANY_NAME,
+    company: business.name,
     customerName,
     phone,
     address,

@@ -5,8 +5,8 @@ interface STTagType {
   name: string;
 }
 
-export async function findTagTypeIdByName(name: string): Promise<number | null> {
-  const config = requireServiceTitanConfig();
+export async function findTagTypeIdByName(businessId: number, name: string): Promise<number | null> {
+  const config = requireServiceTitanConfig(businessId);
   const path = `/settings/v2/tenant/${config.tenantId}/tag-types`;
 
   try {

@@ -1,18 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import crypto from "node:crypto";
 import { z } from "zod";
 import { getAuthState, verifyLegacyAdminPassword, clearLegacyAdminPassword, login, type AuthState } from "./auth";
 import { createUser, listUsers, deleteUser } from "../db/users";
-import {
-  setSetting,
-  getRawElevenLabsSettings,
-  getRawServiceTitanSettings,
-  getRawOperationalSettings,
-  type ServiceTitanEnvironment,
-} from "./store";
+import { createBusiness, listBusinesses } from "../db/businesses";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { blockIfIpRateLimited, recordFailedLoginAttempt } from "../middleware/loginRateLimiter";
-import { renderSetupPage, renderLoginPage, renderMigratePage, renderSettingsPage } from "./views";
+import { renderSetupPage, renderLoginPage, renderMigratePage, renderBusinessListPage } from "./views";
 
 declare module "express-session" {
   interface SessionData {
@@ -45,16 +38,6 @@ function takeFlash(req: Request) {
   const flash = req.session.flash;
   req.session.flash = undefined;
   return flash;
-}
-
-// Saves a field only if a non-blank value was submitted, otherwise leaves
-// whatever's already stored untouched (used for the "leave blank to keep
-// current" behavior on every settings field, secret or not).
-function maybeSet(key: string, value: string | undefined): void {
-  const trimmed = value?.trim();
-  if (trimmed) {
-    setSetting(key, trimmed);
-  }
 }
 
 settingsRouter.get("/setup", (req, res) => {
@@ -176,10 +159,8 @@ settingsRouter.get(
   (req, res) => {
     const flash = takeFlash(req);
     res.send(
-      renderSettingsPage({
-        elevenLabs: getRawElevenLabsSettings(),
-        serviceTitan: getRawServiceTitanSettings(),
-        operational: getRawOperationalSettings(),
+      renderBusinessListPage({
+        businesses: listBusinesses(),
         users: listUsers(),
         currentUserId: req.session.userId!,
         flash,
@@ -188,41 +169,16 @@ settingsRouter.get(
   },
 );
 
-settingsRouter.post("/", requireAdminSession, (req, res) => {
-  const body = req.body as Record<string, string | undefined>;
-
-  maybeSet("elevenlabs.apiKey", body.elevenLabsApiKey);
-  maybeSet("elevenlabs.agentId", body.elevenLabsAgentId);
-
-  setSetting("servicetitan.environment", (body.serviceTitanEnvironment as ServiceTitanEnvironment) || "integration");
-  maybeSet("servicetitan.clientId", body.serviceTitanClientId);
-  maybeSet("servicetitan.clientSecret", body.serviceTitanClientSecret);
-  maybeSet("servicetitan.appKey", body.serviceTitanAppKey);
-  maybeSet("servicetitan.tenantId", body.serviceTitanTenantId);
-  maybeSet("servicetitan.businessUnitId", body.serviceTitanBusinessUnitId);
-  maybeSet("servicetitan.campaignId", body.serviceTitanCampaignId);
-  maybeSet("servicetitan.callReasonId", body.serviceTitanCallReasonId);
-  maybeSet("servicetitan.jobTypeId", body.serviceTitanJobTypeId);
-  maybeSet("servicetitan.tagName", body.serviceTitanTagName);
-
-  maybeSet("operational.emergencyTransferNumber", body.emergencyTransferNumber);
-  setSetting("operational.timezone", body.timezone || "America/New_York");
-  maybeSet("operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));
-  maybeSet("operational.toolWebhookSecret", body.toolWebhookSecret);
-  maybeSet("operational.postCallWebhookSecret", body.postCallWebhookSecret);
-
-  req.session.flash = { type: "success", message: "Settings saved." };
-  res.redirect("/settings");
-});
-
-settingsRouter.post("/generate-secret", requireAdminSession, (req, res) => {
-  const secret = crypto.randomBytes(24).toString("hex");
-  setSetting("operational.toolWebhookSecret", secret);
-  req.session.flash = {
-    type: "success",
-    message: `New tool webhook secret: ${secret} — copy it into ElevenLabs now, it will be masked after you leave this page.`,
-  };
-  res.redirect("/settings");
+settingsRouter.post("/businesses", requireAdminSession, (req, res) => {
+  const { name } = req.body as { name?: string };
+  const trimmed = name?.trim();
+  if (!trimmed) {
+    req.session.flash = { type: "error", message: "Enter a business name." };
+    res.redirect("/settings");
+    return;
+  }
+  const business = createBusiness(trimmed);
+  res.redirect(`/b/${business.id}/settings`);
 });
 
 settingsRouter.post("/users", requireAdminSession, (req, res) => {

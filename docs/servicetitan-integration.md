@@ -20,7 +20,7 @@ src/servicetitan/
   types.ts        # shared response shapes (STCustomer, etc.)
 ```
 
-Every function here that actually calls ServiceTitan starts by calling `requireServiceTitanConfig()`, which throws `ServiceTitanNotConfiguredError` if the tenant's credentials aren't fully set up yet (see below). The [tools layer](elevenlabs-tools.md) catches that specific error and turns it into a clean `503` response rather than a stack trace.
+Every function here takes a `businessId` as its first parameter and starts by calling `requireServiceTitanConfig(businessId)`, which throws `ServiceTitanNotConfiguredError` if *that business's* credentials aren't fully set up yet (see below). The [tools layer](elevenlabs-tools.md) catches that specific error and turns it into a clean `503` response rather than a stack trace. This is a multi-business platform — every function signature below should be read with an implicit "for this one business" on it; there is no shared/global ServiceTitan config anywhere.
 
 ## Authentication
 
@@ -32,16 +32,17 @@ POST {authBaseUrl}/connect/token
   → { access_token, expires_in }   (expires_in is ~900 seconds / 15 minutes)
 ```
 
-The token is cached in memory (module-level variable, not persisted to disk — there's no need, it's cheap to refetch and short-lived anyway) and reused until 60 seconds before it would expire:
+The token is cached in memory (a `Map<cacheKey, CachedToken>`, not persisted to disk — there's no need, it's cheap to refetch and short-lived anyway) and reused until 60 seconds before it would expire:
 
 ```ts
-if (cached && cached.cacheKey === cacheKey && cached.expiresAt - 60_000 > now) {
-  return cached.token;   // reuse
+const existing = cache.get(cacheKey);
+if (existing && existing.expiresAt - 60_000 > now) {
+  return existing.token;   // reuse
 }
 // otherwise, fetch a fresh one
 ```
 
-The cache key includes the client ID and auth base URL, so if credentials are changed via `/settings` mid-run, the next request correctly fetches a new token instead of reusing one for the old credentials. ServiceTitan explicitly asks integrators to cache and reuse tokens rather than requesting one per API call — they rate-limit the token endpoint.
+The cache key includes the client ID and auth base URL, so if credentials are changed via a business's settings mid-run, the next request correctly fetches a new token instead of reusing one for the old credentials. It's a `Map` rather than a single slot specifically because this is multi-business: each business has its own credentials/cache key, and two businesses' calls interleaving must not evict each other's cached token. ServiceTitan explicitly asks integrators to cache and reuse tokens rather than requesting one per API call — they rate-limit the token endpoint.
 
 Every actual API request (not just the token fetch) needs **two** headers, added by [`httpClient.ts`](../src/servicetitan/httpClient.ts)'s `stRequest()`:
 ```
@@ -52,18 +53,18 @@ The app key is generated once per registered ServiceTitan developer app and work
 
 ## Environments
 
-Two ServiceTitan environments are supported, chosen via the "Environment" dropdown in `/settings` (stored as `servicetitan.environment`, either `"integration"` or `"production"`):
+Two ServiceTitan environments are supported, chosen **independently per business** via the "Environment" dropdown on that business's `/b/:businessId/settings` page (stored as `servicetitan.environment` in `business_settings`, either `"integration"` or `"production"`):
 
 | Environment | Auth base URL | API base URL |
 |---|---|---|
 | Integration / Sandbox | `https://auth-integration.servicetitan.io` | `https://api-integration.servicetitan.io` |
 | Production | `https://auth.servicetitan.io` | `https://api.servicetitan.io` |
 
-This project is currently configured against the **integration/sandbox** environment. Switching to production is just a dropdown change in `/settings` — no code change needed — but should only be done deliberately, since production leads are real customer-facing records.
+One business being on sandbox has no bearing on any other business's environment choice. Switching a business to production is just a dropdown change on its own settings page — no code change needed — but should only be done deliberately, since production leads are real customer-facing records.
 
 ## The three operations
 
-### 1. Customer lookup — `lookupCustomerByPhone(phone)`
+### 1. Customer lookup — `lookupCustomerByPhone(businessId, phone)`
 
 `GET /crm/v2/tenant/{tenantId}/customers`
 
@@ -75,7 +76,7 @@ Phone numbers are normalized to their last 10 digits before comparing (`normaliz
 
 Returns `{ found, customerId, name, address }` — `found: false` with everything else `null` if no match.
 
-### 2. Customer creation — `createCustomer(input)`
+### 2. Customer creation — `createCustomer(businessId, input)`
 
 `POST /crm/v2/tenant/{tenantId}/customers`
 
@@ -83,11 +84,11 @@ Only called when `lookupCustomerByPhone` found no existing match (see `create_le
 
 **The request body must include a `locations` array, not just a top-level `address` field.** This wasn't obvious from the API surface alone — an earlier version of this code sent only a flat `address` object and got a `400` back: `"Required property 'locations' not found in JSON"`. ServiceTitan models a customer as having one or more physical locations, each with its own address, rather than one address living directly on the customer. The fix sends both: a top-level `address` (harmless/ignored-or-used depending on the tenant) and `locations: [{ name, address }]` with the real address data, since that's what the API actually validates against. City, State, and Zip are all required within that address — see [elevenlabs-tools.md](elevenlabs-tools.md) for why `create_lead`'s tool contract collects those as separate fields rather than one freeform address string.
 
-### 3. Lead creation — `createLead(input)`
+### 3. Lead creation — `createLead(businessId, input)`
 
 `POST /crm/v2/tenant/{tenantId}/leads`
 
-The core "book me" operation. Fields sent: `customerId`, `locationId`, and four **tenant-specific configuration IDs** pulled from `/settings` (`defaultBusinessUnitId`, `defaultCampaignId`, `defaultCallReasonId`, `defaultJobTypeId`) — these categorize the lead the same way a human CSR's ServiceTitan client would, and are configured once by whoever owns the ServiceTitan tenant (found in ServiceTitan's own admin UI under Settings). `priority` is set to `"Urgent"` if the agent flagged the call as an emergency, `"Normal"` otherwise.
+The core "book me" operation. Fields sent: `customerId`, `locationId`, and four **tenant-specific configuration IDs** pulled from that business's own settings (`defaultBusinessUnitId`, `defaultCampaignId`, `defaultCallReasonId`, `defaultJobTypeId`) — these categorize the lead the same way a human CSR's ServiceTitan client would, and are configured once per business by whoever owns that business's ServiceTitan tenant (found in ServiceTitan's own admin UI under Settings). `priority` is set to `"Urgent"` if the agent flagged the call as an emergency, `"Normal"` otherwise.
 
 **`summary` is a structured multi-line write-up, not one sentence** — built by `buildLeadSummary()` in [`tools/createLead.ts`](../src/tools/createLead.ts), since ServiceTitan carries a Lead's `summary` field over into the Job's Summary field once staff convert it, making this effectively the Job Summary too. It includes: the call date/time (in the business's configured dashboard timezone, `getAgentTimezone()`), a narrative line (issue + address + preferred timing + an emergency note if flagged), the caller's phone number (formatted via the shared `formatPhoneNumber()` in [`lib/format.ts`](../src/lib/format.ts)), the address again as its own labeled line, a **"Call Details" link** to this call's public `/calls/:conversationId` page (see [call-dashboard.md](call-dashboard.md)), built via `getDashboardBaseUrl()` in `settings/store.ts` — defaults to this deployment's known dashboard domain (`https://dashboard.laughslapper.com`, the same one hardcoded in the `Caddyfile`) so the link works with zero setup; the `/settings` field `operational.dashboardBaseUrl` only exists to override it if the dashboard is ever hosted elsewhere. Omitted cleanly (not a broken link) only if the conversation ID itself is missing — and a closing `Call Taker: AI Agent` line. Only one phone number exists in this system (caller ID, bound to `system__caller_id`), so it's labeled plainly `Phone` rather than implying a separately-captured callback number that isn't actually collected today.
 
@@ -95,9 +96,9 @@ This function never throws on a ServiceTitan-side failure — it catches, logs t
 
 **Follow-up date fallback**: ServiceTitan requires either a `callReasonId` or a `followUpDate` on every lead — confirmed via a real `400`: `"Follow up date or Call Reason ID is required."` We don't have a real scheduled date from the call (`preferredTiming` is freeform text like "afternoons this week," not an actual date), so when `defaultCallReasonId` isn't configured in `/settings`, the code defaults `followUpDate` to one day out (`Date.now() + 24h`). This is a hardcoded value, not a `/settings` field — deliberately, since it's only satisfying a ServiceTitan API technicality (any value works; a human confirms the real appointment regardless) rather than a business decision that needs regular tuning, and it becomes moot entirely once a Call Reason ID is set. If it ever needs to change, it's a one-line edit at the top of the `followUpDate` calculation in [`servicetitan/leads.ts`](../src/servicetitan/leads.ts).
 
-**Lead tagging — by name, not ID** — [`servicetitan/tags.ts`](../src/servicetitan/tags.ts): every lead can optionally be tagged (ServiceTitan's `tagTypeIds` array field) so staff can identify at a glance — and once it's converted, on the resulting job — that it came from this AI receptionist. Unlike the other four config IDs, this one is configured in `/settings` **by tag name** (e.g. "AI Voice Agent"), not by numeric ID: ServiceTitan's own dashboard doesn't display tag-type IDs anywhere, even though they exist (confirmed via `GET /settings/v2/tenant/{tenantId}/tag-types`, which returns id+name pairs the UI never shows). `createLead()` looks up the configured name against that endpoint on every call and resolves it to an ID at request time — no caching, since lead creation is infrequent enough that an extra read call is cheap, and it means a renamed/newly-created tag in ServiceTitan is picked up immediately without redeploying anything. If the configured name doesn't match any existing tag (typo, or the tag was deleted), it logs a warning and the lead is still created without a tag, rather than failing the whole lead over a cosmetic categorization.
+**Lead tagging — by name, not ID** — [`servicetitan/tags.ts`](../src/servicetitan/tags.ts): every lead can optionally be tagged (ServiceTitan's `tagTypeIds` array field) so staff can identify at a glance — and once it's converted, on the resulting job — that it came from this AI receptionist. Unlike the other four config IDs, this one is configured on that business's settings page **by tag name** (e.g. "AI Voice Agent"), not by numeric ID: ServiceTitan's own dashboard doesn't display tag-type IDs anywhere, even though they exist (confirmed via `GET /settings/v2/tenant/{tenantId}/tag-types`, which returns id+name pairs the UI never shows). `createLead()` looks up the configured name against that endpoint on every call and resolves it to an ID at request time — no caching, since lead creation is infrequent enough that an extra read call is cheap, and it means a renamed/newly-created tag in ServiceTitan is picked up immediately without redeploying anything. If the configured name doesn't match any existing tag (typo, or the tag was deleted), it logs a warning and the lead is still created without a tag, rather than failing the whole lead over a cosmetic categorization.
 
-### 4. Capacity check (read-only) — `checkAvailability(startDate, endDate)`
+### 4. Capacity check (read-only) — `checkAvailability(businessId, startDate, endDate)`
 
 `GET /dispatch/v2/tenant/{tenantId}/capacity`
 

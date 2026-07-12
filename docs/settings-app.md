@@ -8,19 +8,30 @@ The platform needs credentials for ElevenLabs and ServiceTitan, plus a couple of
 
 ## Routes
 
-All defined in [`src/settings/routes.ts`](../src/settings/routes.ts), mounted at `/settings` in `index.ts`:
+Split across two routers — a global one and a per-business one, reflecting the platform's multi-business model (see [architecture-overview.md](architecture-overview.md)).
+
+**Global**, defined in [`src/settings/routes.ts`](../src/settings/routes.ts), mounted at `/settings` in `index.ts`:
 
 | Route | Method | Auth required | Purpose |
 |---|---|---|---|
-| `/settings/setup` | GET, POST | none (only reachable if zero users exist yet) | First-run: create the first account (email + password) |
+| `/settings/setup` | GET, POST | none (only reachable if zero users exist yet) | First-run: create the first platform account (email + password) |
 | `/settings/migrate` | GET, POST | none (only reachable for an upgraded install with a legacy password and zero users) | One-time: convert the old single admin password into the first real account |
 | `/settings/login` | GET, POST | none | Log in with email + password |
 | `/settings/logout` | POST | admin session | Destroy the session |
-| `/settings` | GET | admin session | Render the credentials form + Users section |
-| `/settings` | POST | admin session | Save submitted credential fields |
-| `/settings/generate-secret` | POST | admin session | Generate + save a new random tool webhook secret |
-| `/settings/users` | POST | admin session | Add a new user (email + password) |
-| `/settings/users/:id/delete` | POST | admin session | Remove a user (not yourself) |
+| `/settings` | GET | admin session | Render the business list + "Add business" form + Users section |
+| `/settings/businesses` | POST | admin session | Create a business, redirect to its own `/b/:id/settings` |
+| `/settings/users` | POST | admin session | Add a new platform user (email + password) |
+| `/settings/users/:id/delete` | POST | admin session | Remove a platform user (not yourself) |
+
+**Per-business**, defined in [`src/settings/businessRoutes.ts`](../src/settings/businessRoutes.ts), mounted at `/b/:businessId/settings` under the shared `/b/:businessId` prefix in `index.ts` (see below):
+
+| Route | Method | Auth required | Purpose |
+|---|---|---|---|
+| `/b/:businessId/settings` | GET | admin session + valid business | Render that business's ElevenLabs/ServiceTitan/Operational credentials form |
+| `/b/:businessId/settings` | POST | admin session + valid business | Save that business's credential fields |
+| `/b/:businessId/settings/generate-secret` | POST | admin session + valid business | Generate + save a new random tool webhook secret for that business |
+
+Every `/b/:businessId/*` route (this settings form, the ElevenLabs tool webhooks, the post-call webhook, and the public call-detail dashboard) sits behind [`src/middleware/resolveBusiness.ts`](../src/middleware/resolveBusiness.ts), mounted once in `index.ts` ahead of all four sub-routers. It parses `:businessId`, looks up the business, and 404s immediately if it's not a valid positive integer or doesn't match a real business — before any auth/secret check downstream even runs, so an invalid business ID never leaks a confusing 401/503 for something that doesn't exist. One easy-to-miss Express detail that bit this during development: the child `Router()` mounted at `/b/:businessId` **must** be created with `Router({ mergeParams: true })`, or it gets its own empty `req.params` scope and `resolveBusiness` never sees `:businessId` at all.
 
 ### First-run vs. migration vs. normal flow
 
@@ -58,9 +69,9 @@ An already-running instance has a legacy `admin.passwordHash`/`admin.passwordSal
 
 Note that `/tools/*` (the ElevenLabs webhook endpoints) are a **completely separate auth mechanism** — a shared secret header, not a login session, since ElevenLabs' servers obviously can't fill out a login form. See [elevenlabs-tools.md](elevenlabs-tools.md).
 
-### No admin role — every user is equally privileged
+### No admin role — every user is equally privileged, across every business
 
-There's no permission tier: any row in `users` can do everything `/settings` allows (edit credentials, add/remove other users, view the call dashboard). This was a deliberate scope decision — a read-only or staff-only role would be a separate feature, not built here.
+There's no permission tier: any row in `users` can do everything the platform allows — edit any business's credentials, add/remove other platform users, view any business's call dashboard. This was already true in the single-business days and remains the deliberate scope decision now that there can be many businesses: there's no per-business user or role, just one shared login pool with full access to everything. Worth a caveat if this platform's login pool ever includes anyone outside your own team (e.g. a client's own staff) — at that point "every user can edit every other business's live ServiceTitan credentials" becomes a real operational risk worth revisiting, though it isn't one today.
 
 ### Removing a user
 
@@ -94,13 +105,13 @@ docker compose exec app node -e "
 
 ## How saving the form works
 
-The form (rendered by [`src/settings/views.ts`](../src/settings/views.ts)) posts every field to `POST /settings` in one request. The handler in `routes.ts` uses one small helper:
+The per-business credentials form (rendered by [`src/settings/views.ts`](../src/settings/views.ts)'s `renderSettingsPage()`) posts every field to `POST /b/:businessId/settings` in one request. The handler in `businessRoutes.ts` uses one small helper:
 
 ```ts
-function maybeSet(key: string, value: string | undefined): void {
+function maybeSet(businessId: number, key: string, value: string | undefined): void {
   const trimmed = value?.trim();
   if (trimmed) {
-    setSetting(key, trimmed);
+    setBusinessSetting(businessId, key, trimmed);
   }
 }
 ```
@@ -115,7 +126,11 @@ Earlier, the settings page read fields in groups through combined getters (e.g. 
 1. If you'd saved just one field in a group, the page would render the *whole group* as blank, because the combined getter refused to return anything unless every field in the group was present.
 2. Saving a different field in the same group — with the actually-saved field's input left blank as "unchanged" — would go through the old combined *setter*, which used the (now-`null`) combined getter as its fallback for "keep the current value," silently writing an empty string over a real, already-saved secret.
 
-The fix was moving to **per-field reads and writes** everywhere in the settings app (`getRawElevenLabsSettings()`, `getRawServiceTitanSettings()`, `getRawOperationalSettings()` in `store.ts`), so no field's fate depends on any other field's presence. The one place a strict "all-or-nothing" check still exists is `getServiceTitanConfig()` — but that's used only by the actual ServiceTitan API client, which genuinely can't function without every required credential, so gating there is correct rather than accidental. Full detail in [sqlite-storage.md](sqlite-storage.md#why-key-value-instead-of-typed-columns).
+The fix was moving to **per-field reads and writes** everywhere in the settings app (`getRawElevenLabsSettings(businessId)`, `getRawServiceTitanSettings(businessId)`, `getRawOperationalSettings(businessId)` in `store.ts`), so no field's fate depends on any other field's presence. The one place a strict "all-or-nothing" check still exists is `getServiceTitanConfig(businessId)` — but that's used only by the actual ServiceTitan API client, which genuinely can't function without every required credential, so gating there is correct rather than accidental. Full detail in [sqlite-storage.md](sqlite-storage.md#why-key-value-instead-of-typed-columns).
+
+### Global settings vs. business settings
+
+`src/settings/store.ts` has two parallel families of functions: `getSetting`/`setSetting`/`hasSetting`/`deleteSetting` operate on the `settings` table (only three keys ever live here: the session secret and the dormant legacy admin password), while `getBusinessSetting`/`setBusinessSetting`/`hasBusinessSetting`/`deleteBusinessSetting` operate on `business_settings`, keyed by `(business_id, key)`. Every ElevenLabs/ServiceTitan/Operational credential goes through the business-scoped versions — see [sqlite-storage.md](sqlite-storage.md) for the table shapes and why the split exists rather than one table with a sentinel "global" business ID.
 
 ## Flash messages
 
@@ -131,11 +146,13 @@ A few fields break things silently if changed by mistake (a stray click, a mispl
 
 - **Agent ID**, **Tenant ID**, and **Lead tag name** are rendered `readonly` and grayed out, each with its own **Change** button that unlocks that one field via a tiny inline `onclick` (removes `readonly`, refocuses, disables the button so it can't be "un-locked" twice). Saving the form runs a combined `onsubmit` on the outer `<form>` that only prompts a `confirm()` for the field(s) actually unlocked (tracked via `window.agentIdChanged` / `window.tenantIdChanged` / `window.tagNameChanged`) — editing other fields and saving is unaffected. Reasoning: pointing the app at the wrong ElevenLabs agent, the wrong ServiceTitan tenant, or a tag name that doesn't exist, doesn't error anywhere — it just quietly breaks calls, hits the wrong account, or leaves leads untagged, so each gets a deliberate "are you sure" step before submit.
 - **Lead tag name** additionally shows a warning box (`#tagNameWarning`) on focus, explaining that the name must exactly match an existing ServiceTitan tag (Settings → Tags) — ServiceTitan doesn't create the tag for you, and a mismatch fails silently (lead created, just untagged).
-- **"Generate a new random tool webhook secret"** (its own separate form, `POST /settings/generate-secret`) has a `confirm()` on submit, since clicking it immediately invalidates the current secret — every tool call fails until the new one is copied into ElevenLabs.
+- **"Generate a new random tool webhook secret"** (its own separate form, `POST /b/:businessId/settings/generate-secret`) has a `confirm()` on submit, since clicking it immediately invalidates that business's current secret — every tool call for that business fails until the new one is copied into its ElevenLabs agent. Regenerating one business's secret has no effect on any other business's.
 
-None of this is server-enforced; it's UI-only friction on top of the same `POST /settings` handler described above.
+None of this is server-enforced; it's UI-only friction on top of the same `POST /b/:businessId/settings` handler described above.
 
 ## Fields in the form, grouped
+
+All scoped to one business — every business configures these independently, with zero shared state between businesses:
 
 | Group | Fields |
 |---|---|
@@ -143,6 +160,12 @@ None of this is server-enforced; it's UI-only friction on top of the same `POST 
 | ServiceTitan | Environment (Integration/Production), Client ID, Client secret, App key, Tenant ID (locked behind Change), default Business Unit ID / Campaign ID / Call Reason ID / Job Type ID, Lead tag name (locked behind Change) |
 | Operational | Emergency transfer number, Dashboard display time zone, tool webhook shared secret, post-call webhook secret |
 
-`operational.timezone` only affects how call times are formatted on the call-detail dashboard (`dashboard/views.ts`'s `formatCallTime()`) — it's deliberately unrelated to ElevenLabs' own per-agent time zone setting, which governs the agent's time-awareness *during* a call (greetings, business hours, relative dates). Changing one has no effect on the other; see [call-dashboard.md](call-dashboard.md) for detail.
+`operational.timezone` only affects how call times are formatted on that business's call-detail dashboard (`dashboard/views.ts`'s `formatCallTime()`) — it's deliberately unrelated to ElevenLabs' own per-agent time zone setting, which governs the agent's time-awareness *during* a call (greetings, business hours, relative dates). Changing one has no effect on the other; see [call-dashboard.md](call-dashboard.md) for detail.
 
 See [servicetitan-integration.md](servicetitan-integration.md) for what the ServiceTitan fields are actually used for, and [elevenlabs-tools.md](elevenlabs-tools.md) for the operational fields' role in tool auth.
+
+## Businesses
+
+Every business is one row in the `businesses` table (`src/db/businesses.ts` — `id`, `name`, `created_at`; see [sqlite-storage.md](sqlite-storage.md)). `id` is the value used everywhere in URLs (`/b/:businessId/...`) — there's no separate slug, so renaming a business (`renameBusiness()`) never breaks a URL or a link already pasted into ServiceTitan. The business's `name` is shown publicly on its call-detail dashboard (see [call-dashboard.md](call-dashboard.md)), so a typo made when adding one is worth fixing rather than living with — there's no "rename" button in the UI yet, so do it directly: `docker compose exec app node -e "..."` calling `renameBusiness(id, 'Corrected Name')`, same pattern as the [Removing a user](#removing-a-user) escape hatch above.
+
+**Deleting a business is not built** — it would cascade across that business's `business_settings`, `call_log`, `elevenlabs_calls` rows, and its on-disk call recordings, and a half-finished cascade is a worse failure mode than just not offering the button yet. If one ever needs decommissioning, do it by hand via the same direct-DB pattern, deleting from each table in turn.

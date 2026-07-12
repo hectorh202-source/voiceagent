@@ -3,6 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { env } from "../config/env";
 import { bootstrapSchema } from "./schema";
+import { migrateToMultiTenant } from "./migrateToMultiTenant";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -12,3 +13,4 @@ if (!fs.existsSync(dbDir)) {
 export const db = new DatabaseSync(env.DATABASE_PATH);
 db.exec("PRAGMA journal_mode = WAL");
 bootstrapSchema(db);
+migrateToMultiTenant(db);

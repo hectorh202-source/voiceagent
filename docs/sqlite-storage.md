@@ -22,7 +22,7 @@ In Docker, all of `data/` lives inside the named volume `app-data` (see [docker-
 
 **WAL mode**: [`db/index.ts`](../src/db/index.ts) turns on `PRAGMA journal_mode = WAL` on startup. In plain SQLite, every write locks the whole file; WAL mode instead appends writes to a separate `-wal` file and lets reads continue concurrently, which is friendlier for a web server handling multiple requests at once.
 
-## The three tables
+## The tables
 
 Defined in [`db/schema.ts`](../src/db/schema.ts) and created automatically on first startup (`CREATE TABLE IF NOT EXISTS`, so it's a no-op on every restart after the first):
 
@@ -33,8 +33,23 @@ CREATE TABLE settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE businesses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE business_settings (
+  business_id INTEGER NOT NULL REFERENCES businesses(id),
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,           -- always encrypted, same as settings
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (business_id, key)
+);
+
 CREATE TABLE call_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_id INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   tool_name TEXT NOT NULL,       -- e.g. "lookup_customer", "create_lead"
   phone TEXT,                    -- caller's number, when known
@@ -44,10 +59,33 @@ CREATE TABLE call_log (
   error_message TEXT
 );
 
+CREATE TABLE elevenlabs_calls (
+  conversation_id TEXT PRIMARY KEY,
+  business_id INTEGER NOT NULL DEFAULT 1,
+  agent_id TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  transcript_json TEXT,
+  summary TEXT,
+  termination_reason TEXT,
+  raw_payload_json TEXT NOT NULL,
+  audio_path TEXT
+);
+
 CREATE TABLE sessions (
   sid TEXT PRIMARY KEY,          -- session ID (from the cookie)
   session_json TEXT NOT NULL,    -- serialized express-session data
   expires_at INTEGER NOT NULL    -- unix ms timestamp
+);
+
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  password_salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login_at TEXT,
+  failed_login_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT
 );
 ```
 
@@ -55,14 +93,17 @@ One file, one connection (`db/index.ts` exports a single shared `db` handle), ea
 
 | Table | Owned by | Purpose |
 |---|---|---|
-| `settings` | [`settings/store.ts`](../src/settings/store.ts) | Every credential + internal secrets (encrypted at rest) |
-| `users` | [`db/users.ts`](../src/db/users.ts) | Login accounts for `/settings` — email, hashed password, brute-force lockout state |
-| `call_log` | [`db/callLog.ts`](../src/db/callLog.ts) | Audit trail of every ElevenLabs tool call |
-| `sessions` | [`settings/sessionStore.ts`](../src/settings/sessionStore.ts) | Logged-in sessions for the `/settings` page |
+| `settings` | [`settings/store.ts`](../src/settings/store.ts) | Only the handful of genuinely **global** keys: the session secret, and the dormant legacy admin password |
+| `businesses` | [`db/businesses.ts`](../src/db/businesses.ts) | One row per business — `id` (used everywhere in URLs), `name` (shown publicly on that business's call-detail dashboard) |
+| `business_settings` | [`settings/store.ts`](../src/settings/store.ts) | Every credential (ElevenLabs/ServiceTitan/Operational), scoped by `business_id` — encrypted at rest, same as `settings` |
+| `users` | [`db/users.ts`](../src/db/users.ts) | Platform-wide login accounts — email, hashed password, brute-force lockout state. **Not** business-scoped: one shared login pool manages every business |
+| `call_log` | [`db/callLog.ts`](../src/db/callLog.ts) | Audit trail of every ElevenLabs tool call, tagged by `business_id` |
+| `elevenlabs_calls` | [`db/callRecords.ts`](../src/db/callRecords.ts) | Post-call webhook data (transcript/summary/recording path), tagged by `business_id` |
+| `sessions` | [`settings/sessionStore.ts`](../src/settings/sessionStore.ts) | Logged-in sessions for the `/settings` login — global, same as `users` |
 
-## `settings`: a key-value store, not a fixed schema
+## Global settings vs. per-business settings — two parallel key-value tables
 
-Rather than one column per credential, `settings` is a generic key-value table. Every credential is namespaced by dot-prefix, e.g.:
+Rather than one column per credential, both `settings` and `business_settings` are generic key-value tables. Every credential is namespaced by dot-prefix, e.g.:
 
 ```
 elevenlabs.apiKey
@@ -78,25 +119,37 @@ servicetitan.callReasonId
 servicetitan.jobTypeId
 operational.emergencyTransferNumber
 operational.toolWebhookSecret
+operational.postCallWebhookSecret
+operational.timezone
+operational.dashboardBaseUrl
+```
+
+Every key above lives in `business_settings`, keyed by `(business_id, key)` — a business's credentials are only ever readable/writable by passing that business's ID. `settings` itself keeps only:
+
+```
 internal.sessionSecret
 ```
 
-`admin.passwordHash`/`admin.passwordSalt` used to live here too, back when there was a single shared admin password. They only exist now on an install that hasn't yet gone through the one-time `/settings/migrate` upgrade to per-user accounts (see [settings-app.md](settings-app.md#upgrading-an-existing-deployment)) — migrating deletes both keys.
+`admin.passwordHash`/`admin.passwordSalt` used to live in `settings` too, back when there was a single shared admin password. They only exist now on an install that hasn't yet gone through the one-time `/settings/migrate` upgrade to per-user accounts (see [settings-app.md](settings-app.md#upgrading-an-existing-deployment)) — migrating deletes both keys.
 
-Two primitives do all the work (`settings/store.ts`):
+Why two tables instead of one with a sentinel "global" business ID: `internal.sessionSecret` and the legacy admin password genuinely aren't associated with any business — inventing a fake business ID (e.g. `0`) to hold them would mean every business-scoped function needs a special case for "unless it's the sentinel ID," exactly the kind of implicit special-casing this codebase has deliberately avoided elsewhere (see the combined-getter bug below). Two separate, narrowly-scoped tables is simpler than one table with an escape hatch.
+
+Four primitives do all the work (`settings/store.ts`):
 
 ```ts
-getSetting(key: string): string | null   // null if never set
+getSetting(key: string): string | null                              // the 3 global keys only
 setSetting(key: string, value: string): void
+getBusinessSetting(businessId: number, key: string): string | null   // everything else
+setBusinessSetting(businessId: number, key: string, value: string): void
 ```
 
-`setSetting` always **encrypts** the value before the `INSERT ... ON CONFLICT DO UPDATE` write; `getSetting` always **decrypts** on the way out. Callers never see ciphertext.
+`setSetting`/`setBusinessSetting` always **encrypt** the value before the `INSERT ... ON CONFLICT DO UPDATE` write; the getters always **decrypt** on the way out. Callers never see ciphertext.
 
 ### Why key-value instead of typed columns
 
-This keeps adding a new credential a one-line change (no migrations), and — more importantly — it's what let us fix a real bug: earlier, the settings page read groups of related fields through a single "give me all of these or nothing" getter (e.g. one function for all of ElevenLabs' fields). If you saved just one field in a group, the getter would return `null` for the *whole group*, which blanked already-saved fields on the page and could even overwrite a real secret with an empty string on the next save. The fix was to read/write **every field independently** — see `getRawElevenLabsSettings()` / `getRawServiceTitanSettings()` / `getRawOperationalSettings()` in `store.ts`, each of which calls `getSetting()` once per field rather than gating on all of them at once.
+This keeps adding a new credential a one-line change (no migrations), and — more importantly — it's what let us fix a real bug: earlier, the settings page read groups of related fields through a single "give me all of these or nothing" getter (e.g. one function for all of ElevenLabs' fields). If you saved just one field in a group, the getter would return `null` for the *whole group*, which blanked already-saved fields on the page and could even overwrite a real secret with an empty string on the next save. The fix was to read/write **every field independently** — see `getRawElevenLabsSettings(businessId)` / `getRawServiceTitanSettings(businessId)` / `getRawOperationalSettings(businessId)` in `store.ts`, each of which calls `getBusinessSetting()` once per field rather than gating on all of them at once.
 
-The one place a group *is* still gated is `getServiceTitanConfig()`, used only by the actual ServiceTitan API client (`servicetitan/httpClient.ts`). That's intentional: you genuinely cannot make a ServiceTitan API call with only half the credentials, so that function returns `null` unless client ID, secret, app key, *and* tenant ID are all present — but that strict check is now isolated to the one place that legitimately needs it, instead of leaking into how the settings page displays things.
+The one place a group *is* still gated is `getServiceTitanConfig(businessId)`, used only by the actual ServiceTitan API client (`servicetitan/httpClient.ts`). That's intentional: you genuinely cannot make a ServiceTitan API call with only half the credentials, so that function returns `null` unless client ID, secret, app key, *and* tenant ID are all present — but that strict check is now isolated to the one place that legitimately needs it, instead of leaking into how the settings page displays things.
 
 ## Encryption: how a value actually gets protected
 
@@ -175,20 +228,24 @@ This alone isn't enough, though — `express-session` also signs the session coo
 
 ## Request-time data flow
 
-**Saving a setting** (`POST /settings`):
+**Saving a business's settings** (`POST /b/:businessId/settings`):
 ```
 browser form submit
-  → settings/routes.ts: for each field, if a non-blank value was submitted,
-    call setSetting(key, value) — otherwise leave that key untouched
-  → store.ts: encrypt(value) → INSERT/UPDATE settings table
+  → middleware/resolveBusiness.ts: parse :businessId, look up the business, 404 if invalid
+  → settings/businessRoutes.ts: for each field, if a non-blank value was submitted,
+    call setBusinessSetting(businessId, key, value) — otherwise leave that key untouched
+  → store.ts: encrypt(value) → INSERT/UPDATE business_settings table
 ```
 
-**Authenticating an ElevenLabs tool call** (`POST /tools/lookup-customer`, etc.):
+**Authenticating an ElevenLabs tool call** (`POST /b/:businessId/tools/lookup-customer`, etc.):
 ```
 ElevenLabs sends request with header X-Tool-Secret
-  → middleware/verifyToolSecret.ts: getSetting("operational.toolWebhookSecret")
+  → middleware/resolveBusiness.ts: parse :businessId, look up the business, 404 if invalid
+  → middleware/verifyToolSecret.ts: getBusinessSetting(businessId, "operational.toolWebhookSecret")
   → decrypt → timing-safe compare against the header value
   → if it matches, the request proceeds to the actual tool handler
+  → a secret that's valid for a DIFFERENT business's businessId always fails here,
+    since the lookup is scoped to the businessId resolved from this request's own URL
 ```
 
 **A logged-in admin loading `/settings`**:
@@ -211,6 +268,8 @@ node -e "
 const { DatabaseSync } = require('node:sqlite');
 const db = new DatabaseSync('./data/app.db');
 console.log(db.prepare('SELECT key, updated_at FROM settings').all());
+console.log(db.prepare('SELECT * FROM businesses').all());
+console.log(db.prepare('SELECT business_id, key, updated_at FROM business_settings WHERE business_id = ?').all(1));
 "
 ```
 

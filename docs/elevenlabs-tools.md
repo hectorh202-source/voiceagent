@@ -6,10 +6,12 @@ This covers both halves of the ElevenLabs integration: the webhook endpoints thi
 
 ElevenLabs Conversational AI agents support "webhook tools" — during a live conversation, the agent's LLM can decide to call one of these, and ElevenLabs sends a POST request to the configured URL with a JSON body shaped by a schema you define per-tool in the dashboard. The response JSON is fed back to the LLM as the tool's result, and it continues the conversation.
 
-Auth works via a **custom header**, not ElevenLabs signing the request: each tool is configured in the dashboard with a header (we use `X-Tool-Secret`) whose value is a stored "workspace secret." ElevenLabs attaches that header to every call to that tool. Our server just checks the header value matches what's saved in `/settings` — see [`middleware/verifyToolSecret.ts`](../src/middleware/verifyToolSecret.ts):
+Auth works via a **custom header**, not ElevenLabs signing the request: each tool is configured in the dashboard with a header (we use `X-Tool-Secret`) whose value is a stored "workspace secret." ElevenLabs attaches that header to every call to that tool. Our server just checks the header value matches what's saved for *that business* — see [`middleware/verifyToolSecret.ts`](../src/middleware/verifyToolSecret.ts):
 
 ```ts
-const secret = getSetting("operational.toolWebhookSecret");
+const business = req.business;   // attached upstream by resolveBusiness, from the :businessId in the URL
+if (!business) → 404
+const secret = getBusinessSetting(business.id, "operational.toolWebhookSecret");
 if (!secret) → 503 "Server is not configured yet"
 const provided = req.header("X-Tool-Secret");
 if (!provided) → 401 "Missing X-Tool-Secret header"
@@ -17,6 +19,8 @@ timing-safe compare provided vs. secret
 if mismatch → 401 "Invalid tool secret"
 otherwise → next() (request proceeds to the actual tool handler)
 ```
+
+Each business has its own independent secret — business A's secret is rejected against business B's tool endpoints and vice versa, since the lookup is always scoped by the `business.id` that `resolveBusiness` (mounted ahead of everything under `/b/:businessId`) resolved from the URL.
 
 This is deliberately decoupled from every other operational setting — it used to also require the emergency transfer number to be present (an unrelated field bundled into the same "operational config" getter), which caused real 401/503 confusion during setup. See [settings-app.md](settings-app.md#the-bug-this-design-fixes) and [sqlite-storage.md](sqlite-storage.md) for that history.
 
@@ -29,7 +33,7 @@ All three: validate the request body with `zod`, do the work, log the attempt to
 ### `lookup_customer` — [`tools/lookupCustomer.ts`](../src/tools/lookupCustomer.ts)
 
 ```
-POST /tools/lookup-customer
+POST /b/:businessId/tools/lookup-customer
 Request:  { "phone": string }
 Response: { "found": boolean, "customerId": string|null, "name": string|null, "address": string|null }
 ```
@@ -38,7 +42,7 @@ Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently
 ### `check_availability` — [`tools/checkAvailability.ts`](../src/tools/checkAvailability.ts)
 
 ```
-POST /tools/check-availability
+POST /b/:businessId/tools/check-availability
 Request:  { "startDate": string, "endDate": string, "jobType"?: string }
 Response: { "hasNearTermAvailability": boolean, "note": string }
 ```
@@ -47,7 +51,7 @@ Calls `servicetitan/capacity.ts#checkAvailability`. Deliberately coarse — a si
 ### `create_lead` — [`tools/createLead.ts`](../src/tools/createLead.ts)
 
 ```
-POST /tools/create-lead
+POST /b/:businessId/tools/create-lead
 Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
             "zip": string, "issueDescription": string, "preferredTiming"?: string, "isEmergency"?: boolean }
 Response: { "success": boolean, "leadId": string|null, "confirmationMessage": string }
@@ -63,8 +67,8 @@ This part lives entirely in ElevenLabs' system — there's no code to read, so t
 ### Webhook tool definitions
 
 Each of the three tools above is registered on the agent as a **Webhook** tool with:
-- Method `POST`, URL pointing at this server's public domain + the path above (e.g. `https://voiceagent.laughslapper.com/tools/lookup-customer`)
-- A header named `X-Tool-Secret`, whose value is a workspace **Secret** (created once in the ElevenLabs dashboard, value = the tool webhook secret from `/settings`) — not typed as a raw literal in the header field itself. **The header's Name field and the Secret's own label are two different things — don't confuse them.** Hit exactly this during setup: the header Name field ended up literally set to `New secret` (the dashboard's default label when you create a new secret), instead of `X-Tool-Secret` with the Secret dropdown separately pointing at that secret for its value. A header name containing a space isn't valid HTTP, so every call to that tool failed *before leaving ElevenLabs' servers* — nothing reached this app at all, which is why it showed zero trace in `call_log`/container logs despite genuinely being called. The tell-tale symptom was an error surfaced by ElevenLabs' own "test tool individually" button (see Debugging section below): `invalid header field name "New secret"`.
+- Method `POST`, URL pointing at this server's public domain + **that business's own `/b/:businessId/` path** + the tool path above (e.g. `https://voiceagent.laughslapper.com/b/1/tools/lookup-customer` for business #1). Every business's ElevenLabs agent must be configured with its own `businessId` baked into these URLs — copying another business's agent config verbatim and forgetting to update this segment is the most likely way to accidentally point one client's agent at another client's data.
+- A header named `X-Tool-Secret`, whose value is a workspace **Secret** (created once in the ElevenLabs dashboard, value = that business's own tool webhook secret from its `/b/:businessId/settings` page) — not typed as a raw literal in the header field itself. **The header's Name field and the Secret's own label are two different things — don't confuse them.** Hit exactly this during setup: the header Name field ended up literally set to `New secret` (the dashboard's default label when you create a new secret), instead of `X-Tool-Secret` with the Secret dropdown separately pointing at that secret for its value. A header name containing a space isn't valid HTTP, so every call to that tool failed *before leaving ElevenLabs' servers* — nothing reached this app at all, which is why it showed zero trace in `call_log`/container logs despite genuinely being called. The tell-tale symptom was an error surfaced by ElevenLabs' own "test tool individually" button (see Debugging section below): `invalid header field name "New secret"`.
 - A body parameter schema matching the request shape above. Each property's **Identifier** must be the exact bare field name (e.g. `phone`, not `{ "phone": string }` — the data type is already declared by a separate dropdown; the Identifier field is only the JSON key name)
 - For `lookup_customer`'s `phone` parameter specifically: **Value Type** must be set to **"Dynamic Variable"** (not the default "LLM Prompt"), with the variable name entered as the bare identifier `system__caller_id` — **no `{{ }}` braces** in this field, since it's a dedicated variable picker, not free text. This matters: with "LLM Prompt" left selected, the model has to infer a phone number from the transcript, and since the caller never states their number out loud, the model has nothing to fill the field with and silently never calls the tool at all — this is exactly what happened during initial testing (`lookup_customer` never once appeared in `call_log` across several test calls, only `check_availability`/`create_lead` did, until this was fixed). The `{{system__caller_id}}` `{{ }}` syntax is only used when referencing a dynamic variable inside free text, e.g. inside the system prompt.
 - **Data types matter for validation**: this server's body schemas are strict about JSON types (e.g. `isEmergency` must be a real boolean). ElevenLabs' tool-calling has been observed sending boolean-typed fields as the strings `"true"`/`"false"` rather than a JSON boolean — confirmed by a real `create_lead` call that 400'd with `"isEmergency":["Expected boolean, received string"]`. The server now coerces string `"true"`/`"false"` to boolean before validating (see `booleanish` in [`tools/createLead.ts`](../src/tools/createLead.ts)) rather than assuming the dashboard will always send the "correct" JSON type — a good pattern to repeat for any new boolean/number fields added later.
@@ -73,7 +77,7 @@ Each of the three tools above is registered on the agent as a **Webhook** tool w
 
 A built-in **system tool**, `transfer_to_number` (labeled "Transfer to number" in the dashboard, under Human Transfer Rules) — not a webhook tool, no code involved. Configured with:
 - Transfer type: **Conference** (agent bridges the call to a human, can play a handoff message, then drops off — chosen over "Blind" for a smoother handoff)
-- Destination: the emergency phone number, in E.164 format (e.g. `+19412259610`) — same number stored as `operational.emergencyTransferNumber` in `/settings`, but note this is a **separate, manual entry in the ElevenLabs dashboard** — changing the number in `/settings` does not automatically update this rule, since ElevenLabs doesn't read our settings store
+- Destination: the emergency phone number, in E.164 format (e.g. `+19412259610`) — same number stored as `operational.emergencyTransferNumber` on that business's `/b/:businessId/settings` page, but note this is a **separate, manual entry in the ElevenLabs dashboard** — changing the number in settings does not automatically update this rule, since ElevenLabs doesn't read our settings store
 - Condition (natural language, evaluated by ElevenLabs' own model): *"The caller describes an emergency — a gas smell, active flooding/water leak, no heat during freezing temperatures, or another situation posing immediate danger or property damage risk."*
 
 This works because the number was imported via ElevenLabs' **native Twilio integration** (Phone Numbers tab → provide Twilio Account SID + Auth Token + the number) — that's what makes both Conference and Blind transfer types available; ElevenLabs configures the Twilio voice webhook automatically, no manual Twilio console changes needed.

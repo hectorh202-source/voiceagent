@@ -4,16 +4,20 @@ import type { ServiceTitanConfig } from "../settings/store";
 interface CachedToken {
   token: string;
   expiresAt: number;
-  cacheKey: string;
 }
 
-let cached: CachedToken | null = null;
+// Keyed by clientId:authBaseUrl rather than a single slot — each business
+// has its own ServiceTitan credentials, so a single-slot cache would have
+// every business's request evict the previous business's cached token the
+// moment two businesses' calls interleave.
+const cache = new Map<string, CachedToken>();
 
 export async function getAccessToken(config: ServiceTitanConfig): Promise<string> {
   const cacheKey = `${config.clientId}:${config.authBaseUrl}`;
   const now = Date.now();
-  if (cached && cached.cacheKey === cacheKey && cached.expiresAt - 60_000 > now) {
-    return cached.token;
+  const existing = cache.get(cacheKey);
+  if (existing && existing.expiresAt - 60_000 > now) {
+    return existing.token;
   }
 
   const response = await axios.post<{ access_token: string; expires_in: number }>(
@@ -26,10 +30,10 @@ export async function getAccessToken(config: ServiceTitanConfig): Promise<string
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
 
-  cached = {
+  const entry: CachedToken = {
     token: response.data.access_token,
     expiresAt: now + response.data.expires_in * 1000,
-    cacheKey,
   };
-  return cached.token;
+  cache.set(cacheKey, entry);
+  return entry.token;
 }

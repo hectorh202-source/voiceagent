@@ -15,10 +15,10 @@ function escapeHtml(value: string): string {
 // business's configured local timezone in a human-friendly format (e.g.
 // "7/11/2026, 6:24:11 PM"), which is what en-US locale formatting produces
 // by default.
-function formatCallTime(sqliteDatetime: string): string {
+function formatCallTime(sqliteDatetime: string, businessId: number): string {
   const date = new Date(sqliteDatetime.replace(" ", "T") + "Z");
   if (Number.isNaN(date.getTime())) return sqliteDatetime;
-  return date.toLocaleString("en-US", { timeZone: getAgentTimezone() });
+  return date.toLocaleString("en-US", { timeZone: getAgentTimezone(businessId) });
 }
 
 const styles = `
@@ -95,14 +95,14 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
       <h2>Call Recording</h2>
       ${
         vm.hasAudio
-          ? `<audio controls src="/calls/${encodeURIComponent(vm.conversationId)}/audio"></audio>`
+          ? `<audio controls src="/b/${vm.businessId}/calls/${encodeURIComponent(vm.conversationId)}/audio"></audio>`
           : `<p>No recording available.</p>`
       }
     </div>
 
     <div class="card">
       <h2>Call Details</h2>
-      ${row("Call Time", escapeHtml(formatCallTime(vm.callTime)))}
+      ${row("Call Time", escapeHtml(formatCallTime(vm.callTime, vm.businessId)))}
       ${row("Company", escapeHtml(vm.company))}
       ${row("Name", escapeHtml(vm.customerName ?? "—"))}
       ${row("Phone", escapeHtml(vm.phone ? formatPhoneNumber(vm.phone) : "—"))}

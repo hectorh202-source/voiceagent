@@ -8,8 +8,8 @@ export class ServiceTitanNotConfiguredError extends Error {
   }
 }
 
-export function requireServiceTitanConfig(): ServiceTitanConfig {
-  const config = getServiceTitanConfig();
+export function requireServiceTitanConfig(businessId: number): ServiceTitanConfig {
+  const config = getServiceTitanConfig(businessId);
   if (!config) throw new ServiceTitanNotConfiguredError();
   return config;
 }

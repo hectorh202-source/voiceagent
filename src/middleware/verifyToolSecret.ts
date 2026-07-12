@@ -1,9 +1,15 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
-import { getSetting } from "../settings/store";
+import { getBusinessSetting } from "../settings/store";
 
 export function verifyToolSecret(req: Request, res: Response, next: NextFunction): void {
-  const secret = getSetting("operational.toolWebhookSecret");
+  const business = req.business;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+
+  const secret = getBusinessSetting(business.id, "operational.toolWebhookSecret");
   if (!secret) {
     res.status(503).json({ error: "Server is not configured yet. Visit /settings to finish setup." });
     return;

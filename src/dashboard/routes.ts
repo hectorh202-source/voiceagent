@@ -27,8 +27,13 @@ dashboardRouter.use((req, res, next) => {
 });
 
 dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) => {
+  const { business } = req;
   const { conversationId } = req.params;
-  const viewModel = buildCallDetailViewModel(conversationId);
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+  const viewModel = buildCallDetailViewModel(business, conversationId);
   if (!viewModel) {
     res.status(404).send(renderCallNotFoundPage(conversationId));
     return;
@@ -37,8 +42,13 @@ dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) 
 });
 
 dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req, res) => {
+  const { business } = req;
   const { conversationId } = req.params;
-  const record = getCallRecord(conversationId);
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+  const record = getCallRecord(business.id, conversationId);
   if (!record?.audio_path || !fs.existsSync(record.audio_path)) {
     res.status(404).end();
     return;

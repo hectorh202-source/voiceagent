@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { getSetting } from "../settings/store";
+import { getBusinessSetting } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath } from "../db/callRecords";
 import { env } from "../config/env";
@@ -38,7 +38,13 @@ type PostCallPayload = PostCallTranscriptionPayload | PostCallAudioPayload;
 const recordingsDir = path.join(path.dirname(env.DATABASE_PATH), "recordings");
 
 export function handlePostCallWebhook(req: Request, res: Response): void {
-  const secret = getSetting("operational.postCallWebhookSecret");
+  const business = req.business;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+
+  const secret = getBusinessSetting(business.id, "operational.postCallWebhookSecret");
   if (!secret) {
     res.status(503).json({ error: "Post-call webhook secret not configured. Visit /settings." });
     return;
@@ -62,6 +68,7 @@ export function handlePostCallWebhook(req: Request, res: Response): void {
     const { data } = payload;
     upsertCallTranscription({
       conversationId: data.conversation_id,
+      businessId: business.id,
       agentId: data.agent_id ?? null,
       transcriptJson: data.transcript ? JSON.stringify(data.transcript) : null,
       summary: data.analysis?.transcript_summary ?? null,
@@ -75,7 +82,7 @@ export function handlePostCallWebhook(req: Request, res: Response): void {
     }
     const audioPath = path.join(recordingsDir, `${data.conversation_id}.mp3`);
     fs.writeFileSync(audioPath, Buffer.from(data.full_audio, "base64"));
-    setCallAudioPath(data.conversation_id, audioPath);
+    setCallAudioPath(business.id, data.conversation_id, audioPath);
   } else {
     console.warn("Unknown post-call webhook payload type:", (payload as { type?: string }).type);
   }

@@ -1,6 +1,7 @@
 import { db } from "./index";
 
 interface CallLogEntry {
+  businessId: number;
   toolName: string;
   phone?: string | null;
   request: unknown;
@@ -10,12 +11,13 @@ interface CallLogEntry {
 }
 
 const insertStmt = db.prepare(`
-  INSERT INTO call_log (tool_name, phone, request_json, response_json, success, error_message)
-  VALUES (@toolName, @phone, @requestJson, @responseJson, @success, @errorMessage)
+  INSERT INTO call_log (business_id, tool_name, phone, request_json, response_json, success, error_message)
+  VALUES (@businessId, @toolName, @phone, @requestJson, @responseJson, @success, @errorMessage)
 `);
 
 export function logToolCall(entry: CallLogEntry): void {
   insertStmt.run({
+    businessId: entry.businessId,
     toolName: entry.toolName,
     phone: entry.phone ?? null,
     requestJson: JSON.stringify(entry.request),
@@ -25,10 +27,10 @@ export function logToolCall(entry: CallLogEntry): void {
   });
 }
 
-export function getRecentCallLogs(limit = 50) {
+export function getRecentCallLogs(businessId: number, limit = 50) {
   return db
-    .prepare(`SELECT * FROM call_log ORDER BY id DESC LIMIT ?`)
-    .all(limit);
+    .prepare(`SELECT * FROM call_log WHERE business_id = ? ORDER BY id DESC LIMIT ?`)
+    .all(businessId, limit);
 }
 
 export interface CreateLeadLogRow {
@@ -40,12 +42,17 @@ export interface CreateLeadLogRow {
 // Correlates a call_log create_lead row with an elevenlabs_calls record —
 // the conversationId rides along inside the already-JSON-serialized request,
 // so this is a simple substring match rather than a dedicated indexed column.
-export function findCreateLeadLogByConversationId(conversationId: string): CreateLeadLogRow | undefined {
+// Always scoped by business_id too, not just conversationId — otherwise a
+// conversationId lookup could cross into another business's row.
+export function findCreateLeadLogByConversationId(
+  businessId: number,
+  conversationId: string,
+): CreateLeadLogRow | undefined {
   return db
     .prepare(
       `SELECT request_json, response_json, created_at FROM call_log
-       WHERE tool_name = 'create_lead' AND request_json LIKE ?
+       WHERE business_id = ? AND tool_name = 'create_lead' AND request_json LIKE ?
        ORDER BY id DESC LIMIT 1`,
     )
-    .get(`%${conversationId}%`) as CreateLeadLogRow | undefined;
+    .get(businessId, `%${conversationId}%`) as CreateLeadLogRow | undefined;
 }

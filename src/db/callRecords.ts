@@ -2,6 +2,7 @@ import { db } from "./index";
 
 export interface ElevenLabsCallRecord {
   conversation_id: string;
+  business_id: number;
   agent_id: string | null;
   received_at: string;
   transcript_json: string | null;
@@ -12,6 +13,7 @@ export interface ElevenLabsCallRecord {
 }
 
 interface CallTranscriptionEntry {
+  businessId: number;
   conversationId: string;
   agentId?: string | null;
   transcriptJson?: string | null;
@@ -21,8 +23,8 @@ interface CallTranscriptionEntry {
 }
 
 const upsertTranscriptionStmt = db.prepare(`
-  INSERT INTO elevenlabs_calls (conversation_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json)
-  VALUES (@conversationId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson)
+  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json)
+  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson)
   ON CONFLICT(conversation_id) DO UPDATE SET
     agent_id = excluded.agent_id,
     transcript_json = excluded.transcript_json,
@@ -34,6 +36,7 @@ const upsertTranscriptionStmt = db.prepare(`
 export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
   upsertTranscriptionStmt.run({
     conversationId: entry.conversationId,
+    businessId: entry.businessId,
     agentId: entry.agentId ?? null,
     transcriptJson: entry.transcriptJson ?? null,
     summary: entry.summary ?? null,
@@ -46,17 +49,22 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
 // this upserts a placeholder row if one doesn't exist yet without clobbering
 // whichever half already landed.
 const setAudioPathStmt = db.prepare(`
-  INSERT INTO elevenlabs_calls (conversation_id, raw_payload_json, audio_path)
-  VALUES (@conversationId, '{}', @audioPath)
+  INSERT INTO elevenlabs_calls (conversation_id, business_id, raw_payload_json, audio_path)
+  VALUES (@conversationId, @businessId, '{}', @audioPath)
   ON CONFLICT(conversation_id) DO UPDATE SET audio_path = excluded.audio_path
 `);
 
-export function setCallAudioPath(conversationId: string, audioPath: string): void {
-  setAudioPathStmt.run({ conversationId, audioPath });
+export function setCallAudioPath(businessId: number, conversationId: string, audioPath: string): void {
+  setAudioPathStmt.run({ conversationId, businessId, audioPath });
 }
 
-export function getCallRecord(conversationId: string): ElevenLabsCallRecord | undefined {
-  return db.prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ?`).get(conversationId) as
-    | ElevenLabsCallRecord
-    | undefined;
+// Scoped by business_id as well as conversation_id — this is the one lookup
+// the public, unauthenticated /b/:businessId/calls/:conversationId page
+// depends on for tenant isolation, since the URL itself is the only access
+// control. A conversationId belonging to another business must never match
+// here just because the ID happens to be correct.
+export function getCallRecord(businessId: number, conversationId: string): ElevenLabsCallRecord | undefined {
+  return db
+    .prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`)
+    .get(conversationId, businessId) as ElevenLabsCallRecord | undefined;
 }

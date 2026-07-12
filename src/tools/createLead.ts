@@ -39,26 +39,29 @@ const bodySchema = z.object({
 // detail page) rather than one terse sentence, so staff reviewing/
 // converting the lead get the full call context without digging through
 // ElevenLabs' own dashboard.
-function buildLeadSummary(input: {
-  issueDescription: string;
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-  phone: string;
-  preferredTiming?: string;
-  isEmergency: boolean;
-  conversationId?: string;
-}): string {
+function buildLeadSummary(
+  businessId: number,
+  input: {
+    issueDescription: string;
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    phone: string;
+    preferredTiming?: string;
+    isEmergency: boolean;
+    conversationId?: string;
+  },
+): string {
   const address = `${input.street}, ${input.city}, ${input.state} ${input.zip}`;
-  const now = new Date().toLocaleString("en-US", { timeZone: getAgentTimezone() });
+  const now = new Date().toLocaleString("en-US", { timeZone: getAgentTimezone(businessId) });
 
   const narrative = `${input.issueDescription} at ${address}.${
     input.preferredTiming ? ` Preferred timing: ${input.preferredTiming}.` : ""
   }${input.isEmergency ? " Customer indicated this is an emergency." : ""}`;
 
   const callDetailsLine = input.conversationId
-    ? `\n\n- Call Details: ${getDashboardBaseUrl()}/calls/${input.conversationId}`
+    ? `\n\n- Call Details: ${getDashboardBaseUrl(businessId)}/b/${businessId}/calls/${input.conversationId}`
     : "";
 
   return (
@@ -72,10 +75,16 @@ function buildLeadSummary(input: {
 }
 
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {
+  const business = req.business;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
     const errorMessage = JSON.stringify(parsed.error.flatten());
-    logToolCall({ toolName: "create_lead", request: req.body, success: false, errorMessage });
+    logToolCall({ businessId: business.id, toolName: "create_lead", request: req.body, success: false, errorMessage });
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
@@ -83,17 +92,17 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     parsed.data;
 
   try {
-    const existing = await lookupCustomerByPhone(phone);
+    const existing = await lookupCustomerByPhone(business.id, phone);
     let customerId = existing.customerId;
     let locationId: string | undefined = existing.locationId ?? undefined;
 
     if (!customerId) {
-      const created = await createCustomer({ name, phone, address: { street, city, state, zip } });
+      const created = await createCustomer(business.id, { name, phone, address: { street, city, state, zip } });
       customerId = created.customerId;
       locationId = created.locationId;
     }
 
-    const summary = buildLeadSummary({
+    const summary = buildLeadSummary(business.id, {
       issueDescription,
       street,
       city,
@@ -105,7 +114,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       conversationId,
     });
 
-    const leadResult = await createServiceTitanLead({ customerId, locationId, summary, isEmergency });
+    const leadResult = await createServiceTitanLead(business.id, { customerId, locationId, summary, isEmergency });
 
     const response = {
       success: leadResult.success,
@@ -115,12 +124,26 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
         : "We had trouble saving your request, but a team member will follow up with you directly.",
     };
 
-    logToolCall({ toolName: "create_lead", phone, request: parsed.data, response, success: leadResult.success });
+    logToolCall({
+      businessId: business.id,
+      toolName: "create_lead",
+      phone,
+      request: parsed.data,
+      response,
+      success: leadResult.success,
+    });
     res.json(response);
   } catch (error) {
     const status = error instanceof ServiceTitanNotConfiguredError ? 503 : 502;
     const message = error instanceof ServiceTitanNotConfiguredError ? error.message : describeError(error);
-    logToolCall({ toolName: "create_lead", phone, request: parsed.data, success: false, errorMessage: message });
+    logToolCall({
+      businessId: business.id,
+      toolName: "create_lead",
+      phone,
+      request: parsed.data,
+      success: false,
+      errorMessage: message,
+    });
     res.status(status).json({
       success: false,
       leadId: null,

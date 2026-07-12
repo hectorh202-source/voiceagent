@@ -1,6 +1,6 @@
 import { requireServiceTitanConfig, stRequest, describeError } from "./httpClient";
 import { findTagTypeIdByName } from "./tags";
-import { getSetting } from "../settings/store";
+import { getBusinessSetting } from "../settings/store";
 
 export interface CreateLeadInput {
   customerId: string;
@@ -14,8 +14,8 @@ export interface CreateLeadResult {
   leadId: string | null;
 }
 
-export async function createLead(input: CreateLeadInput): Promise<CreateLeadResult> {
-  const config = requireServiceTitanConfig();
+export async function createLead(businessId: number, input: CreateLeadInput): Promise<CreateLeadResult> {
+  const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/leads`;
 
   // ServiceTitan requires either a Call Reason ID or a follow-up date on every
@@ -30,10 +30,10 @@ export async function createLead(input: CreateLeadInput): Promise<CreateLeadResu
   // tell at a glance (and once converted to a job) that it came from this
   // channel. Configured by name in /settings rather than by ID, since
   // ServiceTitan's own UI doesn't surface tag-type IDs anywhere.
-  const tagName = getSetting("servicetitan.tagName");
+  const tagName = getBusinessSetting(businessId, "servicetitan.tagName");
   let tagTypeId: number | null = null;
   if (tagName) {
-    tagTypeId = await findTagTypeIdByName(tagName);
+    tagTypeId = await findTagTypeIdByName(businessId, tagName);
     if (!tagTypeId) {
       console.error(`createLead: configured tag name "${tagName}" was not found in ServiceTitan tag types`);
     }

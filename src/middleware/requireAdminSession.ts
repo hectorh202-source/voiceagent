@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getUserById, type User } from "../db/users";
+import { getUserById } from "../db/users";
 
 declare module "express-session" {
   interface SessionData {
@@ -11,7 +11,7 @@ export function requireAdminSession(req: Request, res: Response, next: NextFunct
   if (req.session.userId) {
     const user = getUserById(req.session.userId);
     if (user) {
-      (req as Request & { currentUser?: User }).currentUser = user;
+      req.currentUser = user;
       next();
       return;
     }

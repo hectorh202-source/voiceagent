@@ -1,5 +1,6 @@
 import type { getRawElevenLabsSettings, getRawOperationalSettings, getRawServiceTitanSettings } from "./store";
 import type { User } from "../db/users";
+import type { Business } from "../db/businesses";
 
 function escapeHtml(value: string): string {
   return value
@@ -97,28 +98,98 @@ export function renderLoginPage(error?: string, returnTo?: string): string {
   );
 }
 
-interface SettingsPageProps {
-  elevenLabs: ReturnType<typeof getRawElevenLabsSettings>;
-  serviceTitan: ReturnType<typeof getRawServiceTitanSettings>;
-  operational: ReturnType<typeof getRawOperationalSettings>;
+interface BusinessListPageProps {
+  businesses: Business[];
   users: User[];
   currentUserId: number;
   flash?: { type: "success" | "error"; message: string };
 }
 
-export function renderSettingsPage(props: SettingsPageProps): string {
-  const { elevenLabs, serviceTitan, operational, users, currentUserId, flash } = props;
+export function renderBusinessListPage(props: BusinessListPageProps): string {
+  const { businesses, users, currentUserId, flash } = props;
 
   return page(
-    "Settings",
+    "Businesses",
     `
     <div class="row">
-      <h1>Settings</h1>
+      <h1>Businesses</h1>
       <form class="inline" method="post" action="/settings/logout"><button type="submit">Log out</button></form>
     </div>
     ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
 
-    <form method="post" action="/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
+    ${
+      businesses.length
+        ? businesses
+            .map(
+              (business) => `
+        <div class="details-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0;">
+          <a href="/b/${business.id}/settings">${escapeHtml(business.name)}</a>
+        </div>`,
+            )
+            .join("")
+        : `<p class="hint">No businesses yet — add one below to get started.</p>`
+    }
+
+    <form method="post" action="/settings/businesses">
+      <label>Add a business — name</label>
+      <input type="text" name="name" required autofocus />
+      <button type="submit">Add business</button>
+    </form>
+
+    <h2>Users</h2>
+    ${users
+      .map((user) => {
+        const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
+        const isSelf = user.id === currentUserId;
+        return `
+        <div class="details-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0;">
+          <span>${escapeHtml(user.email)}${isSelf ? " (you)" : ""}${isLocked ? ' <span class="flash-error" style="padding:2px 6px;">Locked</span>' : ""}</span>
+          ${
+            isSelf
+              ? ""
+              : `<form class="inline" method="post" action="/settings/users/${user.id}/delete" onsubmit="return confirm('Remove ${escapeHtml(user.email)}? They will be logged out immediately.')"><button type="submit">Remove</button></form>`
+          }
+        </div>`;
+      })
+      .join("")}
+
+    <form method="post" action="/settings/users">
+      <label>Add a user — email</label>
+      <input type="email" name="email" required />
+      <label>Password</label>
+      <input type="password" name="password" minlength="8" required autocomplete="off" />
+      <label>Confirm password</label>
+      <input type="password" name="confirmPassword" minlength="8" required autocomplete="off" />
+      <button type="submit">Add user</button>
+    </form>
+  `,
+  );
+}
+
+interface SettingsPageProps {
+  business: Business;
+  elevenLabs: ReturnType<typeof getRawElevenLabsSettings>;
+  serviceTitan: ReturnType<typeof getRawServiceTitanSettings>;
+  operational: ReturnType<typeof getRawOperationalSettings>;
+  flash?: { type: "success" | "error"; message: string };
+}
+
+export function renderSettingsPage(props: SettingsPageProps): string {
+  const { business, elevenLabs, serviceTitan, operational, flash } = props;
+
+  return page(
+    `Settings — ${business.name}`,
+    `
+    <div class="row">
+      <h1>Settings — ${escapeHtml(business.name)}</h1>
+      <div>
+        <a href="/settings">&larr; All businesses</a>
+        <form class="inline" method="post" action="/settings/logout"><button type="submit">Log out</button></form>
+      </div>
+    </div>
+    ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
+
+    <form method="post" action="/b/${business.id}/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
       <h2>ElevenLabs</h2>
       <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
@@ -199,35 +270,8 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <button type="submit">Save settings</button>
     </form>
 
-    <form method="post" action="/settings/generate-secret" onsubmit="return confirm('This will invalidate the current tool webhook secret immediately. The agent\\'s tools will fail until you update the new secret in ElevenLabs. Continue?')">
+    <form method="post" action="/b/${business.id}/settings/generate-secret" onsubmit="return confirm('This will invalidate the current tool webhook secret immediately. The agent\\'s tools will fail until you update the new secret in ElevenLabs. Continue?')">
       <button type="submit">Generate a new random tool webhook secret</button>
-    </form>
-
-    <h2>Users</h2>
-    ${users
-      .map((user) => {
-        const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
-        const isSelf = user.id === currentUserId;
-        return `
-        <div class="details-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0;">
-          <span>${escapeHtml(user.email)}${isSelf ? " (you)" : ""}${isLocked ? ' <span class="flash-error" style="padding:2px 6px;">Locked</span>' : ""}</span>
-          ${
-            isSelf
-              ? ""
-              : `<form class="inline" method="post" action="/settings/users/${user.id}/delete" onsubmit="return confirm('Remove ${escapeHtml(user.email)}? They will be logged out immediately.')"><button type="submit">Remove</button></form>`
-          }
-        </div>`;
-      })
-      .join("")}
-
-    <form method="post" action="/settings/users">
-      <label>Add a user — email</label>
-      <input type="email" name="email" required />
-      <label>Password</label>
-      <input type="password" name="password" minlength="8" required autocomplete="off" />
-      <label>Confirm password</label>
-      <input type="password" name="confirmPassword" minlength="8" required autocomplete="off" />
-      <button type="submit">Add user</button>
     </form>
   `,
   );

@@ -5,8 +5,12 @@ export interface AvailabilityResult {
   note: string;
 }
 
-export async function checkAvailability(startDate: string, endDate: string): Promise<AvailabilityResult> {
-  const config = requireServiceTitanConfig();
+export async function checkAvailability(
+  businessId: number,
+  startDate: string,
+  endDate: string,
+): Promise<AvailabilityResult> {
+  const config = requireServiceTitanConfig(businessId);
   const path = `/dispatch/v2/tenant/${config.tenantId}/capacity`;
 
   try {

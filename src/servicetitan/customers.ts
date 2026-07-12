@@ -9,8 +9,8 @@ export interface CustomerLookupResult {
   address: string | null;
 }
 
-async function getPrimaryLocationId(customerId: string): Promise<string | null> {
-  const config = requireServiceTitanConfig();
+async function getPrimaryLocationId(businessId: number, customerId: string): Promise<string | null> {
+  const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/locations`;
   try {
     const result = await stRequest<{ data: { id: number }[] }>(config, "GET", path, {
@@ -27,8 +27,8 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[^\d]/g, "").slice(-10);
 }
 
-export async function lookupCustomerByPhone(phone: string): Promise<CustomerLookupResult> {
-  const config = requireServiceTitanConfig();
+export async function lookupCustomerByPhone(businessId: number, phone: string): Promise<CustomerLookupResult> {
+  const config = requireServiceTitanConfig(businessId);
   const digits = normalizePhone(phone);
   const path = `/crm/v2/tenant/${config.tenantId}/customers`;
 
@@ -63,7 +63,7 @@ export async function lookupCustomerByPhone(phone: string): Promise<CustomerLook
     : null;
 
   const customerId = String(match.id);
-  const locationId = await getPrimaryLocationId(customerId);
+  const locationId = await getPrimaryLocationId(businessId, customerId);
 
   return {
     found: true,
@@ -85,8 +85,8 @@ export interface CreateCustomerResult {
   locationId: string;
 }
 
-export async function createCustomer(input: CreateCustomerInput): Promise<CreateCustomerResult> {
-  const config = requireServiceTitanConfig();
+export async function createCustomer(businessId: number, input: CreateCustomerInput): Promise<CreateCustomerResult> {
+  const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/customers`;
 
   const address = {

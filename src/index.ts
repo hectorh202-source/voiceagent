@@ -1,9 +1,11 @@
-import express from "express";
+import express, { Router } from "express";
 import session from "express-session";
 import { env } from "./config/env";
 import "./db/index";
 import { requestLogger } from "./middleware/requestLogger";
 import { settingsRouter } from "./settings/routes";
+import { businessSettingsRouter } from "./settings/businessRoutes";
+import { resolveBusiness } from "./middleware/resolveBusiness";
 import { toolsRouter } from "./tools/router";
 import { webhooksRouter } from "./webhooks/router";
 import { dashboardRouter } from "./dashboard/routes";
@@ -51,9 +53,22 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/settings", settingsRouter);
-app.use("/tools", toolsRouter);
-app.use("/webhooks", webhooksRouter);
-app.use(dashboardRouter);
+
+// Every business-scoped concern (credentials, ElevenLabs tool webhooks, the
+// post-call webhook, and the public per-call dashboard) lives under
+// /b/:businessId — resolveBusiness runs first for all of them, 404ing
+// immediately on an invalid/nonexistent business before any of the
+// downstream auth/secret checks even run.
+// mergeParams: true is required here — without it, this child router gets
+// its own fresh req.params scope and never sees :businessId from the parent
+// mount path, so resolveBusiness would always see an empty req.params.
+const businessRouter = Router({ mergeParams: true });
+businessRouter.use(resolveBusiness);
+businessRouter.use("/settings", businessSettingsRouter);
+businessRouter.use("/tools", toolsRouter);
+businessRouter.use("/webhooks", webhooksRouter);
+businessRouter.use(dashboardRouter);
+app.use("/b/:businessId", businessRouter);
 
 app.listen(env.PORT, () => {
   console.log(`Voice agent platform listening on http://localhost:${env.PORT}`);
