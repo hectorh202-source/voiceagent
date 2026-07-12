@@ -35,5 +35,16 @@ export function bootstrapSchema(db: DatabaseSync): void {
       raw_payload_json TEXT NOT NULL,
       audio_path TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_login_at TEXT,
+      failed_login_count INTEGER NOT NULL DEFAULT 0,
+      locked_until TEXT
+    );
   `);
 }

@@ -12,32 +12,49 @@ All defined in [`src/settings/routes.ts`](../src/settings/routes.ts), mounted at
 
 | Route | Method | Auth required | Purpose |
 |---|---|---|---|
-| `/settings/setup` | GET, POST | none (only reachable if no admin password exists yet) | First-run: create the admin password |
-| `/settings/login` | GET, POST | none | Log in with the admin password |
+| `/settings/setup` | GET, POST | none (only reachable if zero users exist yet) | First-run: create the first account (email + password) |
+| `/settings/migrate` | GET, POST | none (only reachable for an upgraded install with a legacy password and zero users) | One-time: convert the old single admin password into the first real account |
+| `/settings/login` | GET, POST | none | Log in with email + password |
 | `/settings/logout` | POST | admin session | Destroy the session |
-| `/settings` | GET | admin session | Render the credentials form |
+| `/settings` | GET | admin session | Render the credentials form + Users section |
 | `/settings` | POST | admin session | Save submitted credential fields |
 | `/settings/generate-secret` | POST | admin session | Generate + save a new random tool webhook secret |
+| `/settings/users` | POST | admin session | Add a new user (email + password) |
+| `/settings/users/:id/delete` | POST | admin session | Remove a user (not yourself) |
 
-### First-run vs. normal flow
+### First-run vs. migration vs. normal flow
+
+`getAuthState()` in `auth.ts` is the single source of truth every entry point branches on:
 
 ```
-GET /settings
-  → is there an admin.passwordHash setting yet?
-      no  → redirect to /settings/setup  (create-password form)
-      yes → is req.session.isAdmin true?
-              no  → requireAdminSession middleware redirects to /settings/login
-              yes → render the full settings form
+getAuthState():
+  users table has any rows?      → "ready"
+  else: legacy admin.passwordHash setting exists?  → "needs_migration"
+  else                                              → "fresh"
+
+GET /settings (and every other gated route)
+  → "fresh"           → redirect to /settings/setup     (create first account)
+  → "needs_migration" → redirect to /settings/migrate    (upgrade old password into an account)
+  → "ready"           → requireAdminSession → render the settings form
 ```
 
-This means `/settings/setup` is effectively a one-time route — once a password exists, hitting `/settings/setup` again just redirects to `/settings/login` instead of letting someone create a second password.
+`/settings/setup` and `/settings/migrate` are both effectively one-time routes — once `getAuthState()` returns `"ready"`, hitting either one just redirects to `/settings/login` instead of re-running first-run setup.
 
-## Admin auth
+## Multi-user auth
 
-Two small pieces work together, both in [`src/settings/auth.ts`](../src/settings/auth.ts) and [`src/middleware/requireAdminSession.ts`](../src/middleware/requireAdminSession.ts):
+The app moved from a single shared admin password to real per-user accounts (`src/db/users.ts`, table `users` — email, scrypt password hash/salt, failed-attempt/lockout counters), orchestrated by a thin [`src/settings/auth.ts`](../src/settings/auth.ts) and enforced by [`src/middleware/requireAdminSession.ts`](../src/middleware/requireAdminSession.ts).
 
-- **Password check**: `setAdminPassword()` / `verifyAdminPassword()` hash with Node's built-in `scrypt` (random salt, timing-safe comparison on verify). See [sqlite-storage.md](sqlite-storage.md#admin-password-hashed-not-encrypted) for the exact hashing steps.
-- **Session check**: `requireAdminSession` middleware just checks `req.session.isAdmin === true`, redirecting to `/settings/login` if not. The session itself is backed by SQLite (not the default in-memory store) — see [sqlite-storage.md](sqlite-storage.md#sessions-why-they-needed-their-own-table) for why that mattered.
+- **Password check**: same primitive as before — Node's built-in `scrypt` (random salt, `timingSafeEqual` comparison) — now scoped per user row instead of one global setting. See [sqlite-storage.md](sqlite-storage.md#admin-password-hashed-not-encrypted) for the hashing detail (still accurate, just applied per-user now).
+- **Session check**: `requireAdminSession` stores `req.session.userId` (not a boolean) and re-validates it against the `users` table on *every* request — so deleting a user immediately kills their live session rather than waiting for their next login attempt.
+- **Brute-force protection**, entirely in `db/users.ts`'s `attemptLogin()`:
+  - Per-account lockout: 5 wrong passwords locks that account for 15 minutes (`locked_until`, persisted in SQLite — survives a restart, same as sessions).
+  - A dummy `scrypt` hash is computed even when the submitted email doesn't match any user, so a nonexistent-email attempt costs the same time as a real one — avoids leaking account existence via response timing.
+  - Login failures always render the identical message, `"Invalid email or password."`, whether the email doesn't exist, the password is wrong, or the account is currently locked — a locked-out admin isn't told why (escape hatch: clear `locked_until` directly via `sqlite3`).
+  - Separately, [`src/middleware/loginRateLimiter.ts`](../src/middleware/loginRateLimiter.ts) throttles by IP (20 failed attempts / 15 min, in-memory — intentionally not persisted, since only the per-account lockout needs to survive a restart). Requires `app.set("trust proxy", 1)` in `index.ts` so `req.ip` reflects the real client through Caddy rather than its internal address.
+
+### Upgrading an existing deployment
+
+An already-running instance has a legacy `admin.passwordHash`/`admin.passwordSalt` in the `settings` table and no `users` rows yet. After deploying this change, the admin is redirected to `/settings/migrate`: entering the *current* password plus an email creates the first real user account (re-hashed fresh, not copying the old hash bytes) and deletes the legacy settings keys. The old password keeps working right up through that one migration step — there's no lockout risk during the upgrade.
 
 Note that `/tools/*` (the ElevenLabs webhook endpoints) are a **completely separate auth mechanism** — a shared secret header, not a login session, since ElevenLabs' servers obviously can't fill out a login form. See [elevenlabs-tools.md](elevenlabs-tools.md).
 

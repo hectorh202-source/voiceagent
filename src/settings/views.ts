@@ -1,4 +1,5 @@
 import type { getRawElevenLabsSettings, getRawOperationalSettings, getRawServiceTitanSettings } from "./store";
+import type { User } from "../db/users";
 
 function escapeHtml(value: string): string {
   return value
@@ -42,17 +43,37 @@ function page(title: string, body: string): string {
 
 export function renderSetupPage(error?: string): string {
   return page(
-    "Set up admin password",
+    "Set up your account",
     `
     <h1>Voice Agent Platform — first-time setup</h1>
-    <p>Create an admin password to protect the settings page (it will hold your ElevenLabs and ServiceTitan credentials).</p>
+    <p>Create the first account to protect the settings page (it will hold your ElevenLabs and ServiceTitan credentials). You can add more accounts later from the settings page.</p>
     ${error ? `<div class="flash-error">${escapeHtml(error)}</div>` : ""}
     <form method="post" action="/settings/setup">
-      <label>Admin password</label>
+      <label>Email</label>
+      <input type="email" name="email" required autofocus />
+      <label>Password</label>
       <input type="password" name="password" minlength="8" required />
       <label>Confirm password</label>
       <input type="password" name="confirmPassword" minlength="8" required />
-      <button type="submit">Create password &amp; continue</button>
+      <button type="submit">Create account &amp; continue</button>
+    </form>
+  `,
+  );
+}
+
+export function renderMigratePage(error?: string): string {
+  return page(
+    "Upgrade your account",
+    `
+    <h1>Voice Agent Platform — account upgrade</h1>
+    <p>This app now supports multiple accounts. Enter your current password to confirm it's you, plus the email you'd like to use going forward.</p>
+    ${error ? `<div class="flash-error">${escapeHtml(error)}</div>` : ""}
+    <form method="post" action="/settings/migrate">
+      <label>Current password</label>
+      <input type="password" name="currentPassword" required autofocus />
+      <label>Email</label>
+      <input type="email" name="email" required />
+      <button type="submit">Upgrade &amp; continue</button>
     </form>
   `,
   );
@@ -65,8 +86,10 @@ export function renderLoginPage(error?: string, returnTo?: string): string {
     <h1>Voice Agent Platform — settings login</h1>
     ${error ? `<div class="flash-error">${escapeHtml(error)}</div>` : ""}
     <form method="post" action="/settings/login">
-      <label>Admin password</label>
-      <input type="password" name="password" required autofocus />
+      <label>Email</label>
+      <input type="email" name="email" required autofocus />
+      <label>Password</label>
+      <input type="password" name="password" required />
       ${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />` : ""}
       <button type="submit">Log in</button>
     </form>
@@ -78,11 +101,13 @@ interface SettingsPageProps {
   elevenLabs: ReturnType<typeof getRawElevenLabsSettings>;
   serviceTitan: ReturnType<typeof getRawServiceTitanSettings>;
   operational: ReturnType<typeof getRawOperationalSettings>;
+  users: User[];
+  currentUserId: number;
   flash?: { type: "success" | "error"; message: string };
 }
 
 export function renderSettingsPage(props: SettingsPageProps): string {
-  const { elevenLabs, serviceTitan, operational, flash } = props;
+  const { elevenLabs, serviceTitan, operational, users, currentUserId, flash } = props;
 
   return page(
     "Settings",
@@ -172,6 +197,33 @@ export function renderSettingsPage(props: SettingsPageProps): string {
 
     <form method="post" action="/settings/generate-secret" onsubmit="return confirm('This will invalidate the current tool webhook secret immediately. The agent\\'s tools will fail until you update the new secret in ElevenLabs. Continue?')">
       <button type="submit">Generate a new random tool webhook secret</button>
+    </form>
+
+    <h2>Users</h2>
+    ${users
+      .map((user) => {
+        const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
+        const isSelf = user.id === currentUserId;
+        return `
+        <div class="details-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0;">
+          <span>${escapeHtml(user.email)}${isSelf ? " (you)" : ""}${isLocked ? ' <span class="flash-error" style="padding:2px 6px;">Locked</span>' : ""}</span>
+          ${
+            isSelf
+              ? ""
+              : `<form class="inline" method="post" action="/settings/users/${user.id}/delete" onsubmit="return confirm('Remove ${escapeHtml(user.email)}? They will be logged out immediately.')"><button type="submit">Remove</button></form>`
+          }
+        </div>`;
+      })
+      .join("")}
+
+    <form method="post" action="/settings/users">
+      <label>Add a user — email</label>
+      <input type="email" name="email" required />
+      <label>Password</label>
+      <input type="password" name="password" minlength="8" required autocomplete="off" />
+      <label>Confirm password</label>
+      <input type="password" name="confirmPassword" minlength="8" required autocomplete="off" />
+      <button type="submit">Add user</button>
     </form>
   `,
   );

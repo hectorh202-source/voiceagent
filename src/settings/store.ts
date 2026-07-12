@@ -42,6 +42,12 @@ export function hasSetting(key: string): boolean {
   return getSetting(key) !== null;
 }
 
+const deleteStmt = db.prepare(`DELETE FROM settings WHERE key = ?`);
+
+export function deleteSetting(key: string): void {
+  deleteStmt.run(key);
+}
+
 // Persisted so login sessions survive server restarts/redeploys instead of
 // being invalidated by a freshly-generated secret every time the process starts.
 export function getOrCreateSessionSecret(): string {

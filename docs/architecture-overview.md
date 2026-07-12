@@ -58,10 +58,11 @@ Four systems, three of which are entirely outside this codebase:
 
 ```
 1. Admin visits https://<your-domain>/settings
-2. First visit ever → prompted to set an admin password (stored as a scrypt hash)
-3. Every visit after → login form, session cookie issued and persisted to SQLite
+2. First visit ever → prompted to create the first account (email + password, stored as a scrypt hash)
+3. Every visit after → login form (email + password), session cookie issued and persisted to SQLite
 4. Once logged in: a single form for ElevenLabs / ServiceTitan / Operational
-   credentials, each field saved independently and encrypted at rest
+   credentials, each field saved independently and encrypted at rest, plus a
+   Users section to add/remove other accounts
 ```
 See [settings-app.md](settings-app.md) for the full breakdown and [sqlite-storage.md](sqlite-storage.md) for the storage mechanics underneath it.
 

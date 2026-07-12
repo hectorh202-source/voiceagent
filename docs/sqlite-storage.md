@@ -51,13 +51,14 @@ CREATE TABLE sessions (
 );
 ```
 
-One file, one connection (`db/index.ts` exports a single shared `db` handle), three tables, each owned by one module:
+One file, one connection (`db/index.ts` exports a single shared `db` handle), each table owned by one module:
 
 | Table | Owned by | Purpose |
 |---|---|---|
-| `settings` | [`settings/store.ts`](../src/settings/store.ts) | Every credential + admin password hash + internal secrets |
+| `settings` | [`settings/store.ts`](../src/settings/store.ts) | Every credential + internal secrets (encrypted at rest) |
+| `users` | [`db/users.ts`](../src/db/users.ts) | Login accounts for `/settings` — email, hashed password, brute-force lockout state |
 | `call_log` | [`db/callLog.ts`](../src/db/callLog.ts) | Audit trail of every ElevenLabs tool call |
-| `sessions` | [`settings/sessionStore.ts`](../src/settings/sessionStore.ts) | Logged-in admin sessions for the `/settings` page |
+| `sessions` | [`settings/sessionStore.ts`](../src/settings/sessionStore.ts) | Logged-in sessions for the `/settings` page |
 
 ## `settings`: a key-value store, not a fixed schema
 
@@ -77,10 +78,10 @@ servicetitan.callReasonId
 servicetitan.jobTypeId
 operational.emergencyTransferNumber
 operational.toolWebhookSecret
-admin.passwordHash
-admin.passwordSalt
 internal.sessionSecret
 ```
+
+`admin.passwordHash`/`admin.passwordSalt` used to live here too, back when there was a single shared admin password. They only exist now on an install that hasn't yet gone through the one-time `/settings/migrate` upgrade to per-user accounts (see [settings-app.md](settings-app.md#upgrading-an-existing-deployment)) — migrating deletes both keys.
 
 Two primitives do all the work (`settings/store.ts`):
 
@@ -133,23 +134,30 @@ This key is **never typed by a user and never committed to git** (`.gitignore` e
 - If you copy `app.db` to a different machine without also copying `.encryption.key`, same problem.
 - Backups need to include **both files together**, not just the `.db` file.
 
-## Admin password: hashed, not encrypted
+## User passwords: hashed, not encrypted
 
-The admin password (used to log into `/settings`) is handled differently from credentials — it's **hashed**, not encrypted, because we only ever need to check "does this password match," never recover the original password. [`settings/auth.ts`](../src/settings/auth.ts):
+Login passwords (used to log into `/settings`) are handled differently from credentials — they're **hashed**, not encrypted, because we only ever need to check "does this password match," never recover the original password. Each row in the `users` table ([`db/users.ts`](../src/db/users.ts)) carries its own salt and hash:
 
 ```
-setAdminPassword(password):
+createUser(email, password):
   1. generate a random 16-byte salt
   2. hash = scrypt(password, salt)     -- Node's built-in crypto.scryptSync
-  3. store salt and hash as two settings keys (still passed through setSetting,
-     so they're additionally encrypted at rest — belt and suspenders)
+  3. INSERT INTO users (email, password_salt, password_hash, ...)
+     (unlike the settings table, users isn't routed through setSetting/encrypt —
+     a salted hash is already unrecoverable, so there's nothing extra to protect)
 
-verifyAdminPassword(password):
-  1. re-derive scrypt(password, stored salt)
-  2. compare against the stored hash using crypto.timingSafeEqual
+attemptLogin(email, password):
+  1. look up the user by (normalized, lowercased) email
+  2. re-derive scrypt(password, stored salt) — even if no user was found, using
+     a fixed dummy salt, so a nonexistent email costs the same time as a real one
+  3. compare against the stored hash using crypto.timingSafeEqual
      (a fixed-time comparison, so an attacker can't guess the password
      one byte at a time by measuring how long comparisons take)
+  4. on failure, bump failed_login_count; at 5 failures, set locked_until
+     15 minutes out instead. On success, reset both and stamp last_login_at.
 ```
+
+This also owns the brute-force lockout state (`failed_login_count`/`locked_until` columns) — persisted here rather than in memory specifically so a lockout survives a server restart, same reasoning as the sessions table below. A separate, non-persisted per-IP throttle lives in [`middleware/loginRateLimiter.ts`](../src/middleware/loginRateLimiter.ts). Full auth-flow detail (setup/migrate/login routing, the legacy-password upgrade path) is in [settings-app.md](settings-app.md).
 
 ## Sessions: why they needed their own table
 
@@ -188,7 +196,10 @@ ElevenLabs sends request with header X-Tool-Secret
 browser sends cookie
   → express-session reads the cookie, looks up the session ID in SqliteSessionStore.get()
   → SqliteSessionStore: SELECT from sessions table, decode JSON
-  → if found and not expired, req.session.isAdmin is available → page renders
+  → if found and not expired, req.session.userId is available
+  → requireAdminSession re-checks that user id still exists in the users
+    table on every request (a deleted user's live session is rejected
+    immediately) → page renders
 ```
 
 ## Inspecting the database directly

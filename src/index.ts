@@ -12,6 +12,11 @@ import { getOrCreateSessionSecret } from "./settings/store";
 
 const app = express();
 
+// Trust exactly one hop (the Caddy reverse proxy) so req.ip reflects the
+// real client address instead of Caddy's internal one — needed for the
+// per-IP login rate limiter in middleware/loginRateLimiter.ts to work.
+app.set("trust proxy", 1);
+
 // Captures the raw request body alongside express's usual JSON parsing —
 // needed to verify ElevenLabs' post-call webhook signature, which is
 // computed over the exact raw bytes, not a re-serialized JSON object.
