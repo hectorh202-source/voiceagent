@@ -1,6 +1,6 @@
 # Per-call record page
 
-A single-call detail page — `https://dashboard.laughslapper.com/calls/{conversationId}` — showing everything about one AI-handled call: recording, transcript, AI summary, whether it was transferred, and a link to the ServiceTitan Lead it produced. Meant to be linked to directly (e.g. pasted into a ServiceTitan lead's notes), not browsed from a list — there's no call-list/index view yet (see [Deferred](#deferred) below).
+A single-call detail page — `https://dashboard.laughslapper.com/calls/{conversationId}` — showing everything about one AI-handled call: recording, transcript, AI summary, whether it was transferred, and a link to the ServiceTitan Lead it produced. Not browsed from a list — there's no call-list/index view yet (see [Deferred](#deferred) below). The link isn't just meant to be pasted in manually anymore either: `create_lead`'s Lead summary now includes this same link automatically as a "Call Details" line (see [servicetitan-integration.md](servicetitan-integration.md#3-lead-creation--createleadinput)), built from a new `/settings` field, `operational.dashboardBaseUrl`.
 
 ## Why this needed a new data pipeline
 

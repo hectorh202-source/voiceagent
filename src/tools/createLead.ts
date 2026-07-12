@@ -4,6 +4,8 @@ import { lookupCustomerByPhone, createCustomer } from "../servicetitan/customers
 import { createLead as createServiceTitanLead } from "../servicetitan/leads";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
+import { getAgentTimezone, getDashboardBaseUrl } from "../settings/store";
+import { formatPhoneNumber } from "../lib/format";
 
 // ElevenLabs' tool-calling occasionally sends boolean-typed fields as the
 // strings "true"/"false" rather than a JSON boolean — accept both forms.
@@ -30,6 +32,47 @@ const bodySchema = z.object({
   conversationId: z.string().optional(),
 });
 
+// Builds the text that becomes the ServiceTitan Lead's `summary` field —
+// ServiceTitan carries this over into the Job's Summary field when staff
+// convert the lead, so this is effectively the Job Summary too. Structured
+// as labeled lines (date, phone, address, a link back to this call's
+// detail page) rather than one terse sentence, so staff reviewing/
+// converting the lead get the full call context without digging through
+// ElevenLabs' own dashboard.
+function buildLeadSummary(input: {
+  issueDescription: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+  preferredTiming?: string;
+  isEmergency: boolean;
+  conversationId?: string;
+}): string {
+  const address = `${input.street}, ${input.city}, ${input.state} ${input.zip}`;
+  const now = new Date().toLocaleString("en-US", { timeZone: getAgentTimezone() });
+
+  const narrative = `${input.issueDescription} at ${address}.${
+    input.preferredTiming ? ` Preferred timing: ${input.preferredTiming}.` : ""
+  }${input.isEmergency ? " Customer indicated this is an emergency." : ""}`;
+
+  const dashboardBaseUrl = getDashboardBaseUrl();
+  const callDetailsLine =
+    dashboardBaseUrl && input.conversationId
+      ? `\n\n- Call Details: ${dashboardBaseUrl}/calls/${input.conversationId}`
+      : "";
+
+  return (
+    `- Date: ${now}\n\n` +
+    `${narrative}\n\n` +
+    `- Phone: ${formatPhoneNumber(input.phone)}\n\n` +
+    `- Address: ${address}` +
+    callDetailsLine +
+    `\n\n- Call Taker: AI Agent`
+  );
+}
+
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -38,7 +81,8 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { phone, name, street, city, state, zip, issueDescription, preferredTiming, isEmergency } = parsed.data;
+  const { phone, name, street, city, state, zip, issueDescription, preferredTiming, isEmergency, conversationId } =
+    parsed.data;
 
   try {
     const existing = await lookupCustomerByPhone(phone);
@@ -51,9 +95,17 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       locationId = created.locationId;
     }
 
-    const summary = `${issueDescription} at ${street}, ${city}, ${state} ${zip}${
-      preferredTiming ? ` — preferred timing: ${preferredTiming}` : ""
-    } (via AI receptionist)`;
+    const summary = buildLeadSummary({
+      issueDescription,
+      street,
+      city,
+      state,
+      zip,
+      phone,
+      preferredTiming,
+      isEmergency,
+      conversationId,
+    });
 
     const leadResult = await createServiceTitanLead({ customerId, locationId, summary, isEmergency });
 

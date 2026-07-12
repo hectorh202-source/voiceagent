@@ -143,9 +143,17 @@ export function getRawOperationalSettings() {
     toolWebhookSecretSet: !!getSetting("operational.toolWebhookSecret"),
     postCallWebhookSecretSet: !!getSetting("operational.postCallWebhookSecret"),
     timezone: getSetting("operational.timezone") ?? "America/New_York",
+    dashboardBaseUrl: getSetting("operational.dashboardBaseUrl") ?? "",
   };
 }
 
 export function getAgentTimezone(): string {
   return getSetting("operational.timezone") ?? "America/New_York";
+}
+
+// Base URL used to build links to the public /calls/:conversationId page
+// (e.g. inside a ServiceTitan lead's summary) — null if never configured,
+// so callers can omit the link entirely rather than emit a broken one.
+export function getDashboardBaseUrl(): string | null {
+  return getSetting("operational.dashboardBaseUrl");
 }

@@ -1,5 +1,6 @@
 import type { CallDetailViewModel } from "./callDetails";
 import { getAgentTimezone } from "../settings/store";
+import { formatPhoneNumber } from "../lib/format";
 
 function escapeHtml(value: string): string {
   return value
@@ -18,16 +19,6 @@ function formatCallTime(sqliteDatetime: string): string {
   const date = new Date(sqliteDatetime.replace(" ", "T") + "Z");
   if (Number.isNaN(date.getTime())) return sqliteDatetime;
   return date.toLocaleString("en-US", { timeZone: getAgentTimezone() });
-}
-
-// Formats a US phone number as +1(XXX) XXX-XXXX regardless of how it was
-// originally stored (with/without +1, dashes, spaces) — falls back to the
-// raw value for anything that isn't a recognizable 10-digit US number.
-function formatPhoneNumber(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  const tenDigits = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  if (tenDigits.length !== 10) return phone;
-  return `+1(${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6)}`;
 }
 
 const styles = `

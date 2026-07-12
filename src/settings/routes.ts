@@ -207,6 +207,7 @@ settingsRouter.post("/", requireAdminSession, (req, res) => {
 
   maybeSet("operational.emergencyTransferNumber", body.emergencyTransferNumber);
   setSetting("operational.timezone", body.timezone || "America/New_York");
+  maybeSet("operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));
   maybeSet("operational.toolWebhookSecret", body.toolWebhookSecret);
   maybeSet("operational.postCallWebhookSecret", body.postCallWebhookSecret);
 
