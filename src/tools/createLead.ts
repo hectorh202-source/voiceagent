@@ -60,8 +60,14 @@ function buildLeadSummary(
     input.preferredTiming ? ` Preferred timing: ${input.preferredTiming}.` : ""
   }${input.isEmergency ? " Customer indicated this is an emergency." : ""}`;
 
+  // ServiceTitan's summary field doesn't auto-linkify plain URLs, so this
+  // needs to actually be an anchor tag to render as clickable — a bare URL
+  // just shows as inert text.
   const callDetailsLine = input.conversationId
-    ? `\n\n- Call Details: ${getDashboardBaseUrl(businessId)}/b/${businessId}/calls/${input.conversationId}`
+    ? (() => {
+        const url = `${getDashboardBaseUrl(businessId)}/b/${businessId}/calls/${input.conversationId}`;
+        return `\n\n- Call Details: <a href="${url}">${url}</a>`;
+      })()
     : "";
 
   return (
