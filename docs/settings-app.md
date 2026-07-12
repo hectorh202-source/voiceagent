@@ -49,7 +49,7 @@ The app moved from a single shared admin password to real per-user accounts (`sr
 - **Brute-force protection**, entirely in `db/users.ts`'s `attemptLogin()`:
   - Per-account lockout: 5 wrong passwords locks that account for 15 minutes (`locked_until`, persisted in SQLite — survives a restart, same as sessions).
   - A dummy `scrypt` hash is computed even when the submitted email doesn't match any user, so a nonexistent-email attempt costs the same time as a real one — avoids leaking account existence via response timing.
-  - Login failures always render the identical message, `"Invalid email or password."`, whether the email doesn't exist, the password is wrong, or the account is currently locked — a locked-out admin isn't told why (escape hatch: clear `locked_until` directly via `sqlite3`).
+  - Login failures always render the identical message, `"Invalid email or password."`, whether the email doesn't exist, the password is wrong, or the account is currently locked — a locked-out admin isn't told why (see [Removing a user](#removing-a-user) below for how to clear a lockout directly).
   - Separately, [`src/middleware/loginRateLimiter.ts`](../src/middleware/loginRateLimiter.ts) throttles by IP (20 failed attempts / 15 min, in-memory — intentionally not persisted, since only the per-account lockout needs to survive a restart). Requires `app.set("trust proxy", 1)` in `index.ts` so `req.ip` reflects the real client through Caddy rather than its internal address.
 
 ### Upgrading an existing deployment
@@ -57,6 +57,40 @@ The app moved from a single shared admin password to real per-user accounts (`sr
 An already-running instance has a legacy `admin.passwordHash`/`admin.passwordSalt` in the `settings` table and no `users` rows yet. After deploying this change, the admin is redirected to `/settings/migrate`: entering the *current* password plus an email creates the first real user account (re-hashed fresh, not copying the old hash bytes) and deletes the legacy settings keys. The old password keeps working right up through that one migration step — there's no lockout risk during the upgrade.
 
 Note that `/tools/*` (the ElevenLabs webhook endpoints) are a **completely separate auth mechanism** — a shared secret header, not a login session, since ElevenLabs' servers obviously can't fill out a login form. See [elevenlabs-tools.md](elevenlabs-tools.md).
+
+### No admin role — every user is equally privileged
+
+There's no permission tier: any row in `users` can do everything `/settings` allows (edit credentials, add/remove other users, view the call dashboard). This was a deliberate scope decision — a read-only or staff-only role would be a separate feature, not built here.
+
+### Removing a user
+
+**Normal path**: log into `/settings`, find the user in the **Users** section, click **Remove**. You can't remove your own currently-logged-in account this way (`POST /settings/users/:id/delete` rejects it) — log in as a different user to remove one.
+
+**If the UI isn't an option** (e.g. it's the only account, or you're locked out): edit the `users` table directly. On the VPS, following the same `docker compose exec app node -e "..."` one-off-script pattern used elsewhere in this project (e.g. for looking up ServiceTitan campaign/tag IDs):
+
+```bash
+docker compose exec app node -e "
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync('/data/app.db');
+  console.log(db.prepare('SELECT id, email, locked_until FROM users').all());
+"
+# then, to remove one:
+docker compose exec app node -e "
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync('/data/app.db');
+  db.prepare('DELETE FROM users WHERE id = ?').run(<id>);
+"
+```
+
+The same technique clears a brute-force lockout early instead of waiting out the 15 minutes:
+
+```bash
+docker compose exec app node -e "
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync('/data/app.db');
+  db.prepare('UPDATE users SET locked_until = NULL, failed_login_count = 0 WHERE email = ?').run('someone@example.com');
+"
+```
 
 ## How saving the form works
 
