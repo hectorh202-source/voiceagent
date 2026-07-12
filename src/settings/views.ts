@@ -93,13 +93,16 @@ export function renderSettingsPage(props: SettingsPageProps): string {
     </div>
     ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
 
-    <form method="post" action="/settings" onsubmit="return !window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?')">
+    <form method="post" action="/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
       <h2>ElevenLabs</h2>
       <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
 
       <label>Agent ID</label>
-      <input type="text" name="elevenLabsAgentId" value="${escapeHtml(elevenLabs.agentId)}" />
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="agentIdInput" name="elevenLabsAgentId" value="${escapeHtml(elevenLabs.agentId)}" readonly style="background:#eee; color:#666; flex:1;" />
+        <button type="button" onclick="const i=document.getElementById('agentIdInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.agentIdChanged=true; this.disabled=true;">Change</button>
+      </div>
 
       <h2>ServiceTitan</h2>
       <label>Environment</label>
