@@ -93,7 +93,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
     </div>
     ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
 
-    <form method="post" action="/settings">
+    <form method="post" action="/settings" onsubmit="return !window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?')">
       <h2>ElevenLabs</h2>
       <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
@@ -134,7 +134,10 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads created by the agent.</div>
 
       <label>Lead tag name (optional)</label>
-      <input type="text" name="serviceTitanTagName" value="${escapeHtml(serviceTitan.tagName)}" placeholder="e.g. AI Voice Agent" onfocus="document.getElementById('tagNameWarning').style.display='block'" />
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="tagNameInput" name="serviceTitanTagName" value="${escapeHtml(serviceTitan.tagName)}" placeholder="e.g. AI Voice Agent" readonly style="background:#eee; color:#666; flex:1;" onfocus="document.getElementById('tagNameWarning').style.display='block'" />
+        <button type="button" onclick="const i=document.getElementById('tagNameInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.tagNameChanged=true; this.disabled=true;">Change</button>
+      </div>
       <div id="tagNameWarning" class="flash-error" style="display:none">This must exactly match a tag that already exists in ServiceTitan (Settings → Tags) — it is not created automatically. If no matching tag exists there, leads will still be created, just without a tag, with no error shown here.</div>
       <div class="hint">Enter the exact name of an existing ServiceTitan tag (Settings → Tags) — no ID needed. Every lead this agent creates will be tagged with it, so it's identifiable once it becomes a job.</div>
 
