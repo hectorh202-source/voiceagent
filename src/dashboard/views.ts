@@ -81,7 +81,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
     : `<p>No transcript available yet.</p>`;
 
   const leadLink = vm.leadUrl
-    ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener">${escapeHtml(vm.leadId ?? "View Lead")}</a>`
+    ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(vm.leadId ?? "View Lead")}</a>`
     : "—";
 
   return page(
@@ -95,7 +95,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
     <div class="card">
       <h2>Actions</h2>
       <div class="actions">
-        ${vm.leadUrl ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener">View Lead in ST</a>` : ""}
+        ${vm.leadUrl ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener noreferrer">View Lead in ST</a>` : ""}
         <button onclick="copyCallLink()">Copy Call Link</button>
       </div>
     </div>

@@ -1,15 +1,32 @@
 import { Router } from "express";
 import fs from "node:fs";
-import { requireAdminSession } from "../middleware/requireAdminSession";
 import { buildCallDetailViewModel } from "./callDetails";
 import { renderCallDetailPage, renderCallNotFoundPage } from "./views";
 import { getCallRecord } from "../db/callRecords";
+import { limitCallPageRequests, limitCallAudioRequests } from "../middleware/dashboardRateLimiter";
 
 export const dashboardRouter = Router();
 
-dashboardRouter.use(requireAdminSession);
+// Intentionally NO auth gate on this router. These pages are meant to be
+// link-shareable like an unlisted YouTube video: anyone holding the exact
+// conversationId URL can view/hear it, no login. Do NOT reflexively add
+// `dashboardRouter.use(requireAdminSession)` back here. If a future route is
+// added to this router (e.g. a call-list/browse view) it must bring its OWN
+// explicit auth check — a browsable list of every call is a fundamentally
+// different exposure than one opaque per-call link and must stay behind
+// login even after this change.
+//
+// Since the URL itself is the only access control, harden it the way an
+// unlisted link needs: never indexable/discoverable, and never leaked to a
+// third party via the Referer header when the page's one outbound link
+// (to ServiceTitan) is clicked.
+dashboardRouter.use((req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
-dashboardRouter.get("/calls/:conversationId", (req, res) => {
+dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) => {
   const { conversationId } = req.params;
   const viewModel = buildCallDetailViewModel(conversationId);
   if (!viewModel) {
@@ -19,7 +36,7 @@ dashboardRouter.get("/calls/:conversationId", (req, res) => {
   res.send(renderCallDetailPage(viewModel));
 });
 
-dashboardRouter.get("/calls/:conversationId/audio", (req, res) => {
+dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req, res) => {
   const { conversationId } = req.params;
   const record = getCallRecord(conversationId);
   if (!record?.audio_path || !fs.existsSync(record.audio_path)) {
