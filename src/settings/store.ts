@@ -152,8 +152,10 @@ export function getAgentTimezone(): string {
 }
 
 // Base URL used to build links to the public /calls/:conversationId page
-// (e.g. inside a ServiceTitan lead's summary) — null if never configured,
-// so callers can omit the link entirely rather than emit a broken one.
-export function getDashboardBaseUrl(): string | null {
-  return getSetting("operational.dashboardBaseUrl");
+// (e.g. inside a ServiceTitan lead's summary). Defaults to this deployment's
+// known dashboard domain (same one hardcoded in the Caddyfile) so the link
+// works out of the box with no setup — the /settings field only exists to
+// override it if this app is ever deployed under a different domain.
+export function getDashboardBaseUrl(): string {
+  return getSetting("operational.dashboardBaseUrl") ?? "https://dashboard.laughslapper.com";
 }

@@ -57,11 +57,9 @@ function buildLeadSummary(input: {
     input.preferredTiming ? ` Preferred timing: ${input.preferredTiming}.` : ""
   }${input.isEmergency ? " Customer indicated this is an emergency." : ""}`;
 
-  const dashboardBaseUrl = getDashboardBaseUrl();
-  const callDetailsLine =
-    dashboardBaseUrl && input.conversationId
-      ? `\n\n- Call Details: ${dashboardBaseUrl}/calls/${input.conversationId}`
-      : "";
+  const callDetailsLine = input.conversationId
+    ? `\n\n- Call Details: ${getDashboardBaseUrl()}/calls/${input.conversationId}`
+    : "";
 
   return (
     `- Date: ${now}\n\n` +

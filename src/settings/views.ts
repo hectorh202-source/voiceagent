@@ -184,9 +184,9 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       </select>
       <div class="hint">Only affects how call times are formatted on this dashboard. This is separate from the agent's own time zone setting in ElevenLabs, which controls the agent's time-awareness during calls (greetings, business hours, relative dates) — changing one does not change the other.</div>
 
-      <label>Public dashboard base URL</label>
-      <input type="text" name="dashboardBaseUrl" value="${escapeHtml(operational.dashboardBaseUrl)}" placeholder="https://dashboard.laughslapper.com" />
-      <div class="hint">Used to build the "Call Details" link included in every ServiceTitan lead's summary. No trailing slash. Leave blank to omit that link from lead summaries.</div>
+      <label>Public dashboard base URL (optional override)</label>
+      <input type="text" name="dashboardBaseUrl" value="${escapeHtml(operational.dashboardBaseUrl)}" placeholder="https://dashboard.laughslapper.com (default)" />
+      <div class="hint">Used to build the "Call Details" link included in every ServiceTitan lead's summary. Already defaults to this deployment's dashboard domain — only set this if the dashboard is ever hosted at a different one. No trailing slash.</div>
 
       <label>Tool webhook shared secret ${operational.toolWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
