@@ -74,7 +74,9 @@ ServiceTitan's phone-number filtering support isn't fully documented, so this fu
 
 Phone numbers are normalized to their last 10 digits before comparing (`normalizePhone()`), so formatting differences (`+1`, dashes, spaces) don't cause false negatives.
 
-Returns `{ found, customerId, name, address, email }` — `found: false` with everything else `null` if no match. `email` comes from the customer's `Email`-type contact if ServiceTitan has one on file (same `contacts` array shape used for phone matching); `null` if not. `create_lead` (below) surfaces this as an `Email` line in the lead summary when present.
+Returns `{ found, customerId, name, address, email }` — `found: false` with everything else `null` if no match.
+
+**Email requires a second API call — the customer list endpoint doesn't return contacts at all.** Confirmed against a real sandbox customer: the `GET /customers` response above has `name`/`address`/etc. but no `contacts` field whatsoever, even though phone-number filtering against this same endpoint works (ServiceTitan does that matching server-side via the `phone` query param, without needing to expose the underlying contact record back to the caller). Email (and any other contact info) only comes from the separate `GET /crm/v2/tenant/{tenantId}/customers/{customerId}/contacts` sub-resource — `getCustomerEmail()` calls this once the customer's ID is known and finds the entry with `type === "Email"`. `create_lead` (below) surfaces this as an `Email` line in the lead summary when present.
 
 ### 2. Customer creation — `createCustomer(businessId, input)`
 

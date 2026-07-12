@@ -24,6 +24,21 @@ async function getPrimaryLocationId(businessId: number, customerId: string): Pro
   }
 }
 
+// The customer list/search endpoint never includes a `contacts` field on its
+// results (confirmed against a real sandbox customer — its response has
+// name/address/etc. but no contacts at all), so email (and phone, for that
+// matter) can only be read via this separate per-customer sub-resource.
+async function getCustomerEmail(businessId: number, customerId: string): Promise<string | null> {
+  const config = requireServiceTitanConfig(businessId);
+  const path = `/crm/v2/tenant/${config.tenantId}/customers/${customerId}/contacts`;
+  try {
+    const result = await stRequest<{ data: { type: string; value: string }[] }>(config, "GET", path, {});
+    return result.data?.find((contact) => contact.type === "Email")?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizePhone(phone: string): string {
   return phone.replace(/[^\d]/g, "").slice(-10);
 }
@@ -63,10 +78,11 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
     ? [match.address.street, match.address.city, match.address.state].filter(Boolean).join(", ")
     : null;
 
-  const email = (match.contacts ?? []).find((contact) => contact.type === "Email")?.value ?? null;
-
   const customerId = String(match.id);
-  const locationId = await getPrimaryLocationId(businessId, customerId);
+  const [locationId, email] = await Promise.all([
+    getPrimaryLocationId(businessId, customerId),
+    getCustomerEmail(businessId, customerId),
+  ]);
 
   return {
     found: true,
