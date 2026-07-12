@@ -53,10 +53,13 @@ Calls `servicetitan/capacity.ts#checkAvailability`. Deliberately coarse — a si
 ```
 POST /b/:businessId/tools/create-lead
 Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
-            "zip": string, "issueDescription": string, "preferredTiming"?: string, "isEmergency"?: boolean }
+            "zip": string, "issueDescription": string, "preferredTiming"?: string,
+            "equipmentAge"?: string, "isEmergency"?: boolean }
 Response: { "success": boolean, "leadId": string|null, "confirmationMessage": string }
 ```
 Looks up the customer again (reusing `lookupCustomerByPhone`); if not found, creates one; then creates the ServiceTitan Lead. Always returns a caller-appropriate `confirmationMessage`, even on failure, so the agent has something safe to say regardless of what happened underneath.
+
+**`equipmentAge` is contextual, not something every call collects.** It's freeform text (`"3 years"`, `"about 3"`) rather than a bare number, matching how the agent will naturally phrase it back. This needs a corresponding ElevenLabs-side change — see "New tool parameters need a matching prompt instruction" below.
 
 **Address is 4 separate fields (`street`/`city`/`state`/`zip`), not one combined string.** This wasn't the original design — it started as a single `address` field, but ServiceTitan's customer-creation API requires city/state/zip individually (confirmed via a real `422`-style validation error: `"Locations.Address.City": ["The City field is required."]`, etc.), and reliably splitting a freeform address string like `"4844 Maple Street, Port Charlotte, FL 33950"` back into parts server-side turned out to be unreliable — real test calls produced inconsistent formats (sometimes `"FL 33950"` as one segment, sometimes `"Florida"` and `"33844"` as two separate segments). Having the LLM extract each part directly, with its own Identifier/Description per field in the ElevenLabs tool config, is far more reliable than parsing a combined string after the fact.
 
@@ -72,6 +75,14 @@ Each of the three tools above is registered on the agent as a **Webhook** tool w
 - A body parameter schema matching the request shape above. Each property's **Identifier** must be the exact bare field name (e.g. `phone`, not `{ "phone": string }` — the data type is already declared by a separate dropdown; the Identifier field is only the JSON key name)
 - For `lookup_customer`'s `phone` parameter specifically: **Value Type** must be set to **"Dynamic Variable"** (not the default "LLM Prompt"), with the variable name entered as the bare identifier `system__caller_id` — **no `{{ }}` braces** in this field, since it's a dedicated variable picker, not free text. This matters: with "LLM Prompt" left selected, the model has to infer a phone number from the transcript, and since the caller never states their number out loud, the model has nothing to fill the field with and silently never calls the tool at all — this is exactly what happened during initial testing (`lookup_customer` never once appeared in `call_log` across several test calls, only `check_availability`/`create_lead` did, until this was fixed). The `{{system__caller_id}}` `{{ }}` syntax is only used when referencing a dynamic variable inside free text, e.g. inside the system prompt.
 - **Data types matter for validation**: this server's body schemas are strict about JSON types (e.g. `isEmergency` must be a real boolean). ElevenLabs' tool-calling has been observed sending boolean-typed fields as the strings `"true"`/`"false"` rather than a JSON boolean — confirmed by a real `create_lead` call that 400'd with `"isEmergency":["Expected boolean, received string"]`. The server now coerces string `"true"`/`"false"` to boolean before validating (see `booleanish` in [`tools/createLead.ts`](../src/tools/createLead.ts)) rather than assuming the dashboard will always send the "correct" JSON type — a good pattern to repeat for any new boolean/number fields added later.
+
+### New tool parameters need a matching prompt instruction
+
+Adding a body field to `create_lead`'s schema (like `equipmentAge`) doesn't make the agent actually collect it — that's two separate changes, both required, both done in the ElevenLabs dashboard, not code:
+1. Add the parameter to the `create_lead` tool's body schema (Identifier `equipmentAge`, **Value Type: LLM Prompt**, same as `issueDescription`/`preferredTiming` — not a Dynamic Variable, since nothing built-in carries this).
+2. Add an instruction to the system prompt telling the agent *when* to ask for it — e.g. "if the call is about an HVAC/AC issue, ask how old the unit is." Without this, the field stays optional and the LLM has no reason to bring it up, so it'll simply be omitted from every lead's summary (see [servicetitan-integration.md](servicetitan-integration.md) for how the summary handles that gracefully) rather than erroring.
+
+This is a good general pattern to remember for any future field: a schema change alone is inert without a corresponding prompt instruction telling the agent to actually populate it.
 
 ### Emergency transfer
 

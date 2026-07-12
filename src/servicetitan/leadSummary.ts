@@ -24,6 +24,7 @@ export function buildLeadSummary(
     zip: string;
     phone: string;
     email?: string | null;
+    equipmentAge?: string | null;
     conversationId?: string;
   },
 ): string {
@@ -34,6 +35,11 @@ export function buildLeadSummary(
   // email on file (see lookupCustomerByPhone) — we never ask the caller for
   // one during the call, so a new customer simply won't have this line.
   const emailLine = input.email ? `\n\n- Email: ${input.email}` : "";
+
+  // Either captured fresh this call (the agent asked) or pulled from an
+  // existing ServiceTitan customer's on-file equipment record — whichever
+  // supplied it, only shown when there's actually a value.
+  const equipmentAgeLine = input.equipmentAge ? `\n\n- Age of Equipment: ${input.equipmentAge}` : "";
 
   // ServiceTitan's summary field doesn't auto-linkify plain URLs, so this
   // needs to actually be an anchor tag to render as clickable — a bare URL
@@ -51,6 +57,7 @@ export function buildLeadSummary(
     `- Phone: ${formatPhoneNumber(input.phone)}\n\n` +
     `- Address: ${address}` +
     emailLine +
+    equipmentAgeLine +
     callDetailsLine +
     `\n\n- Call Taker: AI Agent`
   );

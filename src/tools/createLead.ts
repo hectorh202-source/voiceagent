@@ -25,6 +25,10 @@ const bodySchema = z.object({
   zip: z.string().min(1),
   issueDescription: z.string().min(1),
   preferredTiming: z.string().optional(),
+  // Freeform (e.g. "3 years", "about 3") rather than a bare number — the
+  // agent asks this contextually (HVAC/AC calls), so a new customer or an
+  // unrelated issue simply won't have it.
+  equipmentAge: z.string().optional(),
   isEmergency: booleanish.optional().default(false),
   // Rides along so the /calls/:conversationId dashboard page can correlate
   // this lead with the ElevenLabs post-call webhook data for the same call.
@@ -45,8 +49,19 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { phone, name, street, city, state, zip, issueDescription, preferredTiming, isEmergency, conversationId } =
-    parsed.data;
+  const {
+    phone,
+    name,
+    street,
+    city,
+    state,
+    zip,
+    issueDescription,
+    preferredTiming,
+    equipmentAge,
+    isEmergency,
+    conversationId,
+  } = parsed.data;
 
   try {
     const existing = await lookupCustomerByPhone(business.id, phone);
@@ -68,6 +83,11 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       zip,
       phone,
       email: existing.email,
+      // The agent's own answer this call wins if given — more likely
+      // current than whatever might be on file, since equipment gets
+      // replaced. (A ServiceTitan-sourced fallback for returning customers
+      // who weren't asked again is a separate, not-yet-built addition.)
+      equipmentAge,
       conversationId,
     });
 
