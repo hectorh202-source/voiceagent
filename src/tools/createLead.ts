@@ -48,6 +48,7 @@ function buildLeadSummary(
     state: string;
     zip: string;
     phone: string;
+    email?: string | null;
     preferredTiming?: string;
     isEmergency: boolean;
     conversationId?: string;
@@ -59,6 +60,11 @@ function buildLeadSummary(
   const narrative = `${input.issueDescription} at ${address}.${
     input.preferredTiming ? ` Preferred timing: ${input.preferredTiming}.` : ""
   }${input.isEmergency ? " Customer indicated this is an emergency." : ""}`;
+
+  // Only populated when an existing ServiceTitan customer already has an
+  // email on file (see lookupCustomerByPhone) — we never ask the caller for
+  // one during the call, so a new customer simply won't have this line.
+  const emailLine = input.email ? `\n\n- Email: ${input.email}` : "";
 
   // ServiceTitan's summary field doesn't auto-linkify plain URLs, so this
   // needs to actually be an anchor tag to render as clickable — a bare URL
@@ -75,6 +81,7 @@ function buildLeadSummary(
     `${narrative}\n\n` +
     `- Phone: ${formatPhoneNumber(input.phone)}\n\n` +
     `- Address: ${address}` +
+    emailLine +
     callDetailsLine +
     `\n\n- Call Taker: AI Agent`
   );
@@ -115,6 +122,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       state,
       zip,
       phone,
+      email: existing.email,
       preferredTiming,
       isEmergency,
       conversationId,

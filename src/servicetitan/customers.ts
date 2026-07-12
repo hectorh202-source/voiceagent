@@ -7,6 +7,7 @@ export interface CustomerLookupResult {
   locationId: string | null;
   name: string | null;
   address: string | null;
+  email: string | null;
 }
 
 async function getPrimaryLocationId(businessId: number, customerId: string): Promise<string | null> {
@@ -55,12 +56,14 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
 
   const match = customers[0];
   if (!match) {
-    return { found: false, customerId: null, locationId: null, name: null, address: null };
+    return { found: false, customerId: null, locationId: null, name: null, address: null, email: null };
   }
 
   const address = match.address
     ? [match.address.street, match.address.city, match.address.state].filter(Boolean).join(", ")
     : null;
+
+  const email = (match.contacts ?? []).find((contact) => contact.type === "Email")?.value ?? null;
 
   const customerId = String(match.id);
   const locationId = await getPrimaryLocationId(businessId, customerId);
@@ -71,6 +74,7 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
     locationId,
     name: match.name ?? null,
     address,
+    email,
   };
 }
 
