@@ -64,7 +64,7 @@ async function updateLeadWithRealSummary(
       phone?: string;
     };
     const response = leadLog.response_json
-      ? (JSON.parse(leadLog.response_json) as { leadId?: string | null; email?: string | null })
+      ? (JSON.parse(leadLog.response_json) as { leadId?: string | null; email?: string | null; equipmentAge?: string | null })
       : null;
     const leadId = response?.leadId;
     if (!leadId || !request.street || !request.city || !request.state || !request.zip || !request.phone) {
@@ -79,6 +79,7 @@ async function updateLeadWithRealSummary(
       zip: request.zip,
       phone: request.phone,
       email: response?.email ?? null,
+      equipmentAge: response?.equipmentAge ?? null,
       conversationId,
     });
 

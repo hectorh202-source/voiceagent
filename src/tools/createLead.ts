@@ -74,6 +74,12 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       locationId = created.locationId;
     }
 
+    // The agent's own answer this call wins if given — more likely current
+    // than whatever might be on file, since equipment gets replaced. Falls
+    // back to the ServiceTitan on-file value (e.g. a non-HVAC call, or the
+    // agent didn't ask) when there's no fresh answer.
+    const resolvedEquipmentAge = equipmentAge ?? existing.equipmentAge;
+
     const narrative = buildInitialNarrative({ issueDescription, street, city, state, zip, preferredTiming, isEmergency });
     const summary = buildLeadSummary(business.id, {
       narrative,
@@ -83,11 +89,7 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       zip,
       phone,
       email: existing.email,
-      // The agent's own answer this call wins if given — more likely
-      // current than whatever might be on file, since equipment gets
-      // replaced. Falls back to the ServiceTitan on-file value (e.g. a
-      // non-HVAC call, or the agent didn't ask) when there's no fresh answer.
-      equipmentAge: equipmentAge ?? existing.equipmentAge,
+      equipmentAge: resolvedEquipmentAge,
       conversationId,
     });
 
@@ -106,11 +108,11 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       toolName: "create_lead",
       phone,
       request: parsed.data,
-      // email rides along in the logged response only (not sent back to
-      // ElevenLabs) so the post-call webhook can rebuild this same summary
-      // with the real AI call summary once it's available — see
-      // webhooks/postCall.ts.
-      response: { ...response, email: existing.email },
+      // email and equipmentAge ride along in the logged response only (not
+      // sent back to ElevenLabs) so the post-call webhook can rebuild this
+      // same summary with the real AI call summary once it's available —
+      // see webhooks/postCall.ts.
+      response: { ...response, email: existing.email, equipmentAge: resolvedEquipmentAge },
       success: leadResult.success,
     });
     res.json(response);
