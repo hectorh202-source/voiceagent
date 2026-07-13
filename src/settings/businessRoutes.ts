@@ -67,10 +67,10 @@ businessSettingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet(business.id, "servicetitan.tagName", body.serviceTitanTagName);
   setBusinessSetting(business.id, "servicetitan.bookingMode", (body.serviceTitanBookingMode as BookingMode) || "lead");
 
-  // 5 fixed rows, not dynamic add/remove — blank-name rows are dropped
+  // 10 fixed rows, not dynamic add/remove — blank-name rows are dropped
   // rather than saved as empty categories.
   const categories: ServiceCategory[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     const name = body[`serviceCategoryName${i}`]?.trim();
     if (!name) continue;
     categories.push({

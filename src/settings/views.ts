@@ -243,7 +243,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
         <div style="flex:1;">Business Unit ID</div>
         <div style="flex:1;">Job Type ID</div>
       </div>
-      ${Array.from({ length: 5 }, (_, i) => {
+      ${Array.from({ length: 10 }, (_, i) => {
         const cat = serviceTitan.serviceCategories[i] ?? { name: "", businessUnitId: "", jobTypeId: "" };
         return `
       <div style="display:flex; gap:8px; margin-bottom:4px;">
