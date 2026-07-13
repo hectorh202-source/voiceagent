@@ -1,6 +1,7 @@
 import { Router } from "express";
 import fs from "node:fs";
-import { buildCallDetailViewModel, computeCallFlags } from "./callDetails";
+import { buildCallDetailViewModel, computeCallFlags, matchesBadgeFilters } from "./callDetails";
+import type { CallListFilters } from "./callDetails";
 import { renderCallDetailPage, renderCallNotFoundPage, renderCallListPage } from "./views";
 import { getCallRecord, listCallRecords } from "../db/callRecords";
 import { findCreateLeadLogByConversationId } from "../db/callLog";
@@ -33,13 +34,26 @@ dashboardRouter.get("/calls", requireAdminSession, (req, res) => {
     res.status(404).end();
     return;
   }
-  const records = listCallRecords(business.id, 50);
-  const rows = records.map((record) => ({
-    record,
-    flags: computeCallFlags(business, record),
-    leadLog: findCreateLeadLogByConversationId(business.id, record.conversation_id),
-  }));
-  res.send(renderCallListPage(business, rows));
+
+  const query = req.query as Record<string, string | undefined>;
+  const filters: CallListFilters = {
+    failedTransfer: query.failedTransfer === "1",
+    noLeadCreated: query.noLeadCreated === "1",
+    endedEarly: query.endedEarly === "1",
+    from: query.from || undefined,
+    to: query.to || undefined,
+  };
+
+  const records = listCallRecords(business.id, 50, { from: filters.from, to: filters.to });
+  const rows = records
+    .map((record) => ({
+      record,
+      flags: computeCallFlags(business, record),
+      leadLog: findCreateLeadLogByConversationId(business.id, record.conversation_id),
+    }))
+    .filter((row) => matchesBadgeFilters(row.flags, filters));
+
+  res.send(renderCallListPage(business, rows, filters));
 });
 
 dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) => {

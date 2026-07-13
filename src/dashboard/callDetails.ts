@@ -202,3 +202,25 @@ export function computeCallFlags(business: Business, record: ElevenLabsCallRecor
 
   return { failedTransfer, noLeadCreated, endedEarly };
 }
+
+export interface CallListFilters {
+  failedTransfer: boolean;
+  noLeadCreated: boolean;
+  endedEarly: boolean;
+  from?: string;
+  to?: string;
+}
+
+// Checking no badge checkboxes means "show everything" — only once at least
+// one is checked does this start excluding rows, matching at ANY checked
+// flag (not all) since these are meant as "show me problem calls of these
+// kinds", not a stricter combined-condition search.
+export function matchesBadgeFilters(flags: CallFlags, filters: CallListFilters): boolean {
+  const anyBadgeFilterActive = filters.failedTransfer || filters.noLeadCreated || filters.endedEarly;
+  if (!anyBadgeFilterActive) return true;
+  return (
+    (filters.failedTransfer && flags.failedTransfer) ||
+    (filters.noLeadCreated && flags.noLeadCreated) ||
+    (filters.endedEarly && flags.endedEarly)
+  );
+}

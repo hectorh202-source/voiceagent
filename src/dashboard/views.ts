@@ -1,4 +1,4 @@
-import type { CallDetailViewModel, CallFlags } from "./callDetails";
+import type { CallDetailViewModel, CallFlags, CallListFilters } from "./callDetails";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
 import type { CreateLeadLogRow } from "../db/callLog";
 import type { Business } from "../db/businesses";
@@ -46,6 +46,9 @@ const styles = `
   .call-list-badges { display: flex; gap: 6px; flex-wrap: wrap; }
   .badge-error { background: #fce8e6; border: 1px solid #ea4335; color: #a50e0e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
   .badge-warning { background: #fef7e0; border: 1px solid #f9ab00; color: #7a5900; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
+  .filter-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 0.9rem; }
+  .filter-form label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .filter-form input[type="date"] { font-family: inherit; }
 `;
 
 function page(title: string, body: string): string {
@@ -69,7 +72,21 @@ export interface CallListRow {
   leadLog: CreateLeadLogRow | undefined;
 }
 
-export function renderCallListPage(business: Business, rows: CallListRow[]): string {
+export function renderCallListPage(business: Business, rows: CallListRow[], filters: CallListFilters): string {
+  const checkbox = (name: string, label: string, checked: boolean) =>
+    `<label><input type="checkbox" name="${name}" value="1" ${checked ? "checked" : ""} /> ${label}</label>`;
+
+  const filterFormHtml = `
+    <form method="get" class="filter-form">
+      ${checkbox("failedTransfer", "Failed transfer", filters.failedTransfer)}
+      ${checkbox("noLeadCreated", "No lead created", filters.noLeadCreated)}
+      ${checkbox("endedEarly", "Ended early", filters.endedEarly)}
+      <label>From <input type="date" name="from" value="${escapeHtml(filters.from ?? "")}" /></label>
+      <label>To <input type="date" name="to" value="${escapeHtml(filters.to ?? "")}" /></label>
+      <button type="submit">Filter</button>
+      <a href="/b/${business.id}/calls">Clear filters</a>
+    </form>`;
+
   const rowsHtml = rows.length
     ? rows
         .map(({ record, flags, leadLog }) => {
@@ -103,12 +120,17 @@ export function renderCallListPage(business: Business, rows: CallListRow[]): str
         </div>`;
         })
         .join("")
-    : `<p>No calls yet.</p>`;
+    : `<p>${
+        filters.failedTransfer || filters.noLeadCreated || filters.endedEarly || filters.from || filters.to
+          ? "No calls match these filters."
+          : "No calls yet."
+      }</p>`;
 
   return page(
     `Calls — ${business.name}`,
     `
     <h1>Calls — ${escapeHtml(business.name)}</h1>
+    <div class="card">${filterFormHtml}</div>
     <div class="card">${rowsHtml}</div>
   `,
   );

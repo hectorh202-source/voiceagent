@@ -120,6 +120,14 @@ Caddy auto-provisions a separate Let's Encrypt cert for this second hostname. Ex
 - **No lead created** — the transcript shows real activity (a `lookup_customer` tool call) but `findCreateLeadLogByConversationId()` finds no corresponding `create_lead` row for that conversation. Deliberately narrow: a call that hung up before any real activity (e.g. an immediate wrong-number hangup) isn't flagged for a lead it was never going to produce.
 - **Ended early** — `termination_reason` is exactly `"Call ended by remote party"` (the caller hanging up before the agent wrapped up on its own), as opposed to the normal `"end_call tool was called."` This one is shown as a softer signal (amber badge) rather than an alarm (red), since it can mean either a real problem or just a wrong number.
 
+### Filtering
+
+The list has a filter form (checkboxes for the three flags above, plus a `from`/`to` date range) — plain `GET` query params (`?failedTransfer=1&endedEarly=1&from=2026-07-01&to=2026-07-13`), so filtered views are bookmarkable/shareable links, no client-side JS needed.
+
+- **Badge checkboxes are OR'd together, not AND'd**: checking none shows every call; checking one or more shows any call matching *at least one* of the checked flags (`matchesBadgeFilters()` in `callDetails.ts`) — this is meant as "show me problem calls of these kinds," not a stricter combined-condition search.
+- **The date range is a separate `AND` condition** on top of the badge filter, pushed down into the SQL query itself (`listCallRecords()`'s new `range` parameter) rather than filtered in JS like the badges — `received_at` is an indexable column, unlike the flags, which only exist by parsing `transcript_json` at request time.
+- **The date boundaries are UTC calendar days, not the business's local day.** `received_at` is stored as UTC with no timezone marker (same fact `formatCallTime()` already accounts for on display), so a call right at a local-day boundary could land in the adjacent day's filter results by a few hours. Accepted as a coarse-filter tradeoff rather than building timezone-aware SQL boundary math for what's a "roughly this week" filter, not a precise audit query — revisit only if this mismatch becomes a real complaint.
+
 All three were confirmed against a real flagged call (the Emergency Dispatch burning-smell test — see [servicetitan-integration.md](servicetitan-integration.md) and [elevenlabs-tools.md](elevenlabs-tools.md) for that flow) before being built, not guessed.
 
 ## Deferred

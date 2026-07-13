@@ -69,8 +69,31 @@ export function getCallRecord(businessId: number, conversationId: string): Eleve
     .get(conversationId, businessId) as ElevenLabsCallRecord | undefined;
 }
 
-export function listCallRecords(businessId: number, limit = 50): ElevenLabsCallRecord[] {
+export interface CallDateRange {
+  from?: string; // "YYYY-MM-DD"
+  to?: string; // "YYYY-MM-DD"
+}
+
+// received_at is stored as UTC with no timezone marker (see dashboard/views.ts's
+// formatCallTime), so "from"/"to" boundaries here are UTC calendar days, not
+// the business's configured local day — a call right at a day boundary could
+// land in the adjacent day's filter results. Acceptable for a coarse filter;
+// revisit only if that mismatch becomes a real complaint.
+export function listCallRecords(businessId: number, limit = 50, range: CallDateRange = {}): ElevenLabsCallRecord[] {
+  const conditions = ["business_id = ?"];
+  const params: (string | number)[] = [businessId];
+
+  if (range.from) {
+    conditions.push("received_at >= ?");
+    params.push(`${range.from} 00:00:00`);
+  }
+  if (range.to) {
+    conditions.push("received_at <= ?");
+    params.push(`${range.to} 23:59:59`);
+  }
+  params.push(limit);
+
   return db
-    .prepare(`SELECT * FROM elevenlabs_calls WHERE business_id = ? ORDER BY received_at DESC LIMIT ?`)
-    .all(businessId, limit) as unknown as ElevenLabsCallRecord[];
+    .prepare(`SELECT * FROM elevenlabs_calls WHERE ${conditions.join(" AND ")} ORDER BY received_at DESC LIMIT ?`)
+    .all(...params) as unknown as ElevenLabsCallRecord[];
 }
