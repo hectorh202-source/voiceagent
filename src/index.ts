@@ -71,6 +71,6 @@ businessRouter.use(dashboardRouter);
 app.use("/b/:businessId", businessRouter);
 
 app.listen(env.PORT, () => {
-  console.log(`Voice agent platform listening on http://localhost:${env.PORT}`);
-  console.log(`Open http://localhost:${env.PORT}/settings to configure credentials.`);
+  console.log(`Voice agent platform listening on port ${env.PORT}`);
+  console.log(`Visit /settings on this server's domain (or http://localhost:${env.PORT}/settings if running locally) to configure credentials.`);
 });
