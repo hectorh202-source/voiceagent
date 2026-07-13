@@ -85,9 +85,9 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       email: existing.email,
       // The agent's own answer this call wins if given — more likely
       // current than whatever might be on file, since equipment gets
-      // replaced. (A ServiceTitan-sourced fallback for returning customers
-      // who weren't asked again is a separate, not-yet-built addition.)
-      equipmentAge,
+      // replaced. Falls back to the ServiceTitan on-file value (e.g. a
+      // non-HVAC call, or the agent didn't ask) when there's no fresh answer.
+      equipmentAge: equipmentAge ?? existing.equipmentAge,
       conversationId,
     });
 

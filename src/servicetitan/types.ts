@@ -14,5 +14,4 @@ export interface STCustomer {
   id: number;
   name?: string;
   address?: STAddress;
-  contacts?: STContact[];
 }

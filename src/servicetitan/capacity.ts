@@ -14,12 +14,15 @@ export async function checkAvailability(
   const path = `/dispatch/v2/tenant/${config.tenantId}/capacity`;
 
   try {
-    const response = await stRequest<{ availabilities?: { isAvailable: boolean }[] }>(config, "GET", path, {
-      params: {
+    const response = await stRequest<{ availabilities?: { isAvailable: boolean }[] }>(config, "POST", path, {
+      data: {
         startsOnOrAfter: startDate,
         endsOnOrBefore: endDate,
-        businessUnitIds: config.defaultBusinessUnitId || undefined,
-        jobTypeId: config.defaultJobTypeId || undefined,
+        businessUnitIds: config.defaultBusinessUnitId ? [Number(config.defaultBusinessUnitId)] : undefined,
+        jobTypeId: config.defaultJobTypeId ? Number(config.defaultJobTypeId) : undefined,
+        // No skill-based scheduling in use today — required by the API but
+        // always false for this integration.
+        skillBasedAvailability: false,
       },
     });
     const hasAvailability = (response.availabilities ?? []).some((slot) => slot.isAvailable);

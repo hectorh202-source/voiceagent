@@ -1,5 +1,5 @@
 import { requireServiceTitanConfig, stRequest } from "./httpClient";
-import type { STCustomer } from "./types";
+import type { STContact, STCustomer } from "./types";
 
 export interface CustomerLookupResult {
   found: boolean;
@@ -8,6 +8,7 @@ export interface CustomerLookupResult {
   name: string | null;
   address: string | null;
   email: string | null;
+  equipmentAge: string | null;
 }
 
 async function getPrimaryLocationId(businessId: number, customerId: string): Promise<string | null> {
@@ -26,14 +27,99 @@ async function getPrimaryLocationId(businessId: number, customerId: string): Pro
 
 // The customer list/search endpoint never includes a `contacts` field on its
 // results (confirmed against a real sandbox customer — its response has
-// name/address/etc. but no contacts at all), so email (and phone, for that
-// matter) can only be read via this separate per-customer sub-resource.
-async function getCustomerEmail(businessId: number, customerId: string): Promise<string | null> {
+// name/address/etc. but no contacts at all), so email and phone can only be
+// read via this separate per-customer sub-resource.
+async function getCustomerContacts(businessId: number, customerId: string): Promise<STContact[]> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/customers/${customerId}/contacts`;
   try {
-    const result = await stRequest<{ data: { type: string; value: string }[] }>(config, "GET", path, {});
-    return result.data?.find((contact) => contact.type === "Email")?.value ?? null;
+    const result = await stRequest<{ data: STContact[] }>(config, "GET", path, {});
+    return result.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+async function getCustomerEmail(businessId: number, customerId: string): Promise<string | null> {
+  const contacts = await getCustomerContacts(businessId, customerId);
+  return contacts.find((contact) => contact.type === "Email")?.value ?? null;
+}
+
+interface STContactRecord extends STContact {
+  customerId: number;
+}
+
+// GET .../customers/contacts (confirmed via ServiceTitan's CRM v2 OpenAPI spec)
+// returns contacts across multiple customers in one call given a comma-separated
+// `customerIds` list, unlike the plain customers list endpoint which never
+// includes contacts. It has no phone filter of its own, so matching still
+// happens client-side, but this replaces an N+1 per-customer loop with a
+// single (occasionally paginated) request.
+async function findPhoneMatchAmongCustomers(
+  businessId: number,
+  customerIds: number[],
+  digits: string,
+): Promise<number | null> {
+  if (customerIds.length === 0) return null;
+  const config = requireServiceTitanConfig(businessId);
+  const path = `/crm/v2/tenant/${config.tenantId}/customers/contacts`;
+  const idsParam = customerIds.join(",");
+
+  let page = 1;
+  for (;;) {
+    let result: { data?: STContactRecord[]; hasMore?: boolean };
+    try {
+      result = await stRequest<{ data: STContactRecord[]; hasMore: boolean }>(config, "GET", path, {
+        // ServiceTitan requires either modifiedBefore/modifiedOnOrAfter OR
+        // customerIds, never both together — confirmed via a real 400:
+        // "Cannot use other filters when 'customerIds' is in use". So
+        // customerIds alone is both necessary and sufficient here.
+        params: { customerIds: idsParam, pageSize: 200, page },
+      });
+    } catch {
+      return null;
+    }
+    const match = (result.data ?? []).find(
+      (contact) =>
+        (contact.type === "Phone" || contact.type === "MobilePhone") && normalizePhone(contact.value) === digits,
+    );
+    if (match) return match.customerId;
+    if (!result.hasMore) return null;
+    page += 1;
+  }
+}
+
+// Filters `?locationIds=` (plural — the only real location/customer-scoped
+// filter this endpoint has; singular `locationId`/`customerId` are silently
+// ignored by ServiceTitan and return the entire tenant's equipment list,
+// which is what earlier diagnostics against those params actually hit).
+// There's no direct "age" field, so it's derived from `installedOn`. When a
+// location has multiple installed items (e.g. furnace + AC), the most
+// recently modified active one is used — a heuristic, since there's no
+// equipment-type filter to target a specific unit.
+async function getInstalledEquipmentAge(
+  businessId: number,
+  customerId: string,
+  locationId: string,
+): Promise<string | null> {
+  const config = requireServiceTitanConfig(businessId);
+  const path = `/equipmentsystems/v2/tenant/${config.tenantId}/installed-equipment`;
+  try {
+    const result = await stRequest<{ data: { customerId: number; installedOn: string | null }[] }>(
+      config,
+      "GET",
+      path,
+      { params: { locationIds: locationId, active: "True", pageSize: 50, sort: "-modifiedOn" } },
+    );
+    const match = (result.data ?? []).find(
+      (item) => String(item.customerId) === customerId && item.installedOn,
+    );
+    if (!match?.installedOn) return null;
+
+    const years = Math.floor(
+      (Date.now() - new Date(match.installedOn).getTime()) / (365.25 * 24 * 60 * 60 * 1000),
+    );
+    return years < 1 ? "Less than 1 year" : `${years} year${years === 1 ? "" : "s"}`;
   } catch {
     return null;
   }
@@ -62,16 +148,28 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
     const paged = await stRequest<{ data: STCustomer[] }>(config, "GET", path, {
       params: { pageSize: 50, sort: "-createdOn" },
     });
-    customers = (paged.data ?? []).filter((c) =>
-      (c.contacts ?? []).some(
-        (contact) => contact.type === "Phone" && normalizePhone(contact.value) === digits,
-      ),
+    const candidates = paged.data ?? [];
+    const matchedId = await findPhoneMatchAmongCustomers(
+      businessId,
+      candidates.map((c) => c.id),
+      digits,
     );
+    if (matchedId !== null) {
+      customers = candidates.filter((c) => c.id === matchedId);
+    }
   }
 
   const match = customers[0];
   if (!match) {
-    return { found: false, customerId: null, locationId: null, name: null, address: null, email: null };
+    return {
+      found: false,
+      customerId: null,
+      locationId: null,
+      name: null,
+      address: null,
+      email: null,
+      equipmentAge: null,
+    };
   }
 
   const address = match.address
@@ -79,9 +177,12 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
     : null;
 
   const customerId = String(match.id);
-  const [locationId, email] = await Promise.all([
-    getPrimaryLocationId(businessId, customerId),
+  // Equipment lookup needs locationId first, so this can't all run in one
+  // Promise.all the way email/locationId used to.
+  const locationId = await getPrimaryLocationId(businessId, customerId);
+  const [email, equipmentAge] = await Promise.all([
     getCustomerEmail(businessId, customerId),
+    locationId ? getInstalledEquipmentAge(businessId, customerId, locationId) : Promise.resolve(null),
   ]);
 
   return {
@@ -91,6 +192,7 @@ export async function lookupCustomerByPhone(businessId: number, phone: string): 
     name: match.name ?? null,
     address,
     email,
+    equipmentAge,
   };
 }
 

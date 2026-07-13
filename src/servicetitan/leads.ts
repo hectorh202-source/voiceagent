@@ -38,6 +38,16 @@ export async function createLead(businessId: number, input: CreateLeadInput): Pr
   const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/leads`;
 
+  // ServiceTitan requires a Campaign ID on every lead — fail with a clear,
+  // actionable log line here rather than letting ServiceTitan reject the
+  // request with an opaque 400.
+  if (!config.defaultCampaignId) {
+    console.error(
+      "createLead: no Campaign ID configured (Settings → ServiceTitan → Default campaign ID) — ServiceTitan requires one on every lead",
+    );
+    return { success: false, leadId: null };
+  }
+
   // ServiceTitan requires either a Call Reason ID or a follow-up date on every
   // lead. We don't have a real scheduled date from the call (preferredTiming
   // is freeform text, not a date) — if no Call Reason ID is configured,
@@ -65,7 +75,7 @@ export async function createLead(businessId: number, input: CreateLeadInput): Pr
         customerId: Number(input.customerId),
         locationId: input.locationId ? Number(input.locationId) : undefined,
         businessUnitId: config.defaultBusinessUnitId ? Number(config.defaultBusinessUnitId) : undefined,
-        campaignId: config.defaultCampaignId ? Number(config.defaultCampaignId) : undefined,
+        campaignId: Number(config.defaultCampaignId),
         callReasonId: config.defaultCallReasonId ? Number(config.defaultCallReasonId) : undefined,
         jobTypeId: config.defaultJobTypeId ? Number(config.defaultJobTypeId) : undefined,
         tagTypeIds: tagTypeId ? [tagTypeId] : undefined,

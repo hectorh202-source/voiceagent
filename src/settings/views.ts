@@ -225,7 +225,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <label>Default business unit ID</label>
       <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan.businessUnitId)}" />
 
-      <label>Default campaign ID</label>
+      <label>Default campaign ID (required for lead creation)</label>
       <input type="text" name="serviceTitanCampaignId" value="${escapeHtml(serviceTitan.campaignId)}" />
 
       <label>Default call reason ID</label>
