@@ -117,4 +117,4 @@ This runs as two containers: the app itself, and [Caddy](https://caddyserver.com
 
 ## Scope notes
 
-This is a phase-1 MVP: inbound calls only, sandbox ServiceTitan, leads (not live bookings). Outbound calling and live job scheduling are deliberately deferred. Per-call recordings/transcripts/summaries are available at `dashboard.laughslapper.com/calls/:id` — see [docs/call-dashboard.md](docs/call-dashboard.md) — though there's no multi-call list view yet, only direct links to individual calls.
+This is a phase-1 MVP: inbound calls only, sandbox ServiceTitan, leads (not live bookings). Outbound calling and live job scheduling are deliberately deferred. Per-call recordings/transcripts/summaries are available at `dashboard.laughslapper.com/calls/:id`, and a login-gated flagged calls list (with filters) lives at `dashboard.laughslapper.com/calls` — see [docs/call-dashboard.md](docs/call-dashboard.md). See [docs/roadmap.md](docs/roadmap.md) for what's deliberately deferred, including security hardening not yet done.

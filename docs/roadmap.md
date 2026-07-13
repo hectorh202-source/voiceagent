@@ -1,0 +1,48 @@
+# Roadmap
+
+Things discussed and deliberately deferred, not yet implemented. This is a planning doc, not a technical write-up of what exists — see [docs/README.md](README.md) for those. Update this as items get picked up or new ones come up in conversation; move a finished item out into whichever subsystem doc actually covers it once it's done, rather than leaving a stale "TODO" here.
+
+## Near-term
+
+### Precompute call flags at write-time instead of read-time
+
+The flagged calls list ([call-dashboard.md](call-dashboard.md#flagged-calls-list)) currently computes `failedTransfer`/`noLeadCreated` by parsing `transcript_json` and querying `call_log` fresh on every page load, once per row. This scales with total history, not just the list size, since `call_log` accumulates every tool call ever made and `findCreateLeadLogByConversationId()`'s `LIKE '%...%'` scan can't use an index.
+
+Fix: add `failed_transfer`/`no_lead_created` boolean columns to `elevenlabs_calls`, computed exactly once — inside the post-call webhook handler (`webhooks/postCall.ts`), at the moment the transcript first arrives, reusing the parsing logic already in `computeCallFlags()`. (`endedEarly` doesn't need a column — it's already a one-line comparison against the existing `termination_reason` column.) The list route then just reads three plain columns per row: no JSON parsing, no `call_log` scan, at read time, regardless of history size.
+
+Requires: a schema migration to add the columns (this project already has a migration-script pattern — see `db/migrateToMultiTenant.ts`), and a one-time backfill for the handful of calls already stored before this lands.
+
+### Real pagination for the flagged calls list
+
+Currently capped at the 50 most recent calls, no pagination, no index backing the query. Three pieces needed together for this to actually scale (discussed in detail, not yet built):
+1. An index on `elevenlabs_calls(business_id, received_at)` — without it, even "the top 50" requires reading every row for that business first.
+2. Keyset (cursor) pagination rather than `LIMIT/OFFSET` — remember the `received_at` of the last row shown and query "give me the next N older than that," so every page costs the same regardless of how deep you've paged. Plain `OFFSET` still has to skip past every preceding row even with an index.
+3. The write-time flag precompute above, so the row-level cost per page stays flat too.
+
+None of this is urgent at current call volumes — see the "when does this actually matter" discussion below.
+
+### Emergency Dispatch node — `create_lead` never wired up + transfer number shows "Unknown"
+
+Explicitly put on hold by the user, kept here so it isn't lost. Confirmed via a real test call (Emergency Dispatch / burning-smell transcript): the ElevenLabs "Emergency Dispatch" agent node goes straight to a `transfer_to_number` attempt and never calls `create_lead` at all — in a multi-agent ElevenLabs workflow, each node has its own separate tool configuration, so this node most likely just doesn't have `create_lead` wired up, or lacks the instruction to use it. Separately, the transfer itself failed with destination "Unknown number" — `operational.emergencyTransferNumber` (since removed from `/settings`, see below) was never the same thing as ElevenLabs' own transfer-tool destination, which is a separate manual setting inside that agent node.
+
+Two fixes needed, both on the ElevenLabs side: (1) set the real transfer destination number on the Emergency Dispatch node's `transfer_to_number` tool, (2) give that node the `create_lead` tool (same parameters as the other nodes, `isEmergency: true`) and instruct it to call `create_lead` before or alongside attempting the transfer, so a lead exists even if the transfer is declined or fails.
+
+## Security hardening not yet implemented
+
+From an earlier security review of this codebase. Multi-user login + brute-force lockout (rate-limited failed attempts, account lockout) came out of that same review and is already shipped — everything below is still open, confirmed still true as of this writing:
+
+- **Encryption key co-located with its data** — `settings/encryptionKey.ts` stores `.encryption.key` in the same directory as `app.db` (same Docker volume). Anyone who gets a copy of that volume/backup has both the encrypted credentials and the key to decrypt them — the encryption only protects against someone obtaining the DB file *without* the volume it lives in, which isn't the realistic threat model for a backup or volume snapshot. Fix would mean sourcing the key from somewhere that isn't backed up alongside the data (an environment variable injected at deploy time, a secrets manager, etc.) — a real tradeoff against the project's own "no credentials in code/env" preference, worth discussing before picking a direction.
+- **Unsanitized `conversation_id` used directly in a file path** — `webhooks/postCall.ts`'s `post_call_audio` handler does `path.join(recordingsDir, \`${data.conversation_id}.mp3\`)` with zero sanitization of `data.conversation_id`, which comes straight from the webhook payload. A path-traversal-shaped value here (unlikely from ElevenLabs itself, but not defended against) could write outside `recordingsDir`. Fix: validate/sanitize the ID (e.g. reject anything that isn't a plausible ElevenLabs conversation ID shape) before using it in a path.
+- **Unencrypted PII at rest** — call transcripts, summaries, and the name/phone/address captured in `call_log`/`elevenlabs_calls` are stored as plain SQLite text. Credentials go through the AES-256-GCM layer in `settings/store.ts`; call data doesn't. Whether this needs fixing depends on the actual data-sensitivity bar this platform needs to meet — worth a deliberate decision, not just doing it by default.
+- **No general security headers** — only the dashboard router sets its own narrow set (`X-Robots-Tag`, `Referrer-Policy`), scoped to that unlisted-link threat model. Nothing app-wide: no CSP, no `X-Frame-Options`, no HSTS, etc.
+- **No CSRF protection** on state-changing `/settings` forms (credentials, business creation, user management) — session-cookie-authenticated POST requests with no token check.
+- **Docker container runs as root** — the `Dockerfile`'s runtime stage has no `USER` directive, so the app process runs as root inside its container. Standard hardening would add a non-root user and `USER` line in the runtime stage.
+
+## Other deferred items
+
+- **Real-time/automatic Lead→Job conversion tracking** — the ServiceTitan link on a call's detail page always points at the Lead this app created, never at the Job it becomes once staff convert it (see [call-dashboard.md](call-dashboard.md#deferred)).
+- **Per-business user roles/permissions** — every user in the `users` table currently has full access to every business (edit any business's live credentials, view any business's calls). Fine for a single internal team; would need real scoping the moment this login pool ever includes anyone outside your own team (see [settings-app.md](settings-app.md)).
+
+## Future considerations (not concrete tasks — things to watch for)
+
+- **Moving off SQLite to an external DB (e.g. Supabase/Postgres)** — discussed at length; conclusion was this is *not* a scale-of-data problem at any business count you're likely to hit soon (napkin math: even 1000 businesses at realistic call volumes is a few requests/second, trivial for SQLite). The actual trigger is needing to run more than one `app` container at once — for zero-downtime deploys, failover/HA, or managed backups — not a business-count threshold. Revisit if any of those three become real requirements, not on a calendar.

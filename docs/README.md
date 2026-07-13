@@ -21,6 +21,10 @@ Deeper write-ups on specific subsystems, for anyone picking up this project who 
 
 - **[Deployment](deployment.md)** — Docker/Caddy/VPS setup: why Docker, the two-container topology, volumes and what's at stake if they're lost, DNS, firewall, and day-to-day operational commands.
 
+## Planning
+
+- **[Roadmap](roadmap.md)** — deferred work: near-term items (write-time call flags, real pagination, the Emergency Dispatch fix), security hardening not yet done, and other things discussed but not yet built.
+
 ---
 
 Add new docs here as the project grows and link them into the right section above. If a doc's scope changes enough that it no longer fits its section, move it — this index should always reflect what's actually true, not just append forever.
