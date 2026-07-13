@@ -43,12 +43,14 @@ Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently
 
 ```
 POST /b/:businessId/tools/check-availability
-Request:  { "startDate": string, "endDate": string, "jobType"?: string }
+Request:  { "startDate": string, "endDate": string, "serviceCategory"?: string }
 
 Response (lead mode, default): { "hasNearTermAvailability": boolean, "note": string }
 Response (job mode):           { "slots": { "start": string, "end": string, "label": string }[], "note": string }
 ```
 Calls `servicetitan/capacity.ts#checkAvailability`, branching on that business's `servicetitan.bookingMode` setting. **Lead mode is deliberately coarse** — a signal for the agent to set expectations, never an exact bookable slot. **Job mode returns real bookable windows** (`label` is human-readable, e.g. `"Tuesday, July 15 at 2:00 PM"`, in the business's configured timezone) — the agent reads these aloud and lets the caller pick one, then passes the chosen `start`/`end` straight through to `book_job`.
+
+**`serviceCategory` replaced an earlier `jobType` field that was accepted but never actually wired up to filter anything** — a real dead parameter, caught while building the category-resolution feature (see [servicetitan-integration.md](servicetitan-integration.md#6-dynamic-business-unitjob-type-via-service-categories)). It resolves to that business's configured business unit/job type for an accurate capacity check, instead of always using the single default.
 
 ### `book_job` — [`tools/bookJob.ts`](../src/tools/bookJob.ts)
 
@@ -57,7 +59,7 @@ POST /b/:businessId/tools/book-job
 Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
             "zip": string, "issueDescription": string, "preferredTiming"?: string,
             "equipmentAge"?: string, "isEmergency"?: boolean,
-            "selectedStart"?: string, "selectedEnd"?: string }
+            "selectedStart"?: string, "selectedEnd"?: string, "serviceCategory"?: string }
 Response: { "success": boolean, "jobId": string|null, "leadId": string|null, "confirmationMessage": string }
 ```
 Only relevant for businesses with `servicetitan.bookingMode` set to `"job"` — see [servicetitan-integration.md](servicetitan-integration.md#5-job-booking-mode-createjobbusinessid-input) for the full backend design. Same customer-lookup/summary logic as `create_lead`, writing a ServiceTitan **Job** (with the caller's chosen appointment slot) instead of a Lead.
@@ -70,7 +72,7 @@ Only relevant for businesses with `servicetitan.bookingMode` set to `"job"` — 
 POST /b/:businessId/tools/create-lead
 Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
             "zip": string, "issueDescription": string, "preferredTiming"?: string,
-            "equipmentAge"?: string, "isEmergency"?: boolean }
+            "equipmentAge"?: string, "isEmergency"?: boolean, "serviceCategory"?: string }
 Response: { "success": boolean, "leadId": string|null, "confirmationMessage": string }
 ```
 Looks up the customer again (reusing `lookupCustomerByPhone`); if not found, creates one; then creates the ServiceTitan Lead. Always returns a caller-appropriate `confirmationMessage`, even on failure, so the agent has something safe to say regardless of what happened underneath.
@@ -107,6 +109,15 @@ A business staying in the default lead mode needs **zero** ElevenLabs-side chang
 1. **Add `book_job` as a new webhook tool**, same auth/body pattern as `create_lead` above — method `POST`, URL `.../tools/book-job`, the same `X-Tool-Secret` header/Secret setup, and a body schema with all of `create_lead`'s parameters plus two more: `selectedStart` and `selectedEnd` (**Value Type: LLM Prompt** for both — the agent fills these in with whichever slot the caller picked from `check_availability`'s response, not a value ElevenLabs has any built-in variable for).
 2. **A system-prompt instruction for the new flow**: after diagnosing a non-emergency issue, call `check_availability`, read the returned `slots[].label` values aloud, let the caller choose one, then call `book_job` with that slot's `start`/`end` as `selectedStart`/`selectedEnd`. For emergencies, keep calling `create_lead` exactly as today — the backend's own safety net (see [servicetitan-integration.md](servicetitan-integration.md#5-job-booking-mode-createjobbusinessid-input)) will route an emergency correctly even if the agent calls `book_job` by mistake, but the prompt should still say `create_lead` for emergencies as the primary instruction, not rely on that fallback.
 3. Adjust the "always close by saying a team member will confirm the exact appointment" line from the base system prompt (below) — that's specifically lead-mode wording; a job-mode confirmation should instead confirm the actual booked time, since a real appointment now exists.
+
+### Service categories setup (optional, any business)
+
+Only relevant once you've configured 2+ rows under "Service categories" on `/b/:businessId/settings` — see [servicetitan-integration.md](servicetitan-integration.md#6-dynamic-business-unitjob-type-via-service-categories). If a business has no categories configured, `serviceCategory` is simply never sent and everything falls back to that business's single default business unit/job type exactly as before this feature existed — no ElevenLabs-side changes needed in that case.
+
+If you do configure categories, add `serviceCategory` as a parameter on **`check_availability`, `create_lead`, and `book_job`** (whichever of the three that business's agent actually uses):
+1. Identifier `serviceCategory`, **Value Type: LLM Prompt**.
+2. Description: list the exact category names you configured for that business, e.g. *"One of: Plumbing, HVAC. Pick whichever trade best matches the issue described. Use the exact name shown — it must match one of these two options exactly."* The exact names matter — `resolveServiceCategory()` does a case-insensitive match, but a category name the agent invents that doesn't match any configured row silently falls back to the single default, no error surfaced.
+3. A system-prompt instruction telling the agent to classify the issue into one of those categories once it knows the service type, before calling any of the three tools — e.g. "Once you know whether this is a plumbing or HVAC issue, include that in `serviceCategory` on every subsequent tool call for this conversation."
 
 ### Emergency transfer
 

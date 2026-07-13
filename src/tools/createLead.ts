@@ -5,6 +5,7 @@ import { createLead as createServiceTitanLead } from "../servicetitan/leads";
 import { buildLeadSummary, buildInitialNarrative } from "../servicetitan/leadSummary";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
+import { resolveServiceCategory } from "../settings/store";
 
 // ElevenLabs' tool-calling occasionally sends boolean-typed fields as the
 // strings "true"/"false" rather than a JSON boolean — accept both forms.
@@ -34,6 +35,11 @@ const bodySchema = z.object({
   // Rides along so the /calls/:conversationId dashboard page can correlate
   // this lead with the ElevenLabs post-call webhook data for the same call.
   conversationId: z.string().optional(),
+  // One of that business's configured service category names (e.g.
+  // "Plumbing", "HVAC") — resolves to a specific business unit/job type
+  // instead of the business's single default. Optional: falls back to the
+  // default when omitted or when it doesn't match any configured category.
+  serviceCategory: z.string().optional(),
 });
 
 export interface CreateLeadFlowInput {
@@ -48,6 +54,7 @@ export interface CreateLeadFlowInput {
   equipmentAge?: string;
   isEmergency: boolean;
   conversationId?: string;
+  serviceCategory?: string;
 }
 
 export interface CreateLeadFlowResult {
@@ -103,11 +110,14 @@ export async function runCreateLeadFlow(businessId: number, input: CreateLeadFlo
     conversationId: input.conversationId,
   });
 
+  const { businessUnitId, jobTypeId } = resolveServiceCategory(businessId, input.serviceCategory);
   const leadResult = await createServiceTitanLead(businessId, {
     customerId,
     locationId,
     summary,
     isEmergency: input.isEmergency,
+    businessUnitId,
+    jobTypeId,
   });
 
   return {

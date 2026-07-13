@@ -10,6 +10,12 @@ export interface CreateJobInput {
   // whichever one the caller picked.
   appointmentStart: string;
   appointmentEnd: string;
+  // Overrides the business's single default business unit/job type when a
+  // matching service category was resolved (see settings/store.ts's
+  // resolveServiceCategory) — falls back to the config defaults below when
+  // not given.
+  businessUnitId?: string;
+  jobTypeId?: string;
 }
 
 export interface CreateJobResult {
@@ -37,14 +43,19 @@ export async function createJob(businessId: number, input: CreateJobInput): Prom
   const config = requireServiceTitanConfig(businessId);
   const path = `/jpm/v2/tenant/${config.tenantId}/jobs`;
 
+  const businessUnitId = input.businessUnitId ?? config.defaultBusinessUnitId;
+  const jobTypeId = input.jobTypeId ?? config.defaultJobTypeId;
+
   // Unlike a Lead, ServiceTitan requires businessUnitId, jobTypeId, and a
   // real locationId on every Job, in addition to campaignId — fail with a
   // clear, actionable log line rather than letting ServiceTitan reject the
-  // request with an opaque 400.
+  // request with an opaque 400. Checked against the *resolved* values (a
+  // matching service category can supply what the single default doesn't),
+  // not the raw config defaults directly.
   const missing = [
     !config.defaultCampaignId && "Default campaign ID",
-    !config.defaultBusinessUnitId && "Default business unit ID",
-    !config.defaultJobTypeId && "Default job type ID",
+    !businessUnitId && "Default business unit ID (or a matching service category)",
+    !jobTypeId && "Default job type ID (or a matching service category)",
     !input.locationId && "a resolved customer location",
   ].filter((v): v is string => !!v);
   if (missing.length > 0) {
@@ -67,8 +78,8 @@ export async function createJob(businessId: number, input: CreateJobInput): Prom
       data: {
         customerId: Number(input.customerId),
         locationId: Number(input.locationId),
-        businessUnitId: Number(config.defaultBusinessUnitId),
-        jobTypeId: Number(config.defaultJobTypeId),
+        businessUnitId: Number(businessUnitId),
+        jobTypeId: Number(jobTypeId),
         campaignId: Number(config.defaultCampaignId),
         // Only reached for non-emergency calls (the emergency safety net in
         // tools/bookJob.ts routes emergencies to createLead instead), so

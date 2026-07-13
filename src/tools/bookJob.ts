@@ -6,6 +6,7 @@ import { buildLeadSummary, buildInitialNarrative } from "../servicetitan/leadSum
 import { runCreateLeadFlow, booleanish } from "./createLead";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
+import { resolveServiceCategory } from "../settings/store";
 
 const bodySchema = z.object({
   phone: z.string().min(4),
@@ -25,6 +26,7 @@ const bodySchema = z.object({
   // Only enforced once we know we're actually about to book.
   selectedStart: z.string().optional(),
   selectedEnd: z.string().optional(),
+  serviceCategory: z.string().optional(),
 });
 
 export async function handleBookJob(req: Request, res: Response): Promise<void> {
@@ -129,12 +131,15 @@ export async function handleBookJob(req: Request, res: Response): Promise<void> 
       conversationId: parsed.data.conversationId,
     });
 
+    const { businessUnitId, jobTypeId } = resolveServiceCategory(business.id, parsed.data.serviceCategory);
     const jobResult = await createServiceTitanJob(business.id, {
       customerId,
       locationId,
       summary,
       appointmentStart: selectedStart,
       appointmentEnd: selectedEnd,
+      businessUnitId,
+      jobTypeId,
     });
 
     const response = {

@@ -43,9 +43,16 @@ export async function checkAvailability(
   businessId: number,
   startDate: string,
   endDate: string,
+  // Overrides the business's single default business unit/job type when a
+  // matching service category was resolved (see settings/store.ts's
+  // resolveServiceCategory) — falls back to the config defaults when not given.
+  overrides: { businessUnitId?: string; jobTypeId?: string } = {},
 ): Promise<AvailabilityResult> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/dispatch/v2/tenant/${config.tenantId}/capacity`;
+
+  const businessUnitId = overrides.businessUnitId ?? config.defaultBusinessUnitId;
+  const jobTypeId = overrides.jobTypeId ?? config.defaultJobTypeId;
 
   const maxEnd = new Date(new Date(startDate).getTime() + MAX_RANGE_DAYS * 24 * 60 * 60 * 1000);
   const clampedEndDate = new Date(endDate) > maxEnd ? maxEnd.toISOString() : endDate;
@@ -55,8 +62,8 @@ export async function checkAvailability(
       data: {
         startsOnOrAfter: startDate,
         endsOnOrBefore: clampedEndDate,
-        businessUnitIds: config.defaultBusinessUnitId ? [Number(config.defaultBusinessUnitId)] : undefined,
-        jobTypeId: config.defaultJobTypeId ? Number(config.defaultJobTypeId) : undefined,
+        businessUnitIds: businessUnitId ? [Number(businessUnitId)] : undefined,
+        jobTypeId: jobTypeId ? Number(jobTypeId) : undefined,
         // No skill-based scheduling in use today — required by the API but
         // always false for this integration.
         skillBasedAvailability: false,

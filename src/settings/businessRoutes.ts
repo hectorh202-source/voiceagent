@@ -7,6 +7,7 @@ import {
   getRawOperationalSettings,
   type ServiceTitanEnvironment,
   type BookingMode,
+  type ServiceCategory,
 } from "./store";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { renderSettingsPage } from "./views";
@@ -65,6 +66,20 @@ businessSettingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet(business.id, "servicetitan.jobTypeId", body.serviceTitanJobTypeId);
   maybeSet(business.id, "servicetitan.tagName", body.serviceTitanTagName);
   setBusinessSetting(business.id, "servicetitan.bookingMode", (body.serviceTitanBookingMode as BookingMode) || "lead");
+
+  // 5 fixed rows, not dynamic add/remove — blank-name rows are dropped
+  // rather than saved as empty categories.
+  const categories: ServiceCategory[] = [];
+  for (let i = 0; i < 5; i++) {
+    const name = body[`serviceCategoryName${i}`]?.trim();
+    if (!name) continue;
+    categories.push({
+      name,
+      businessUnitId: body[`serviceCategoryBusinessUnitId${i}`]?.trim() ?? "",
+      jobTypeId: body[`serviceCategoryJobTypeId${i}`]?.trim() ?? "",
+    });
+  }
+  setBusinessSetting(business.id, "servicetitan.serviceCategories", JSON.stringify(categories));
 
   setBusinessSetting(business.id, "operational.timezone", body.timezone || "America/New_York");
   maybeSet(business.id, "operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));

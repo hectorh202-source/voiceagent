@@ -223,7 +223,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
         <button type="button" onclick="const i=document.getElementById('tenantIdInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.tenantIdChanged=true; this.disabled=true;">Change</button>
       </div>
 
-      <label>Default business unit ID</label>
+      <label>Default business unit ID (used if no service category matches)</label>
       <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan.businessUnitId)}" />
 
       <label>Default campaign ID (required for lead creation)</label>
@@ -232,9 +232,26 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <label>Default call reason ID</label>
       <input type="text" name="serviceTitanCallReasonId" value="${escapeHtml(serviceTitan.callReasonId)}" />
 
-      <label>Default job type ID</label>
+      <label>Default job type ID (used if no service category matches)</label>
       <input type="text" name="serviceTitanJobTypeId" value="${escapeHtml(serviceTitan.jobTypeId)}" />
-      <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads created by the agent.</div>
+      <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads/jobs created by the agent.</div>
+
+      <label>Service categories (optional)</label>
+      <div class="hint">Classify calls by trade instead of always using the defaults above — e.g. a "Plumbing" category and an "HVAC" category, each with its own business unit/job type. The agent picks one by name (see elevenlabs-tools.md). Leave a row's name blank to skip it.</div>
+      <div style="display:flex; gap:8px; font-size:0.8rem; color:#666; margin-top:8px;">
+        <div style="flex:2;">Name</div>
+        <div style="flex:1;">Business Unit ID</div>
+        <div style="flex:1;">Job Type ID</div>
+      </div>
+      ${Array.from({ length: 5 }, (_, i) => {
+        const cat = serviceTitan.serviceCategories[i] ?? { name: "", businessUnitId: "", jobTypeId: "" };
+        return `
+      <div style="display:flex; gap:8px; margin-bottom:4px;">
+        <input type="text" name="serviceCategoryName${i}" value="${escapeHtml(cat.name)}" placeholder="e.g. Plumbing" style="flex:2;" />
+        <input type="text" name="serviceCategoryBusinessUnitId${i}" value="${escapeHtml(cat.businessUnitId)}" style="flex:1;" />
+        <input type="text" name="serviceCategoryJobTypeId${i}" value="${escapeHtml(cat.jobTypeId)}" style="flex:1;" />
+      </div>`;
+      }).join("")}
 
       <label>Lead tag name (optional)</label>
       <div style="display:flex; gap:8px;">

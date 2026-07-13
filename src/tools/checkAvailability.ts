@@ -3,12 +3,17 @@ import { z } from "zod";
 import { checkAvailability } from "../servicetitan/capacity";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
-import { getBookingMode } from "../settings/store";
+import { getBookingMode, resolveServiceCategory } from "../settings/store";
 
 const bodySchema = z.object({
   startDate: z.string(),
   endDate: z.string(),
-  jobType: z.string().optional(),
+  // One of that business's configured service category names — resolves to
+  // a specific business unit/job type for an accurate capacity check
+  // instead of always using the business's single default. Replaces an
+  // earlier "jobType" field that was accepted but never actually wired up
+  // to filter anything.
+  serviceCategory: z.string().optional(),
 });
 
 export async function handleCheckAvailability(req: Request, res: Response): Promise<void> {
@@ -27,7 +32,8 @@ export async function handleCheckAvailability(req: Request, res: Response): Prom
   }
 
   try {
-    const result = await checkAvailability(business.id, parsed.data.startDate, parsed.data.endDate);
+    const overrides = resolveServiceCategory(business.id, parsed.data.serviceCategory);
+    const result = await checkAvailability(business.id, parsed.data.startDate, parsed.data.endDate, overrides);
 
     // Lead mode (default): unchanged response shape — no exact slot is ever
     // reserved in this mode, so the vague boolean+note is all the agent

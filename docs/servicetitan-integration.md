@@ -162,6 +162,26 @@ The direct-booking alternative to Lead creation, only used for businesses with `
 
 **ElevenLabs-side setup required, per business, only for job-mode businesses** (see [elevenlabs-tools.md](elevenlabs-tools.md) for the full tool/prompt configuration) — a business staying in lead mode needs zero ElevenLabs-side changes.
 
+### 6. Dynamic business unit/job type via service categories
+
+Every business had exactly one static default business unit and job type, used for *every* lead/job regardless of what the call was about — a real gap, since a business with distinct trades (TitanZ has 10 real business units: Plumbing Install/Maintenance/Sales/Service, HVAC Service/Maintenance/Sales/Install, Re-pipe Install/Sales) was categorizing a leaking pipe and a broken AC identically.
+
+**Storage — one JSON-encoded setting, not a new table.** `business_settings` is already a flat encrypted key-value store; a small list of categories doesn't justify a new table/migration. `settings/store.ts` stores them as a JSON array under `servicetitan.serviceCategories`:
+```ts
+export interface ServiceCategory { name: string; businessUnitId: string; jobTypeId: string }
+export function getServiceCategories(businessId: number): ServiceCategory[]
+export function resolveServiceCategory(businessId: number, categoryName: string | undefined): { businessUnitId?: string; jobTypeId?: string }
+```
+`resolveServiceCategory()` does a case-insensitive name match and returns `{}` (both fields `undefined`) when no name is given or nothing matches — every caller treats that identically to "no override," so a business with no categories configured behaves exactly as before this feature existed.
+
+**Settings UI**: `/b/:businessId/settings` has a fixed **5 rows** (Name / Business Unit ID / Job Type ID), not a dynamic add/remove list — covers realistic trade counts without needing client-side JS to manage rows. Blank-name rows are dropped on save. The existing "Default business unit ID"/"Default job type ID" fields remain — relabeled to clarify they're the fallback when no category matches, not deprecated.
+
+**Resolution flows through all three tools, additively**: `servicetitan/leads.ts`'s `CreateLeadInput`, `servicetitan/jobs.ts`'s `CreateJobInput`, and `servicetitan/capacity.ts`'s `checkAvailability()` each gained optional `businessUnitId`/`jobTypeId` overrides — `const businessUnitId = input.businessUnitId ?? config.defaultBusinessUnitId` (same for jobTypeId) — a small additive change, not a restructure. `createJob()`'s existing fail-fast missing-config check uses these *resolved* values so it correctly passes when a category supplies what the single default doesn't.
+
+At the tool layer, `check_availability`, `create_lead`, and `book_job` each gained an optional `serviceCategory` body field; each handler calls `resolveServiceCategory()` and passes the result through. `runCreateLeadFlow()` (shared between `create_lead` and `book_job`'s emergency safety net) also gained `serviceCategory` for the same reason — an emergency call that already classified itself as "HVAC" should still get the right business unit on its fallback Lead.
+
+**Found and fixed in passing**: `check_availability`'s body schema had a `jobType` field that was parsed but never actually wired up to filter anything — dead code, discovered while building this. Replaced with `serviceCategory`, which does what `jobType` apparently was meant to.
+
 ## Error handling philosophy
 
 Two distinct failure modes are handled differently on purpose:

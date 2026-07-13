@@ -7,6 +7,12 @@ export interface CreateLeadInput {
   locationId?: string;
   summary: string;
   isEmergency: boolean;
+  // Overrides the business's single default business unit/job type when a
+  // matching service category was resolved (see settings/store.ts's
+  // resolveServiceCategory) — falls back to the config defaults below when
+  // not given, so this is fully optional.
+  businessUnitId?: string;
+  jobTypeId?: string;
 }
 
 export interface CreateLeadResult {
@@ -69,15 +75,18 @@ export async function createLead(businessId: number, input: CreateLeadInput): Pr
     }
   }
 
+  const businessUnitId = input.businessUnitId ?? config.defaultBusinessUnitId;
+  const jobTypeId = input.jobTypeId ?? config.defaultJobTypeId;
+
   try {
     const response = await stRequest<{ id: number }>(config, "POST", path, {
       data: {
         customerId: Number(input.customerId),
         locationId: input.locationId ? Number(input.locationId) : undefined,
-        businessUnitId: config.defaultBusinessUnitId ? Number(config.defaultBusinessUnitId) : undefined,
+        businessUnitId: businessUnitId ? Number(businessUnitId) : undefined,
         campaignId: Number(config.defaultCampaignId),
         callReasonId: config.defaultCallReasonId ? Number(config.defaultCallReasonId) : undefined,
-        jobTypeId: config.defaultJobTypeId ? Number(config.defaultJobTypeId) : undefined,
+        jobTypeId: jobTypeId ? Number(jobTypeId) : undefined,
         tagTypeIds: tagTypeId ? [tagTypeId] : undefined,
         followUpDate,
         priority: input.isEmergency ? "Urgent" : "Normal",
