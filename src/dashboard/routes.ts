@@ -1,29 +1,45 @@
 import { Router } from "express";
 import fs from "node:fs";
-import { buildCallDetailViewModel } from "./callDetails";
-import { renderCallDetailPage, renderCallNotFoundPage } from "./views";
-import { getCallRecord } from "../db/callRecords";
+import { buildCallDetailViewModel, computeCallFlags } from "./callDetails";
+import { renderCallDetailPage, renderCallNotFoundPage, renderCallListPage } from "./views";
+import { getCallRecord, listCallRecords } from "../db/callRecords";
+import { findCreateLeadLogByConversationId } from "../db/callLog";
 import { limitCallPageRequests, limitCallAudioRequests } from "../middleware/dashboardRateLimiter";
+import { requireAdminSession } from "../middleware/requireAdminSession";
 
 export const dashboardRouter = Router();
 
-// Intentionally NO auth gate on this router. These pages are meant to be
-// link-shareable like an unlisted YouTube video: anyone holding the exact
-// conversationId URL can view/hear it, no login. Do NOT reflexively add
-// `dashboardRouter.use(requireAdminSession)` back here. If a future route is
-// added to this router (e.g. a call-list/browse view) it must bring its OWN
-// explicit auth check — a browsable list of every call is a fundamentally
-// different exposure than one opaque per-call link and must stay behind
-// login even after this change.
+// Intentionally NO router-wide auth gate. The detail/audio routes below are
+// meant to be link-shareable like an unlisted YouTube video: anyone holding
+// the exact conversationId URL can view/hear it, no login. Do NOT reflexively
+// add `dashboardRouter.use(requireAdminSession)` back here — that would
+// break those two intentionally-public routes. The `/calls` list route below
+// is a fundamentally different exposure (a browsable list of every call) and
+// brings its own explicit `requireAdminSession` for that reason.
 //
-// Since the URL itself is the only access control, harden it the way an
-// unlisted link needs: never indexable/discoverable, and never leaked to a
-// third party via the Referer header when the page's one outbound link
-// (to ServiceTitan) is clicked.
+// Since the URL itself is the only access control for the public routes,
+// harden it the way an unlisted link needs: never indexable/discoverable,
+// and never leaked to a third party via the Referer header when the page's
+// one outbound link (to ServiceTitan) is clicked.
 dashboardRouter.use((req, res, next) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
+});
+
+dashboardRouter.get("/calls", requireAdminSession, (req, res) => {
+  const { business } = req;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+  const records = listCallRecords(business.id, 50);
+  const rows = records.map((record) => ({
+    record,
+    flags: computeCallFlags(business, record),
+    leadLog: findCreateLeadLogByConversationId(business.id, record.conversation_id),
+  }));
+  res.send(renderCallListPage(business, rows));
 });
 
 dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) => {

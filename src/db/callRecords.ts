@@ -68,3 +68,9 @@ export function getCallRecord(businessId: number, conversationId: string): Eleve
     .prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`)
     .get(conversationId, businessId) as ElevenLabsCallRecord | undefined;
 }
+
+export function listCallRecords(businessId: number, limit = 50): ElevenLabsCallRecord[] {
+  return db
+    .prepare(`SELECT * FROM elevenlabs_calls WHERE business_id = ? ORDER BY received_at DESC LIMIT ?`)
+    .all(businessId, limit) as unknown as ElevenLabsCallRecord[];
+}

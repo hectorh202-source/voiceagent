@@ -1,4 +1,5 @@
 import { getCallRecord } from "../db/callRecords";
+import type { ElevenLabsCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
 import type { Business } from "../db/businesses";
@@ -15,7 +16,8 @@ interface TranscriptTurn {
   role: string;
   message?: string;
   time_in_call_secs?: number;
-  tool_calls?: Array<{ name?: string; params?: Record<string, unknown>; parameters?: Record<string, unknown> }>;
+  tool_calls?: Array<{ tool_name?: string; params_as_json?: string }>;
+  tool_results?: Array<{ tool_name?: string; is_error?: boolean }>;
 }
 
 export interface CallDetailViewModel {
@@ -34,6 +36,7 @@ export interface CallDetailViewModel {
   isTransferred: boolean;
   forwardedNumber: string | null;
   transferDestination: string | null;
+  transferFailed: boolean;
   summary: string | null;
   transcript: { role: string; message: string; timeLabel: string }[];
   terminationReason: string | null;
@@ -47,29 +50,37 @@ function formatTime(secs: number | undefined): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// The exact shape of a transfer_to_number invocation inside the transcript
-// isn't documented by ElevenLabs — this is a best-effort parse, not a
-// guaranteed-correct one. Adjust once a real payload has been inspected.
+// Confirmed against a real transcript (the Emergency Dispatch burning-smell
+// test call): ElevenLabs' actual tool_calls entries use `tool_name` and a
+// JSON-encoded `params_as_json` string — not `name`/`params`/`parameters` as
+// an earlier version of this guessed, which meant it never matched anything
+// real. Only `transfer_to_number` is a genuine human/phone transfer; the
+// `transfer_to_agent` calls elsewhere in a multi-agent transcript are just
+// internal node-to-node routing and always report success — they must not
+// be confused with this.
 function findTransferInfo(turns: TranscriptTurn[]): {
   isTransferred: boolean;
   forwardedNumber: string | null;
   transferDestination: string | null;
+  transferFailed: boolean;
 } {
   for (const turn of turns) {
     for (const call of turn.tool_calls ?? []) {
-      const name = (call.name ?? "").toLowerCase();
-      if (name.includes("transfer")) {
-        const params = call.params ?? call.parameters ?? {};
-        const forwardedNumber =
-          (params.phone_number as string | undefined) ??
-          (params.phoneNumber as string | undefined) ??
-          (params.destination as string | undefined) ??
-          null;
-        return { isTransferred: true, forwardedNumber, transferDestination: forwardedNumber };
+      if (call.tool_name !== "transfer_to_number") continue;
+      let forwardedNumber: string | null = null;
+      try {
+        const params = JSON.parse(call.params_as_json ?? "{}") as { transfer_number?: string };
+        forwardedNumber = params.transfer_number ?? null;
+      } catch {
+        // leave null rather than crash on an unexpected params shape
       }
+      const transferFailed = turns.some((t) =>
+        (t.tool_results ?? []).some((r) => r.tool_name === "transfer_to_number" && r.is_error),
+      );
+      return { isTransferred: true, forwardedNumber, transferDestination: forwardedNumber, transferFailed };
     }
   }
-  return { isTransferred: false, forwardedNumber: null, transferDestination: null };
+  return { isTransferred: false, forwardedNumber: null, transferDestination: null, transferFailed: false };
 }
 
 export function buildCallDetailViewModel(business: Business, conversationId: string): CallDetailViewModel | null {
@@ -117,7 +128,12 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   const leadUrl = leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
-  let transferInfo = { isTransferred: false, forwardedNumber: null as string | null, transferDestination: null as string | null };
+  let transferInfo = {
+    isTransferred: false,
+    forwardedNumber: null as string | null,
+    transferDestination: null as string | null,
+    transferFailed: false,
+  };
   if (callRecord.transcript_json) {
     try {
       const turns = JSON.parse(callRecord.transcript_json) as TranscriptTurn[];
@@ -146,9 +162,43 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     isTransferred: transferInfo.isTransferred,
     forwardedNumber: transferInfo.forwardedNumber,
     transferDestination: transferInfo.transferDestination,
+    transferFailed: transferInfo.transferFailed,
     summary: callRecord.summary,
     transcript,
     terminationReason: callRecord.termination_reason,
     hasAudio: !!callRecord.audio_path,
   };
+}
+
+export interface CallFlags {
+  failedTransfer: boolean;
+  noLeadCreated: boolean;
+  endedEarly: boolean;
+}
+
+// Surfaces calls worth a human glance, using only data already captured —
+// no new AI/ML involved, just deriving signals from the same transcript and
+// call_log rows the detail page already reads.
+export function computeCallFlags(business: Business, record: ElevenLabsCallRecord): CallFlags {
+  let failedTransfer = false;
+  let hadRealActivity = false;
+  if (record.transcript_json) {
+    try {
+      const turns = JSON.parse(record.transcript_json) as TranscriptTurn[];
+      failedTransfer = turns.some((t) =>
+        (t.tool_results ?? []).some((r) => r.tool_name === "transfer_to_number" && r.is_error),
+      );
+      // Deliberately narrow — a call that hung up before any real activity
+      // (e.g. an immediate wrong-number hangup) was never going to produce a
+      // lead, so it shouldn't be flagged for missing one.
+      hadRealActivity = turns.some((t) => (t.tool_calls ?? []).some((c) => c.tool_name === "lookup_customer"));
+    } catch {
+      // malformed/unexpected transcript shape — leave flags false rather than crash
+    }
+  }
+
+  const noLeadCreated = hadRealActivity && !findCreateLeadLogByConversationId(business.id, record.conversation_id);
+  const endedEarly = record.termination_reason === "Call ended by remote party";
+
+  return { failedTransfer, noLeadCreated, endedEarly };
 }

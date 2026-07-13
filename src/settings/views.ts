@@ -184,6 +184,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <h1>Settings — ${escapeHtml(business.name)}</h1>
       <div>
         <a href="/settings">&larr; All businesses</a>
+        <a href="/b/${business.id}/calls">View calls</a>
         <form class="inline" method="post" action="/settings/logout"><button type="submit">Log out</button></form>
       </div>
     </div>

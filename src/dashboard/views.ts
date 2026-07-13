@@ -1,4 +1,7 @@
-import type { CallDetailViewModel } from "./callDetails";
+import type { CallDetailViewModel, CallFlags } from "./callDetails";
+import type { ElevenLabsCallRecord } from "../db/callRecords";
+import type { CreateLeadLogRow } from "../db/callLog";
+import type { Business } from "../db/businesses";
 import { getAgentTimezone } from "../settings/store";
 import { formatPhoneNumber } from "../lib/format";
 
@@ -38,6 +41,11 @@ const styles = `
   .turn.user { align-self: flex-end; background: #2563eb; color: #fff; }
   .turn-time { font-size: 0.7rem; opacity: 0.6; margin-bottom: 4px; }
   .conv-id { font-family: monospace; font-size: 0.85rem; word-break: break-all; }
+  .call-list-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+  .call-list-row:last-child { border-bottom: none; }
+  .call-list-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge-error { background: #fce8e6; border: 1px solid #ea4335; color: #a50e0e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
+  .badge-warning { background: #fef7e0; border: 1px solid #f9ab00; color: #7a5900; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
 `;
 
 function page(title: string, body: string): string {
@@ -53,6 +61,57 @@ function copyCallLink() {
 </script>
 </body>
 </html>`;
+}
+
+export interface CallListRow {
+  record: ElevenLabsCallRecord;
+  flags: CallFlags;
+  leadLog: CreateLeadLogRow | undefined;
+}
+
+export function renderCallListPage(business: Business, rows: CallListRow[]): string {
+  const rowsHtml = rows.length
+    ? rows
+        .map(({ record, flags, leadLog }) => {
+          let customerName: string | null = null;
+          let phone: string | null = null;
+          if (leadLog) {
+            try {
+              const request = JSON.parse(leadLog.request_json) as { name?: string; phone?: string };
+              customerName = request.name ?? null;
+              phone = request.phone ?? null;
+            } catch {
+              // leave as unknown rather than crash on a malformed row
+            }
+          }
+
+          const badges = [
+            flags.failedTransfer ? `<span class="badge-error">Failed transfer</span>` : "",
+            flags.noLeadCreated ? `<span class="badge-error">No lead created</span>` : "",
+            flags.endedEarly ? `<span class="badge-warning">Ended early</span>` : "",
+          ].join("");
+
+          return `
+        <div class="call-list-row">
+          <div>
+            <a href="/b/${business.id}/calls/${encodeURIComponent(record.conversation_id)}">
+              ${escapeHtml(formatCallTime(record.received_at, business.id))}
+            </a>
+            <div class="details-label">${escapeHtml(customerName ?? "—")}${phone ? " · " + escapeHtml(formatPhoneNumber(phone)) : ""}</div>
+          </div>
+          <div class="call-list-badges">${badges}</div>
+        </div>`;
+        })
+        .join("")
+    : `<p>No calls yet.</p>`;
+
+  return page(
+    `Calls — ${business.name}`,
+    `
+    <h1>Calls — ${escapeHtml(business.name)}</h1>
+    <div class="card">${rowsHtml}</div>
+  `,
+  );
 }
 
 export function renderCallDetailPage(vm: CallDetailViewModel): string {
@@ -111,7 +170,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
       ${row("Property Type", escapeHtml(vm.propertyType))}
       ${row("Emergency", vm.isEmergency === null ? "—" : vm.isEmergency ? "Yes" : "No")}
       ${row("ST Lead", leadLink)}
-      ${row("Is Transferred", vm.isTransferred ? "Yes" : "No")}
+      ${row("Is Transferred", vm.isTransferred ? (vm.transferFailed ? "Attempted — failed" : "Yes") : "No")}
       ${row("Forwarded Phone Number", escapeHtml(vm.forwardedNumber ? formatPhoneNumber(vm.forwardedNumber) : "—"))}
       ${row("Transfer Destination", escapeHtml(vm.transferDestination ?? "—"))}
     </div>
