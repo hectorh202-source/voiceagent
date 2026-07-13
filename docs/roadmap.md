@@ -21,6 +21,12 @@ Currently capped at the 50 most recent calls, no pagination, no index backing th
 
 None of this is urgent at current call volumes — see the "when does this actually matter" discussion below.
 
+### ServiceTitan sandbox has no Adaptive Capacity configured — job-mode `check_availability` always returns empty slots
+
+Confirmed via a direct live test against the real sandbox tenant (not a code bug): calling the capacity endpoint (`dispatch/v2/.../capacity`) for 5 different business unit/job type combinations (HVAC Service, HVAC Install, HVAC Maintenance, two Plumbing combos) all returned **zero availability windows**, not just zero available ones — meaning this tenant has no technician shifts/capacity templates set up anywhere, not just for one business unit.
+
+This doesn't block `book_job` (it writes directly to Jobs and never touches capacity), but it does mean job-booking-mode's `check_availability` will keep returning empty `slots` for any category until real capacity/technician scheduling exists in ServiceTitan for this tenant. That's a ServiceTitan-side configuration task (Settings → Scheduling/Capacity Planning, or the Dispatch board), not something fixable in this codebase. Needs to be checked/resolved before relying on job-booking mode with a real customer.
+
 ### Emergency Dispatch node — `create_lead` never wired up + transfer number shows "Unknown"
 
 Explicitly put on hold by the user, kept here so it isn't lost. Confirmed via a real test call (Emergency Dispatch / burning-smell transcript): the ElevenLabs "Emergency Dispatch" agent node goes straight to a `transfer_to_number` attempt and never calls `create_lead` at all — in a multi-agent ElevenLabs workflow, each node has its own separate tool configuration, so this node most likely just doesn't have `create_lead` wired up, or lacks the instruction to use it. Separately, the transfer itself failed with destination "Unknown number" — `operational.emergencyTransferNumber` (since removed from `/settings`, see below) was never the same thing as ElevenLabs' own transfer-tool destination, which is a separate manual setting inside that agent node.
