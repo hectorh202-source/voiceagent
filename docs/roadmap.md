@@ -27,6 +27,8 @@ Confirmed via a direct live test against the real sandbox tenant (not a code bug
 
 This doesn't block `book_job` (it writes directly to Jobs and never touches capacity), but it does mean job-booking-mode's `check_availability` will keep returning empty `slots` for any category until real capacity/technician scheduling exists in ServiceTitan for this tenant. That's a ServiceTitan-side configuration task (Settings → Scheduling/Capacity Planning, or the Dispatch board), not something fixable in this codebase. Needs to be checked/resolved before relying on job-booking mode with a real customer.
 
+**Action item:** check with whoever administers the sandbox tenant whether technician shifts/capacity can be configured there. Once it is, re-run a real test call to confirm `check_availability` returns real slots and `book_job` completes the full flow end-to-end (not just via manual tool tests).
+
 ### Emergency Dispatch node — `create_lead` never wired up + transfer number shows "Unknown"
 
 Explicitly put on hold by the user, kept here so it isn't lost. Confirmed via a real test call (Emergency Dispatch / burning-smell transcript): the ElevenLabs "Emergency Dispatch" agent node goes straight to a `transfer_to_number` attempt and never calls `create_lead` at all — in a multi-agent ElevenLabs workflow, each node has its own separate tool configuration, so this node most likely just doesn't have `create_lead` wired up, or lacks the instruction to use it. Separately, the transfer itself failed with destination "Unknown number" — `operational.emergencyTransferNumber` (since removed from `/settings`, see below) was never the same thing as ElevenLabs' own transfer-tool destination, which is a separate manual setting inside that agent node.
