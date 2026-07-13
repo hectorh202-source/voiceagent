@@ -64,7 +64,6 @@ businessSettingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet(business.id, "servicetitan.jobTypeId", body.serviceTitanJobTypeId);
   maybeSet(business.id, "servicetitan.tagName", body.serviceTitanTagName);
 
-  maybeSet(business.id, "operational.emergencyTransferNumber", body.emergencyTransferNumber);
   setBusinessSetting(business.id, "operational.timezone", body.timezone || "America/New_York");
   maybeSet(business.id, "operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));
   maybeSet(business.id, "operational.toolWebhookSecret", body.toolWebhookSecret);

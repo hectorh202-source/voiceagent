@@ -117,7 +117,6 @@ servicetitan.businessUnitId
 servicetitan.campaignId
 servicetitan.callReasonId
 servicetitan.jobTypeId
-operational.emergencyTransferNumber
 operational.toolWebhookSecret
 operational.postCallWebhookSecret
 operational.timezone

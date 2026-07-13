@@ -244,9 +244,6 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       <div class="hint">Enter the exact name of an existing ServiceTitan tag (Settings → Tags) — no ID needed. Every lead this agent creates will be tagged with it, so it's identifiable once it becomes a job.</div>
 
       <h2>Operational</h2>
-      <label>Emergency transfer number (E.164, e.g. +15551234567)</label>
-      <input type="text" name="emergencyTransferNumber" value="${escapeHtml(operational.emergencyTransferNumber)}" />
-
       <label>Dashboard display time zone</label>
       <select name="timezone">
         ${TIMEZONE_OPTIONS.map(

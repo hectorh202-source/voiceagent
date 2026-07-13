@@ -171,7 +171,6 @@ export function getRawServiceTitanSettings(businessId: number) {
 
 export function getRawOperationalSettings(businessId: number) {
   return {
-    emergencyTransferNumber: getBusinessSetting(businessId, "operational.emergencyTransferNumber") ?? "",
     toolWebhookSecretSet: !!getBusinessSetting(businessId, "operational.toolWebhookSecret"),
     postCallWebhookSecretSet: !!getBusinessSetting(businessId, "operational.postCallWebhookSecret"),
     timezone: getBusinessSetting(businessId, "operational.timezone") ?? "America/New_York",
