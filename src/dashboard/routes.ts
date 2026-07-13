@@ -4,7 +4,7 @@ import { buildCallDetailViewModel, computeCallFlags, matchesBadgeFilters } from 
 import type { CallListFilters } from "./callDetails";
 import { renderCallDetailPage, renderCallNotFoundPage, renderCallListPage } from "./views";
 import { getCallRecord, listCallRecords } from "../db/callRecords";
-import { findCreateLeadLogByConversationId } from "../db/callLog";
+import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import { limitCallPageRequests, limitCallAudioRequests } from "../middleware/dashboardRateLimiter";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 
@@ -38,7 +38,7 @@ dashboardRouter.get("/calls", requireAdminSession, (req, res) => {
   const query = req.query as Record<string, string | undefined>;
   const filters: CallListFilters = {
     failedTransfer: query.failedTransfer === "1",
-    noLeadCreated: query.noLeadCreated === "1",
+    noBookingCreated: query.noBookingCreated === "1",
     endedEarly: query.endedEarly === "1",
     from: query.from || undefined,
     to: query.to || undefined,
@@ -50,6 +50,7 @@ dashboardRouter.get("/calls", requireAdminSession, (req, res) => {
       record,
       flags: computeCallFlags(business, record),
       leadLog: findCreateLeadLogByConversationId(business.id, record.conversation_id),
+      jobLog: findBookJobLogByConversationId(business.id, record.conversation_id),
     }))
     .filter((row) => matchesBadgeFilters(row.flags, filters));
 

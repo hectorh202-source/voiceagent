@@ -24,11 +24,11 @@ Each business has its own independent secret — business A's secret is rejected
 
 This is deliberately decoupled from every other operational setting — it used to also require the emergency transfer number to be present (an unrelated field bundled into the same "operational config" getter), which caused real 401/503 confusion during setup. See [settings-app.md](settings-app.md#the-bug-this-design-fixes) and [sqlite-storage.md](sqlite-storage.md) for that history.
 
-This middleware (`toolsRouter.use(verifyToolSecret)` in [`tools/router.ts`](../src/tools/router.ts)) runs in front of all three tool routes — no route-specific auth logic needed.
+This middleware (`toolsRouter.use(verifyToolSecret)` in [`tools/router.ts`](../src/tools/router.ts)) runs in front of all four tool routes — no route-specific auth logic needed.
 
-## The three tools (server side)
+## The four tools (server side)
 
-All three: validate the request body with `zod`, do the work, log the attempt to `call_log` (success or failure), and respond. A `ServiceTitanNotConfiguredError` maps to `503`; any other ServiceTitan-side failure maps to `502`.
+All four: validate the request body with `zod`, do the work, log the attempt to `call_log` (success or failure), and respond. A `ServiceTitanNotConfiguredError` maps to `503`; any other ServiceTitan-side failure maps to `502`.
 
 ### `lookup_customer` — [`tools/lookupCustomer.ts`](../src/tools/lookupCustomer.ts)
 
@@ -44,9 +44,25 @@ Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently
 ```
 POST /b/:businessId/tools/check-availability
 Request:  { "startDate": string, "endDate": string, "jobType"?: string }
-Response: { "hasNearTermAvailability": boolean, "note": string }
+
+Response (lead mode, default): { "hasNearTermAvailability": boolean, "note": string }
+Response (job mode):           { "slots": { "start": string, "end": string, "label": string }[], "note": string }
 ```
-Calls `servicetitan/capacity.ts#checkAvailability`. Deliberately coarse — a signal for the agent to set expectations, never an exact bookable slot.
+Calls `servicetitan/capacity.ts#checkAvailability`, branching on that business's `servicetitan.bookingMode` setting. **Lead mode is deliberately coarse** — a signal for the agent to set expectations, never an exact bookable slot. **Job mode returns real bookable windows** (`label` is human-readable, e.g. `"Tuesday, July 15 at 2:00 PM"`, in the business's configured timezone) — the agent reads these aloud and lets the caller pick one, then passes the chosen `start`/`end` straight through to `book_job`.
+
+### `book_job` — [`tools/bookJob.ts`](../src/tools/bookJob.ts)
+
+```
+POST /b/:businessId/tools/book-job
+Request:  { "phone": string, "name": string, "street": string, "city": string, "state": string,
+            "zip": string, "issueDescription": string, "preferredTiming"?: string,
+            "equipmentAge"?: string, "isEmergency"?: boolean,
+            "selectedStart"?: string, "selectedEnd"?: string }
+Response: { "success": boolean, "jobId": string|null, "leadId": string|null, "confirmationMessage": string }
+```
+Only relevant for businesses with `servicetitan.bookingMode` set to `"job"` — see [servicetitan-integration.md](servicetitan-integration.md#5-job-booking-mode-createjobbusinessid-input) for the full backend design. Same customer-lookup/summary logic as `create_lead`, writing a ServiceTitan **Job** (with the caller's chosen appointment slot) instead of a Lead.
+
+**`isEmergency` is a backend safety net, not just a routing hint** — if true, this handler skips booking entirely and creates a Lead instead (via the exact same logic `create_lead` uses), regardless of which tool the agent actually called. `selectedStart`/`selectedEnd` are optional at the schema level for exactly this reason — an emergency call may never have reached the point of offering a time slot.
 
 ### `create_lead` — [`tools/createLead.ts`](../src/tools/createLead.ts)
 
@@ -69,7 +85,7 @@ This part lives entirely in ElevenLabs' system — there's no code to read, so t
 
 ### Webhook tool definitions
 
-Each of the three tools above is registered on the agent as a **Webhook** tool with:
+Each of the four tools above is registered on the agent as a **Webhook** tool with:
 - Method `POST`, URL pointing at this server's public domain + **that business's own `/b/:businessId/` path** + the tool path above (e.g. `https://voiceagent.laughslapper.com/b/1/tools/lookup-customer` for business #1). Every business's ElevenLabs agent must be configured with its own `businessId` baked into these URLs — copying another business's agent config verbatim and forgetting to update this segment is the most likely way to accidentally point one client's agent at another client's data.
 - A header named `X-Tool-Secret`, whose value is a workspace **Secret** (created once in the ElevenLabs dashboard, value = that business's own tool webhook secret from its `/b/:businessId/settings` page) — not typed as a raw literal in the header field itself. **The header's Name field and the Secret's own label are two different things — don't confuse them.** Hit exactly this during setup: the header Name field ended up literally set to `New secret` (the dashboard's default label when you create a new secret), instead of `X-Tool-Secret` with the Secret dropdown separately pointing at that secret for its value. A header name containing a space isn't valid HTTP, so every call to that tool failed *before leaving ElevenLabs' servers* — nothing reached this app at all, which is why it showed zero trace in `call_log`/container logs despite genuinely being called. The tell-tale symptom was an error surfaced by ElevenLabs' own "test tool individually" button (see Debugging section below): `invalid header field name "New secret"`.
 - A body parameter schema matching the request shape above. Each property's **Identifier** must be the exact bare field name (e.g. `phone`, not `{ "phone": string }` — the data type is already declared by a separate dropdown; the Identifier field is only the JSON key name)
@@ -83,6 +99,14 @@ Adding a body field to `create_lead`'s schema (like `equipmentAge`) doesn't make
 2. Add an instruction to the system prompt telling the agent *when* to ask for it — e.g. "if the call is about an HVAC/AC issue, ask how old the unit is." Without this, the field stays optional and the LLM has no reason to bring it up, so it'll simply be omitted from every lead's summary (see [servicetitan-integration.md](servicetitan-integration.md) for how the summary handles that gracefully) rather than erroring.
 
 This is a good general pattern to remember for any future field: a schema change alone is inert without a corresponding prompt instruction telling the agent to actually populate it.
+
+### Job-booking mode setup (only for businesses with `bookingMode = "job"`)
+
+A business staying in the default lead mode needs **zero** ElevenLabs-side changes at all. Switching a business to job mode (`/b/:businessId/settings` → "What calls produce in ServiceTitan") requires setting up the following in that business's agent, in addition to everything already configured:
+
+1. **Add `book_job` as a new webhook tool**, same auth/body pattern as `create_lead` above — method `POST`, URL `.../tools/book-job`, the same `X-Tool-Secret` header/Secret setup, and a body schema with all of `create_lead`'s parameters plus two more: `selectedStart` and `selectedEnd` (**Value Type: LLM Prompt** for both — the agent fills these in with whichever slot the caller picked from `check_availability`'s response, not a value ElevenLabs has any built-in variable for).
+2. **A system-prompt instruction for the new flow**: after diagnosing a non-emergency issue, call `check_availability`, read the returned `slots[].label` values aloud, let the caller choose one, then call `book_job` with that slot's `start`/`end` as `selectedStart`/`selectedEnd`. For emergencies, keep calling `create_lead` exactly as today — the backend's own safety net (see [servicetitan-integration.md](servicetitan-integration.md#5-job-booking-mode-createjobbusinessid-input)) will route an emergency correctly even if the agent calls `book_job` by mistake, but the prompt should still say `create_lead` for emergencies as the primary instruction, not rely on that fallback.
+3. Adjust the "always close by saying a team member will confirm the exact appointment" line from the base system prompt (below) — that's specifically lead-mode wording; a job-mode confirmation should instead confirm the actual booked time, since a real appointment now exists.
 
 ### Emergency transfer
 

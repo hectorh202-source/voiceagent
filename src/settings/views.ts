@@ -190,7 +190,7 @@ export function renderSettingsPage(props: SettingsPageProps): string {
     </div>
     ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
 
-    <form method="post" action="/b/${business.id}/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?'))">
+    <form method="post" action="/b/${business.id}/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?')) && (!window.bookingModeChanged || confirm('You are changing what calls produce in ServiceTitan (Lead vs. booked Job). Make sure the ElevenLabs agent\'s tools/prompt are already set up to match this mode, or calls will behave incorrectly. Continue?'))">
       <h2>ElevenLabs</h2>
       <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
       <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
@@ -243,6 +243,13 @@ export function renderSettingsPage(props: SettingsPageProps): string {
       </div>
       <div id="tagNameWarning" class="flash-error" style="display:none">This must exactly match a tag that already exists in ServiceTitan (Settings → Tags) — it is not created automatically. If no matching tag exists there, leads will still be created, just without a tag, with no error shown here.</div>
       <div class="hint">Enter the exact name of an existing ServiceTitan tag (Settings → Tags) — no ID needed. Every lead this agent creates will be tagged with it, so it's identifiable once it becomes a job.</div>
+
+      <label>What calls produce in ServiceTitan</label>
+      <select name="serviceTitanBookingMode" onchange="window.bookingModeChanged=true">
+        <option value="lead" ${serviceTitan.bookingMode === "lead" ? "selected" : ""}>Lead (staff confirms and converts to a Job)</option>
+        <option value="job" ${serviceTitan.bookingMode === "job" ? "selected" : ""}>Job (booked directly, real appointment reserved)</option>
+      </select>
+      <div class="hint">"Job" requires the ElevenLabs agent to have the <code>book_job</code> tool configured and a prompt instruction to offer real appointment times — see elevenlabs-tools.md. Emergencies always create a Lead regardless of this setting.</div>
 
       <h2>Operational</h2>
       <label>Dashboard display time zone</label>

@@ -166,7 +166,19 @@ export function getRawServiceTitanSettings(businessId: number) {
     callReasonId: getBusinessSetting(businessId, "servicetitan.callReasonId") ?? "",
     jobTypeId: getBusinessSetting(businessId, "servicetitan.jobTypeId") ?? "",
     tagName: getBusinessSetting(businessId, "servicetitan.tagName") ?? "",
+    bookingMode: getBookingMode(businessId),
   };
+}
+
+export type BookingMode = "lead" | "job";
+
+// Per-business choice of what a call produces in ServiceTitan: a Lead for
+// staff to confirm and convert (today's only behavior), or a directly
+// booked Job with a real reserved appointment slot — see
+// servicetitan-integration.md for the full design. Defaults to "lead" so
+// every existing business keeps its current behavior with zero setup.
+export function getBookingMode(businessId: number): BookingMode {
+  return (getBusinessSetting(businessId, "servicetitan.bookingMode") as BookingMode | null) ?? "lead";
 }
 
 export function getRawOperationalSettings(businessId: number) {

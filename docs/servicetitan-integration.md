@@ -2,11 +2,13 @@
 
 How this server talks to ServiceTitan's API: authentication, the three operations it actually performs, and the deliberate scope limits.
 
-## Scope: leads, not live bookings
+## Scope: leads by default, direct job booking optional per business
 
-This integration **never writes directly to the ServiceTitan schedule**. When the AI agent wants to book an appointment, it creates a ServiceTitan **Lead** — a record ServiceTitan itself models as "an opportunity to book a job" — for a human staff member to review and actually schedule. This was a deliberate risk-reduction choice: the agent can be wrong, ServiceTitan's booking/capacity semantics are tenant-specific, and a bad automated write to a live schedule is a much worse failure mode than a lead sitting in a queue for a minute longer than ideal.
+By default, this integration **never writes directly to the ServiceTitan schedule**. When the AI agent wants to book an appointment, it creates a ServiceTitan **Lead** — a record ServiceTitan itself models as "an opportunity to book a job" — for a human staff member to review and actually schedule. This was the original deliberate risk-reduction choice: the agent can be wrong, ServiceTitan's booking/capacity semantics are tenant-specific, and a bad automated write to a live schedule is a much worse failure mode than a lead sitting in a queue for a minute longer than ideal.
 
-The one read-only operation (`checkAvailability`, see below) is safe to call freely since it never writes anything.
+**A business can opt into direct Job booking instead** via `servicetitan.bookingMode` (`"lead"` default, or `"job"`) on that business's `/b/:businessId/settings` page — see [§5](#5-job-booking-mode-createjobbusinessid-input) below. Emergencies always fall back to the Lead path regardless of this setting.
+
+The read-only operation (`checkAvailability`, see below) is safe to call freely in either mode since it never writes anything by itself.
 
 ## Where the code lives
 
@@ -16,8 +18,9 @@ src/servicetitan/
   httpClient.ts   # shared request wrapper: injects auth headers, builds URLs
   customers.ts    # lookupCustomerByPhone(), createCustomer()
   leads.ts        # createLead(), updateLeadSummary()
-  leadSummary.ts  # buildLeadSummary(), buildInitialNarrative() — shared by tools/createLead.ts and webhooks/postCall.ts
-  capacity.ts     # checkAvailability()
+  jobs.ts         # createJob(), updateJobSummary() — the direct-booking alternative to leads.ts
+  leadSummary.ts  # buildLeadSummary(), buildInitialNarrative() — shared by leads and jobs alike
+  capacity.ts     # checkAvailability() — also ServiceTitan's own "Adaptive Capacity" engine, see §4
   types.ts        # shared response shapes (STCustomer, etc.)
 ```
 
@@ -63,7 +66,7 @@ Two ServiceTitan environments are supported, chosen **independently per business
 
 One business being on sandbox has no bearing on any other business's environment choice. Switching a business to production is just a dropdown change on its own settings page — no code change needed — but should only be done deliberately, since production leads are real customer-facing records.
 
-## The three operations
+## The core operations
 
 ### 1. Customer lookup — `lookupCustomerByPhone(businessId, phone)`
 
@@ -123,19 +126,47 @@ This function never throws on a ServiceTitan-side failure — it catches, logs t
 
 **Precedence**: `tools/createLead.ts` uses the agent's fresh answer from *this* call if given (equipment gets replaced, so a fresh answer is more likely current), falling back to this ServiceTitan-sourced value only when the agent didn't ask/get one this call (e.g. a non-HVAC issue, or the agent skipped the question).
 
-### 4. Capacity check (read-only) — `checkAvailability(businessId, startDate, endDate)`
+### 4. Capacity check — `checkAvailability(businessId, startDate, endDate)`
 
 `POST /dispatch/v2/tenant/{tenantId}/capacity`
 
-Used to give the caller a *rough* sense of availability ("we generally have room this week") without ever quoting or reserving a specific slot — consistent with the "leads, not bookings" scope limit above. Sends `startsOnOrAfter`/`endsOnOrBefore` plus the default business unit/job type **as a JSON body**, and reduces the response to a single boolean (`hasNearTermAvailability`) plus a canned sentence. If the call fails for any reason, it fails *open* with an optimistic default message rather than blocking the conversation — this is explicitly a "nice to have" signal, not something worth breaking a call over.
+**This endpoint is ServiceTitan's own "Adaptive Capacity" feature** — confirmed directly from its OpenAPI tag (`"tags":[{"name":"AdaptiveCapacity"}]`), not a separate system. When you hear "Adaptive Capacity" in ServiceTitan's own marketing/docs, this is the API behind it.
+
+In **lead mode** (default), this gives the caller a *rough* sense of availability ("we generally have room this week") without ever quoting or reserving a specific slot — consistent with the lead-only scope limit above. Sends `startsOnOrAfter`/`endsOnOrBefore` plus the default business unit/job type **as a JSON body**, and reduces the response to a single boolean (`hasNearTermAvailability`) plus a canned sentence. If the call fails for any reason, it fails *open* with an optimistic default message rather than blocking the conversation — this is explicitly a "nice to have" signal in this mode, not something worth breaking a call over.
 
 **Corrected against the real OpenAPI spec** — this previously sent a `GET` with query params, which doesn't match the real endpoint at all (it's `POST`-only, with a required `skillBasedAvailability` boolean the old code never sent). That mismatch had likely been silently failing on every real call since this was built, always falling through to the optimistic fallback — which is exactly why it went uncaught for so long. `skillBasedAvailability` is hardcoded to `false` (no skill-based scheduling in use today); the rest of the request/response shape was unaffected.
+
+**In job mode**, the same underlying call now also extracts real bookable windows: `AvailabilityResult` gains a `slots: { start, end, label }[]` field — the top 2–3 `isAvailable: true` windows from the response, using `startUtc`/`endUtc` (ISO, safe to pass straight through to `createJob()`) and a human-readable `label` formatted in the business's configured timezone (e.g. "Tuesday, July 15 at 2:00 PM", via `getAgentTimezone()`). `tools/checkAvailability.ts` reads the business's `bookingMode` (`settings/store.ts`'s `getBookingMode()`) and returns these real slots instead of the vague boolean+note only when in job mode — **lead-mode businesses see zero change to this tool's behavior.**
+
+**Hard 14-day maximum range, confirmed via a real `400`**: `"Invalid request. The maximum allowed range is 14 days."` `checkAvailability()` now clamps `endDate` to `startDate + 14 days` before sending rather than passing through whatever the caller asked for — a wider request (e.g. an agent asking about "the next few weeks") would otherwise fail outright instead of just returning a narrower result.
+
+### 5. Job booking mode — `createJob(businessId, input)`
+
+`POST /jpm/v2/tenant/{tenantId}/jobs`
+
+The direct-booking alternative to Lead creation, only used for businesses with `servicetitan.bookingMode` set to `"job"`. Required fields per the real OpenAPI spec: `customerId, locationId, businessUnitId, jobTypeId, priority, campaignId, appointments` — the same config fields already used for Leads, plus a **real, immediately-scheduled appointment embedded directly in the same request** (`appointments: [{ start, end }]`, both ISO). No separate booking-then-conversion step, and no technician pre-assignment needed — ServiceTitan's own dispatch board handles assigning a tech to the appointment afterward.
+
+**Real bug found via live testing, not in the spec's `required` array**: ServiceTitan actually rejects a Job with a real `400` — `"You must specify Arrival Window Start/End to be able to create Job instance"` — even though `AppointmentInformation`'s formal schema lists `arrivalWindowStart`/`arrivalWindowEnd` as optional/nullable. Same pattern as the Lead `followUpDate`/`callReasonId` requirement and the bulk-contacts `customerIds` conflict found earlier this project: documented-as-optional in the OpenAPI schema, enforced as required in practice. Fixed by setting the arrival window to exactly match the appointment's own `start`/`end` — there's no separately-negotiated window in this flow (the caller picks one exact time via Adaptive Capacity, not a range), so a zero-width window is the correct behavior, not a workaround. **Confirmed working end-to-end against a real sandbox job** (id `151581166`, job number `88768`, status `"Scheduled"`) after this fix.
+
+**A separate CRM "Bookings" resource was checked and rejected** (`POST /booking-provider/{provider}/bookings`) — its own required fields (`source, name, summary, isFirstTimeClient, externalId`) and shape (raw name/address, no `customerId`/`locationId`, no real appointment `start`/`end`) show it's meant for unconfirmed placeholder requests from third-party scheduling widgets, still needing staff conversion — functionally redundant with what Leads already do. The direct Jobs API is what actually "books it now."
+
+**The Job's own `summary` field takes the exact same rich text a Lead's does** — confirmed in both `POST /jobs` and `PATCH /jobs/{id}`'s schemas — so `buildLeadSummary()` is reused as-is for a booked Job's summary, no separate summary-building logic needed. The same two-phase lifecycle applies too: `updateJobSummary(businessId, jobId, summary)` (`PATCH /jpm/v2/tenant/{tenantId}/jobs/{id}` with `{ summary }`) swaps in the real AI call summary once the post-call webhook delivers it, exactly like `updateLeadSummary()` does for Leads.
+
+**Same required-config guard as Leads, extended**: unlike a Lead, ServiceTitan requires `businessUnitId` and `jobTypeId` on every Job too (not just `campaignId`), plus a real resolved `locationId` — `createJob()` fails fast with a clear log naming exactly what's missing rather than letting ServiceTitan reject it with an opaque `400`.
+
+**`tools/bookJob.ts` — the new `book_job` tool**, body schema mirrors `create_lead`'s exactly plus `selectedStart`/`selectedEnd` (the slot the caller picked from `check_availability`'s job-mode response). Both are optional at the schema level — enforced only once we know we're actually about to book, since an emergency call skips booking entirely and may never have reached that point in the conversation.
+
+**Emergency safety net, enforced in the backend, not just the system prompt**: if `isEmergency` is true, `handleBookJob()` doesn't attempt a booking at all — it calls `runCreateLeadFlow()` (the same customer-lookup/summary/ServiceTitan-write logic `create_lead` itself uses, extracted into a shared function in `tools/createLead.ts` for exactly this reuse) and logs the result as `toolName: "create_lead"`, **not** `"book_job"` — so it's found by `findCreateLeadLogByConversationId()` like any other Lead, not the Job-specific finder. This exists because we already found once (the Emergency Dispatch transfer failure — see [elevenlabs-tools.md](elevenlabs-tools.md)) that trusting the agent alone to route correctly isn't reliable enough for something this consequential. Every non-emergency success path reuses `lookupCustomerByPhone`/`createCustomer` (customers.ts), `buildLeadSummary()`/`buildInitialNarrative()` (leadSummary.ts), and `findTagTypeIdByName()` (tags.ts) completely unchanged from the Lead flow — only the final ServiceTitan write (`createJob()` vs `createLead()`) differs.
+
+**Dashboard note**: `dashboard/callDetails.ts` checks for a `book_job` log the same way it checks for `create_lead` (mutually exclusive — a call only ever produces one or the other), surfacing a "ST Job" link alongside "ST Lead." The Job deep-link URL (`https://{host}/#/Job/Index/{jobId}`) is **assumed to mirror the Lead URL's convention** — this specific assumption is still unconfirmed by a human (unlike the rest of this feature, which was live-tested end-to-end against the real sandbox); open the link for a real booked job in ServiceTitan's own UI to confirm it resolves correctly.
+
+**ElevenLabs-side setup required, per business, only for job-mode businesses** (see [elevenlabs-tools.md](elevenlabs-tools.md) for the full tool/prompt configuration) — a business staying in lead mode needs zero ElevenLabs-side changes.
 
 ## Error handling philosophy
 
 Two distinct failure modes are handled differently on purpose:
 
 - **Not configured** (`ServiceTitanNotConfiguredError`, thrown by `requireServiceTitanConfig()`): this is a setup problem, not a ServiceTitan API problem. The tools layer returns `503` for this specifically, so it's distinguishable in logs/monitoring from an actual ServiceTitan outage or bad request.
-- **ServiceTitan API failure** (anything else — bad credentials, ServiceTitan downtime, a malformed request): `createLead` and `checkAvailability` both catch and degrade gracefully (returning a "we'll follow up" or "we'll confirm" response) rather than letting an exception surface to the caller mid-conversation. `lookupCustomerByPhone`'s direct-query attempt also swallows failures (falling back to the paged search) since a lookup failing shouldn't block the rest of the call.
+- **ServiceTitan API failure** (anything else — bad credentials, ServiceTitan downtime, a malformed request): `createLead`, `createJob`, and `checkAvailability` all catch and degrade gracefully (returning a "we'll follow up" or "we'll confirm" response) rather than letting an exception surface to the caller mid-conversation. `lookupCustomerByPhone`'s direct-query attempt also swallows failures (falling back to the paged search) since a lookup failing shouldn't block the rest of the call.
 
 Every attempt — success or failure — is logged to the local `call_log` table by the [tools layer](elevenlabs-tools.md), so you can audit exactly what was sent to ServiceTitan and what came back.

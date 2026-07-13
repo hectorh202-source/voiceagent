@@ -8,7 +8,8 @@ import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/h
 
 // ElevenLabs' tool-calling occasionally sends boolean-typed fields as the
 // strings "true"/"false" rather than a JSON boolean — accept both forms.
-const booleanish = z.preprocess((value) => {
+// Exported so tools/bookJob.ts's body schema can reuse it too.
+export const booleanish = z.preprocess((value) => {
   if (typeof value === "string") {
     if (value.toLowerCase() === "true") return true;
     if (value.toLowerCase() === "false") return false;
@@ -35,6 +36,88 @@ const bodySchema = z.object({
   conversationId: z.string().optional(),
 });
 
+export interface CreateLeadFlowInput {
+  phone: string;
+  name: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  issueDescription: string;
+  preferredTiming?: string;
+  equipmentAge?: string;
+  isEmergency: boolean;
+  conversationId?: string;
+}
+
+export interface CreateLeadFlowResult {
+  success: boolean;
+  leadId: string | null;
+  email: string | null;
+  equipmentAge: string | null;
+}
+
+// The actual customer-lookup/summary/ServiceTitan-write logic, factored out
+// so tools/bookJob.ts can reuse it exactly for its emergency safety net
+// (isEmergency calls always get today's proven Lead path, regardless of
+// which tool the agent invoked) without duplicating it.
+export async function runCreateLeadFlow(businessId: number, input: CreateLeadFlowInput): Promise<CreateLeadFlowResult> {
+  const existing = await lookupCustomerByPhone(businessId, input.phone);
+  let customerId = existing.customerId;
+  let locationId: string | undefined = existing.locationId ?? undefined;
+
+  if (!customerId) {
+    const created = await createCustomer(businessId, {
+      name: input.name,
+      phone: input.phone,
+      address: { street: input.street, city: input.city, state: input.state, zip: input.zip },
+    });
+    customerId = created.customerId;
+    locationId = created.locationId;
+  }
+
+  // The agent's own answer this call wins if given — more likely current
+  // than whatever might be on file, since equipment gets replaced. Falls
+  // back to the ServiceTitan on-file value (e.g. a non-HVAC call, or the
+  // agent didn't ask) when there's no fresh answer.
+  const resolvedEquipmentAge = input.equipmentAge ?? existing.equipmentAge;
+
+  const narrative = buildInitialNarrative({
+    issueDescription: input.issueDescription,
+    street: input.street,
+    city: input.city,
+    state: input.state,
+    zip: input.zip,
+    preferredTiming: input.preferredTiming,
+    isEmergency: input.isEmergency,
+  });
+  const summary = buildLeadSummary(businessId, {
+    narrative,
+    street: input.street,
+    city: input.city,
+    state: input.state,
+    zip: input.zip,
+    phone: input.phone,
+    email: existing.email,
+    equipmentAge: resolvedEquipmentAge,
+    conversationId: input.conversationId,
+  });
+
+  const leadResult = await createServiceTitanLead(businessId, {
+    customerId,
+    locationId,
+    summary,
+    isEmergency: input.isEmergency,
+  });
+
+  return {
+    success: leadResult.success,
+    leadId: leadResult.leadId,
+    email: existing.email,
+    equipmentAge: resolvedEquipmentAge,
+  };
+}
+
 export async function handleCreateLead(req: Request, res: Response): Promise<void> {
   const business = req.business;
   if (!business) {
@@ -49,56 +132,15 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const {
-    phone,
-    name,
-    street,
-    city,
-    state,
-    zip,
-    issueDescription,
-    preferredTiming,
-    equipmentAge,
-    isEmergency,
-    conversationId,
-  } = parsed.data;
+  const { phone } = parsed.data;
 
   try {
-    const existing = await lookupCustomerByPhone(business.id, phone);
-    let customerId = existing.customerId;
-    let locationId: string | undefined = existing.locationId ?? undefined;
-
-    if (!customerId) {
-      const created = await createCustomer(business.id, { name, phone, address: { street, city, state, zip } });
-      customerId = created.customerId;
-      locationId = created.locationId;
-    }
-
-    // The agent's own answer this call wins if given — more likely current
-    // than whatever might be on file, since equipment gets replaced. Falls
-    // back to the ServiceTitan on-file value (e.g. a non-HVAC call, or the
-    // agent didn't ask) when there's no fresh answer.
-    const resolvedEquipmentAge = equipmentAge ?? existing.equipmentAge;
-
-    const narrative = buildInitialNarrative({ issueDescription, street, city, state, zip, preferredTiming, isEmergency });
-    const summary = buildLeadSummary(business.id, {
-      narrative,
-      street,
-      city,
-      state,
-      zip,
-      phone,
-      email: existing.email,
-      equipmentAge: resolvedEquipmentAge,
-      conversationId,
-    });
-
-    const leadResult = await createServiceTitanLead(business.id, { customerId, locationId, summary, isEmergency });
+    const result = await runCreateLeadFlow(business.id, parsed.data);
 
     const response = {
-      success: leadResult.success,
-      leadId: leadResult.leadId,
-      confirmationMessage: leadResult.success
+      success: result.success,
+      leadId: result.leadId,
+      confirmationMessage: result.success
         ? "A team member will confirm your appointment shortly."
         : "We had trouble saving your request, but a team member will follow up with you directly.",
     };
@@ -112,8 +154,8 @@ export async function handleCreateLead(req: Request, res: Response): Promise<voi
       // sent back to ElevenLabs) so the post-call webhook can rebuild this
       // same summary with the real AI call summary once it's available —
       // see webhooks/postCall.ts.
-      response: { ...response, email: existing.email, equipmentAge: resolvedEquipmentAge },
-      success: leadResult.success,
+      response: { ...response, email: result.email, equipmentAge: result.equipmentAge },
+      success: result.success,
     });
     res.json(response);
   } catch (error) {

@@ -1,6 +1,6 @@
 import { getCallRecord } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
-import { findCreateLeadLogByConversationId } from "../db/callLog";
+import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
 import type { Business } from "../db/businesses";
 
@@ -33,6 +33,8 @@ export interface CallDetailViewModel {
   isEmergency: boolean | null;
   leadId: string | null;
   leadUrl: string | null;
+  jobId: string | null;
+  jobUrl: string | null;
   isTransferred: boolean;
   forwardedNumber: string | null;
   transferDestination: string | null;
@@ -87,16 +89,24 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   const callRecord = getCallRecord(business.id, conversationId);
   if (!callRecord) return null;
 
+  // A call only ever produces a Lead or a Job, never both (book_job's own
+  // emergency safety net logs itself as create_lead) — check the lead log
+  // first since it's the far more common case today, falling back to the
+  // job log only if no lead was found.
   const leadLog = findCreateLeadLogByConversationId(business.id, conversationId);
+  const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, conversationId);
+  const bookingLog = leadLog ?? jobLog;
+
   let customerName: string | null = null;
   let phone: string | null = null;
   let address: string | null = null;
   let isEmergency: boolean | null = null;
   let leadId: string | null = null;
+  let jobId: string | null = null;
 
-  if (leadLog) {
+  if (bookingLog) {
     try {
-      const request = JSON.parse(leadLog.request_json) as {
+      const request = JSON.parse(bookingLog.request_json) as {
         name?: string;
         phone?: string;
         street?: string;
@@ -113,10 +123,11 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
       // stored request_json should always be valid JSON (we wrote it), but don't let a
       // corrupt row crash the page
     }
-    if (leadLog.response_json) {
+    if (bookingLog.response_json) {
       try {
-        const response = JSON.parse(leadLog.response_json) as { leadId?: string | null };
+        const response = JSON.parse(bookingLog.response_json) as { leadId?: string | null; jobId?: string | null };
         leadId = response.leadId ?? null;
+        jobId = response.jobId ?? null;
       } catch {
         // same as above
       }
@@ -126,6 +137,9 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   const stEnvironment = getRawServiceTitanSettings(business.id).environment;
   const stWebHost = ST_WEB_HOSTS[stEnvironment] ?? ST_WEB_HOSTS.production;
   const leadUrl = leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null;
+  // Assumed to mirror the Lead URL convention — unconfirmed until verified
+  // against one real booked job, same as the Lead URL originally was.
+  const jobUrl = jobId ? `https://${stWebHost}/#/Job/Index/${jobId}` : null;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = {
@@ -159,6 +173,8 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     isEmergency,
     leadId,
     leadUrl,
+    jobId,
+    jobUrl,
     isTransferred: transferInfo.isTransferred,
     forwardedNumber: transferInfo.forwardedNumber,
     transferDestination: transferInfo.transferDestination,
@@ -172,7 +188,7 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
 
 export interface CallFlags {
   failedTransfer: boolean;
-  noLeadCreated: boolean;
+  noBookingCreated: boolean;
   endedEarly: boolean;
 }
 
@@ -190,22 +206,29 @@ export function computeCallFlags(business: Business, record: ElevenLabsCallRecor
       );
       // Deliberately narrow — a call that hung up before any real activity
       // (e.g. an immediate wrong-number hangup) was never going to produce a
-      // lead, so it shouldn't be flagged for missing one.
+      // booking, so it shouldn't be flagged for missing one.
       hadRealActivity = turns.some((t) => (t.tool_calls ?? []).some((c) => c.tool_name === "lookup_customer"));
     } catch {
       // malformed/unexpected transcript shape — leave flags false rather than crash
     }
   }
 
-  const noLeadCreated = hadRealActivity && !findCreateLeadLogByConversationId(business.id, record.conversation_id);
+  // Neither a Lead nor a Job exists for this call — checked against both,
+  // since a job-booking-mode call that successfully booked a Job legitimately
+  // has no Lead at all (that's the whole point of that mode), so checking
+  // only the lead log would falsely flag every successful booking.
+  const noBookingCreated =
+    hadRealActivity &&
+    !findCreateLeadLogByConversationId(business.id, record.conversation_id) &&
+    !findBookJobLogByConversationId(business.id, record.conversation_id);
   const endedEarly = record.termination_reason === "Call ended by remote party";
 
-  return { failedTransfer, noLeadCreated, endedEarly };
+  return { failedTransfer, noBookingCreated, endedEarly };
 }
 
 export interface CallListFilters {
   failedTransfer: boolean;
-  noLeadCreated: boolean;
+  noBookingCreated: boolean;
   endedEarly: boolean;
   from?: string;
   to?: string;
@@ -216,11 +239,11 @@ export interface CallListFilters {
 // flag (not all) since these are meant as "show me problem calls of these
 // kinds", not a stricter combined-condition search.
 export function matchesBadgeFilters(flags: CallFlags, filters: CallListFilters): boolean {
-  const anyBadgeFilterActive = filters.failedTransfer || filters.noLeadCreated || filters.endedEarly;
+  const anyBadgeFilterActive = filters.failedTransfer || filters.noBookingCreated || filters.endedEarly;
   if (!anyBadgeFilterActive) return true;
   return (
     (filters.failedTransfer && flags.failedTransfer) ||
-    (filters.noLeadCreated && flags.noLeadCreated) ||
+    (filters.noBookingCreated && flags.noBookingCreated) ||
     (filters.endedEarly && flags.endedEarly)
   );
 }

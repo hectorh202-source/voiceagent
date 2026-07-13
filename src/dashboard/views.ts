@@ -69,7 +69,9 @@ function copyCallLink() {
 export interface CallListRow {
   record: ElevenLabsCallRecord;
   flags: CallFlags;
+  // Mutually exclusive — a call only ever produces a Lead or a booked Job.
   leadLog: CreateLeadLogRow | undefined;
+  jobLog: CreateLeadLogRow | undefined;
 }
 
 export function renderCallListPage(business: Business, rows: CallListRow[], filters: CallListFilters): string {
@@ -79,7 +81,7 @@ export function renderCallListPage(business: Business, rows: CallListRow[], filt
   const filterFormHtml = `
     <form method="get" class="filter-form">
       ${checkbox("failedTransfer", "Failed transfer", filters.failedTransfer)}
-      ${checkbox("noLeadCreated", "No lead created", filters.noLeadCreated)}
+      ${checkbox("noBookingCreated", "No lead/job created", filters.noBookingCreated)}
       ${checkbox("endedEarly", "Ended early", filters.endedEarly)}
       <label>From <input type="date" name="from" value="${escapeHtml(filters.from ?? "")}" /></label>
       <label>To <input type="date" name="to" value="${escapeHtml(filters.to ?? "")}" /></label>
@@ -89,12 +91,13 @@ export function renderCallListPage(business: Business, rows: CallListRow[], filt
 
   const rowsHtml = rows.length
     ? rows
-        .map(({ record, flags, leadLog }) => {
+        .map(({ record, flags, leadLog, jobLog }) => {
           let customerName: string | null = null;
           let phone: string | null = null;
-          if (leadLog) {
+          const bookingLog = leadLog ?? jobLog;
+          if (bookingLog) {
             try {
-              const request = JSON.parse(leadLog.request_json) as { name?: string; phone?: string };
+              const request = JSON.parse(bookingLog.request_json) as { name?: string; phone?: string };
               customerName = request.name ?? null;
               phone = request.phone ?? null;
             } catch {
@@ -104,7 +107,7 @@ export function renderCallListPage(business: Business, rows: CallListRow[], filt
 
           const badges = [
             flags.failedTransfer ? `<span class="badge-error">Failed transfer</span>` : "",
-            flags.noLeadCreated ? `<span class="badge-error">No lead created</span>` : "",
+            flags.noBookingCreated ? `<span class="badge-error">No lead/job created</span>` : "",
             flags.endedEarly ? `<span class="badge-warning">Ended early</span>` : "",
           ].join("");
 
@@ -121,7 +124,7 @@ export function renderCallListPage(business: Business, rows: CallListRow[], filt
         })
         .join("")
     : `<p>${
-        filters.failedTransfer || filters.noLeadCreated || filters.endedEarly || filters.from || filters.to
+        filters.failedTransfer || filters.noBookingCreated || filters.endedEarly || filters.from || filters.to
           ? "No calls match these filters."
           : "No calls yet."
       }</p>`;
@@ -155,6 +158,9 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
   const leadLink = vm.leadUrl
     ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(vm.leadId ?? "View Lead")}</a>`
     : "—";
+  const jobLink = vm.jobUrl
+    ? `<a href="${escapeHtml(vm.jobUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(vm.jobId ?? "View Job")}</a>`
+    : "—";
 
   return page(
     `Call ${vm.conversationId}`,
@@ -168,6 +174,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
       <h2>Actions</h2>
       <div class="actions">
         ${vm.leadUrl ? `<a href="${escapeHtml(vm.leadUrl)}" target="_blank" rel="noopener noreferrer">View Lead in ST</a>` : ""}
+        ${vm.jobUrl ? `<a href="${escapeHtml(vm.jobUrl)}" target="_blank" rel="noopener noreferrer">View Job in ST</a>` : ""}
         <button onclick="copyCallLink()">Copy Call Link</button>
       </div>
     </div>
@@ -192,6 +199,7 @@ export function renderCallDetailPage(vm: CallDetailViewModel): string {
       ${row("Property Type", escapeHtml(vm.propertyType))}
       ${row("Emergency", vm.isEmergency === null ? "—" : vm.isEmergency ? "Yes" : "No")}
       ${row("ST Lead", leadLink)}
+      ${row("ST Job", jobLink)}
       ${row("Is Transferred", vm.isTransferred ? (vm.transferFailed ? "Attempted — failed" : "Yes") : "No")}
       ${row("Forwarded Phone Number", escapeHtml(vm.forwardedNumber ? formatPhoneNumber(vm.forwardedNumber) : "—"))}
       ${row("Transfer Destination", escapeHtml(vm.transferDestination ?? "—"))}

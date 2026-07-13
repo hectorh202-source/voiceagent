@@ -4,9 +4,10 @@ import path from "node:path";
 import { getBusinessSetting } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath } from "../db/callRecords";
-import { findCreateLeadLogByConversationId } from "../db/callLog";
+import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
+import { updateJobSummary } from "../servicetitan/jobs";
 import { env } from "../config/env";
 
 interface TranscriptTurn {
@@ -92,6 +93,56 @@ async function updateLeadWithRealSummary(
   }
 }
 
+// Parallel to updateLeadWithRealSummary, for job-booking-mode calls — a
+// given call only ever produces a Lead or a Job (book_job's own emergency
+// safety net logs itself as create_lead, never both), so this and the lead
+// version are mutually exclusive in practice; both are simply attempted and
+// only one will ever find a matching log row.
+async function updateJobWithRealSummary(
+  businessId: number,
+  conversationId: string,
+  aiSummary: string,
+): Promise<void> {
+  const jobLog = findBookJobLogByConversationId(businessId, conversationId);
+  if (!jobLog) return;
+
+  try {
+    const request = JSON.parse(jobLog.request_json) as {
+      street?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      phone?: string;
+    };
+    const response = jobLog.response_json
+      ? (JSON.parse(jobLog.response_json) as { jobId?: string | null; email?: string | null; equipmentAge?: string | null })
+      : null;
+    const jobId = response?.jobId;
+    if (!jobId || !request.street || !request.city || !request.state || !request.zip || !request.phone) {
+      return;
+    }
+
+    const summary = buildLeadSummary(businessId, {
+      narrative: aiSummary,
+      street: request.street,
+      city: request.city,
+      state: request.state,
+      zip: request.zip,
+      phone: request.phone,
+      email: response?.email ?? null,
+      equipmentAge: response?.equipmentAge ?? null,
+      conversationId,
+    });
+
+    const updated = await updateJobSummary(businessId, jobId, summary);
+    if (!updated) {
+      console.error(`Failed to update job ${jobId} with real call summary for conversation ${conversationId}`);
+    }
+  } catch (error) {
+    console.error("updateJobWithRealSummary failed:", error);
+  }
+}
+
 export async function handlePostCallWebhook(req: Request, res: Response): Promise<void> {
   const business = req.business;
   if (!business) {
@@ -133,6 +184,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);
+      await updateJobWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);
     }
   } else if (payload.type === "post_call_audio") {
     const { data } = payload;

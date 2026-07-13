@@ -56,3 +56,20 @@ export function findCreateLeadLogByConversationId(
     )
     .get(businessId, `%${conversationId}%`) as CreateLeadLogRow | undefined;
 }
+
+// Parallel to findCreateLeadLogByConversationId, for job-booking-mode
+// businesses — a given call only ever produces a Lead or a Job, never both,
+// via book_job's own emergency safety net (see tools/bookJob.ts), so callers
+// check this and the lead finder as mutually exclusive alternatives.
+export function findBookJobLogByConversationId(
+  businessId: number,
+  conversationId: string,
+): CreateLeadLogRow | undefined {
+  return db
+    .prepare(
+      `SELECT request_json, response_json, created_at FROM call_log
+       WHERE business_id = ? AND tool_name = 'book_job' AND request_json LIKE ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(businessId, `%${conversationId}%`) as CreateLeadLogRow | undefined;
+}

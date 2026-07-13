@@ -6,6 +6,7 @@ import {
   getRawServiceTitanSettings,
   getRawOperationalSettings,
   type ServiceTitanEnvironment,
+  type BookingMode,
 } from "./store";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { renderSettingsPage } from "./views";
@@ -63,6 +64,7 @@ businessSettingsRouter.post("/", requireAdminSession, (req, res) => {
   maybeSet(business.id, "servicetitan.callReasonId", body.serviceTitanCallReasonId);
   maybeSet(business.id, "servicetitan.jobTypeId", body.serviceTitanJobTypeId);
   maybeSet(business.id, "servicetitan.tagName", body.serviceTitanTagName);
+  setBusinessSetting(business.id, "servicetitan.bookingMode", (body.serviceTitanBookingMode as BookingMode) || "lead");
 
   setBusinessSetting(business.id, "operational.timezone", body.timezone || "America/New_York");
   maybeSet(business.id, "operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));
