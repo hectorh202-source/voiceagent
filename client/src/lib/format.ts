@@ -29,6 +29,14 @@ export function formatPercent(value: number | null): string {
   return `${Math.round(value * 100)}%`;
 }
 
+// Billing-oriented — a whole-minute count is what matters for "how many
+// minutes did we use," not seconds-level precision. Rounds up (like most
+// usage-based billing) rather than down, so this never under-reports.
+export function formatTotalMinutes(secs: number): string {
+  const minutes = Math.ceil(secs / 60);
+  return `${minutes.toLocaleString()} min`;
+}
+
 // Mirrors src/lib/format.ts's formatPhoneNumber exactly — falls back to the
 // raw value for anything that isn't a recognizable 10-digit US number.
 export function formatPhoneNumber(phone: string): string {

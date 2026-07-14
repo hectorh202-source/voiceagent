@@ -151,6 +151,8 @@ Two more new columns, populated by `webhooks/postCall.ts` at webhook-receipt tim
 - **Average call duration** (mean of non-null `duration_secs`).
 - **Calls-per-day** (a bar chart, via `recharts` in the client).
 - **Emergency Transfer Rate** ((emergency calls that were transferred) ÷ all calls — `isEmergency` is only known for calls that reached `create_lead`/`book_job`, same limitation the rest of this data model already has).
+- **Minutes-usage tracking, for billing visibility**: `totalDurationSecs` (sum of every call's `duration_secs` in range — deliberately *includes* forwarded/transferred call time, not just AI-only, since that's still real usage the business is billed for), split into `aiOnlyDurationSecs`/`forwardedDurationSecs` by `deriveCallHandler()`'s result, plus `forwardedCallCount` and a `durationSecsPerDay` series (a second bar chart, "Minutes used per day"). The client (`MetricsPage.tsx`) formats these as whole minutes, rounded **up** (`formatTotalMinutes()` in `client/src/lib/format.ts`) — matches how usage-based billing typically rounds, so this never under-reports what the business will actually be billed for.
+- The Metrics page defaults to **the current calendar month** on load (the primary use case is "how many minutes have we used this month"), with quick-select presets (This month / Last month / Last 7 days / Last 30 days) alongside the existing custom date-range inputs — computed client-side in the browser's local time, distinct from the backend's own UTC-calendar-day date filtering (an already-accepted coarse-filter tradeoff, see Filtering below).
 
 ### Filtering
 

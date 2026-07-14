@@ -74,6 +74,11 @@ export interface CallMetrics {
   avgDurationSecs: number | null;
   callsPerDay: { date: string; count: number }[];
   emergencyTransferRate: number;
+  totalDurationSecs: number;
+  aiOnlyDurationSecs: number;
+  forwardedDurationSecs: number;
+  forwardedCallCount: number;
+  durationSecsPerDay: { date: string; durationSecs: number }[];
 }
 
 export interface ServiceCategory {

@@ -15,6 +15,17 @@ export interface CallMetrics {
   callsPerDay: { date: string; count: number }[];
   // (emergency calls that were transferred) / totalCalls.
   emergencyTransferRate: number;
+  // Minutes-usage tracking (billing visibility) — totalDurationSecs is the
+  // headline number ("how many minutes did we use this period"), and
+  // deliberately INCLUDES forwarded/transferred call time, not just AI-only
+  // time. forwardedDurationSecs/aiOnlyDurationSecs split that same total
+  // into the two handler types so a business can see how much of its usage
+  // came from calls that got handed off to a human.
+  totalDurationSecs: number;
+  aiOnlyDurationSecs: number;
+  forwardedDurationSecs: number;
+  forwardedCallCount: number;
+  durationSecsPerDay: { date: string; durationSecs: number }[];
 }
 
 // Effectively "every call in range" for metrics purposes — far above any
@@ -44,7 +55,11 @@ export function computeMetrics(business: Business, range: CallDateRange): CallMe
   let durationSum = 0;
   let durationCount = 0;
   let emergencyTransferredCount = 0;
+  let totalDurationSecs = 0;
+  let forwardedDurationSecs = 0;
+  let forwardedCallCount = 0;
   const perDay = new Map<string, number>();
+  const durationPerDay = new Map<string, number>();
 
   for (const record of records) {
     const leadLog = findCreateLeadLogByConversationId(business.id, record.conversation_id);
@@ -54,13 +69,25 @@ export function computeMetrics(business: Business, range: CallDateRange): CallMe
     if (status === "booked") bookedCount++;
     else if (status === "not_booked") notBookedCount++;
 
+    const handler = deriveCallHandler(record);
+    const isForwarded = handler === "ai_human";
+    if (isForwarded) forwardedCallCount++;
+
     if (record.duration_secs !== null) {
       durationSum += record.duration_secs;
       durationCount++;
+      // Deliberately included, not excluded — a forwarded call's AI-handled
+      // portion is still real usage, and the caller wants a total that
+      // matches what they'd actually be billed for.
+      totalDurationSecs += record.duration_secs;
+      if (isForwarded) forwardedDurationSecs += record.duration_secs;
+
+      const day = record.received_at.slice(0, 10);
+      durationPerDay.set(day, (durationPerDay.get(day) ?? 0) + record.duration_secs);
     }
 
     const isEmergency = parseIsEmergency(leadLog ?? jobLog);
-    if (isEmergency && deriveCallHandler(record) === "ai_human") emergencyTransferredCount++;
+    if (isEmergency && isForwarded) emergencyTransferredCount++;
 
     const day = record.received_at.slice(0, 10);
     perDay.set(day, (perDay.get(day) ?? 0) + 1);
@@ -76,5 +103,12 @@ export function computeMetrics(business: Business, range: CallDateRange): CallMe
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     emergencyTransferRate: totalCalls > 0 ? emergencyTransferredCount / totalCalls : 0,
+    totalDurationSecs,
+    aiOnlyDurationSecs: totalDurationSecs - forwardedDurationSecs,
+    forwardedDurationSecs,
+    forwardedCallCount,
+    durationSecsPerDay: Array.from(durationPerDay.entries())
+      .map(([date, durationSecs]) => ({ date, durationSecs }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
