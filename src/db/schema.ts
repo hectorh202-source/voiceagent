@@ -50,7 +50,8 @@ export function bootstrapSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_login_at TEXT,
       failed_login_count INTEGER NOT NULL DEFAULT 0,
-      locked_until TEXT
+      locked_until TEXT,
+      is_platform_admin INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS businesses (
@@ -65,6 +66,12 @@ export function bootstrapSchema(db: DatabaseSync): void {
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (business_id, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_businesses (
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      PRIMARY KEY (user_id, business_id)
     );
   `);
 }

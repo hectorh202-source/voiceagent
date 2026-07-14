@@ -1,11 +1,20 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { getAuthState, verifyLegacyAdminPassword, clearLegacyAdminPassword, login, type AuthState } from "./auth";
-import { createUser, listUsers, deleteUser } from "../db/users";
+import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
 import { createBusiness, listBusinesses } from "../db/businesses";
+import { getUserBusinessIds, setUserBusinesses } from "../db/userBusinesses";
 import { requireAdminSession } from "../middleware/requireAdminSession";
+import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
 import { blockIfIpRateLimited, recordFailedLoginAttempt } from "../middleware/loginRateLimiter";
 import { renderSetupPage, renderLoginPage, renderMigratePage, renderBusinessListPage } from "./views";
+
+// Checkbox arrays submit as a single string when only one is checked, an
+// array when multiple are — normalize to always an array of numbers.
+function parseBusinessIds(raw: string | string[] | undefined): number[] {
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return values.map(Number).filter((n) => Number.isInteger(n));
+}
 
 declare module "express-session" {
   interface SessionData {
@@ -69,7 +78,9 @@ settingsRouter.post("/setup", (req, res) => {
     res.send(renderSetupPage("Password must be at least 8 characters and match confirmation."));
     return;
   }
-  const user = createUser(email, password);
+  // The very first account is always a platform admin — there's no one else
+  // yet who could grant them access to anything.
+  const user = createUser(email, password, true);
   req.session.userId = user.id;
   res.redirect("/settings");
 });
@@ -106,7 +117,9 @@ settingsRouter.post("/migrate", blockIfIpRateLimited, (req, res) => {
     res.send(renderMigratePage("Incorrect current password."));
     return;
   }
-  const user = createUser(email, currentPassword);
+  // Same reasoning as /setup — this migrated account was the sole admin
+  // under the old single-password model, so it keeps full access.
+  const user = createUser(email, currentPassword, true);
   clearLegacyAdminPassword();
   req.session.userId = user.id;
   res.redirect("/settings");
@@ -156,12 +169,15 @@ settingsRouter.get(
     next();
   },
   requireAdminSession,
+  requirePlatformAdmin,
   (req, res) => {
     const flash = takeFlash(req);
+    const users = listUsers();
     res.send(
       renderBusinessListPage({
         businesses: listBusinesses(),
-        users: listUsers(),
+        users,
+        userBusinessIds: Object.fromEntries(users.map((u) => [u.id, getUserBusinessIds(u.id)])),
         currentUserId: req.session.userId!,
         flash,
       }),
@@ -169,7 +185,7 @@ settingsRouter.get(
   },
 );
 
-settingsRouter.post("/businesses", requireAdminSession, (req, res) => {
+settingsRouter.post("/businesses", requireAdminSession, requirePlatformAdmin, (req, res) => {
   const { name } = req.body as { name?: string };
   const trimmed = name?.trim();
   if (!trimmed) {
@@ -178,14 +194,18 @@ settingsRouter.post("/businesses", requireAdminSession, (req, res) => {
     return;
   }
   const business = createBusiness(trimmed);
-  res.redirect(`/b/${business.id}/settings`);
+  // Platform admins (the only ones who can reach this route) see every
+  // business regardless of user_businesses — no membership row needed here.
+  res.redirect(`/app/${business.id}/settings/business-info`);
 });
 
-settingsRouter.post("/users", requireAdminSession, (req, res) => {
-  const { email: rawEmail, password, confirmPassword } = req.body as {
+settingsRouter.post("/users", requireAdminSession, requirePlatformAdmin, (req, res) => {
+  const { email: rawEmail, password, confirmPassword, isPlatformAdmin, businessIds } = req.body as {
     email?: string;
     password?: string;
     confirmPassword?: string;
+    isPlatformAdmin?: string;
+    businessIds?: string | string[];
   };
   const email = parseEmail(rawEmail);
   if (!email) {
@@ -198,8 +218,10 @@ settingsRouter.post("/users", requireAdminSession, (req, res) => {
     res.redirect("/settings");
     return;
   }
+  const admin = isPlatformAdmin === "on";
   try {
-    createUser(email, password);
+    const user = createUser(email, password, admin);
+    if (!admin) setUserBusinesses(user.id, parseBusinessIds(businessIds));
     req.session.flash = { type: "success", message: `Added user ${email}.` };
   } catch {
     req.session.flash = { type: "error", message: "That email is already in use." };
@@ -207,7 +229,25 @@ settingsRouter.post("/users", requireAdminSession, (req, res) => {
   res.redirect("/settings");
 });
 
-settingsRouter.post("/users/:id/delete", requireAdminSession, (req, res) => {
+settingsRouter.post("/users/:id/access", requireAdminSession, requirePlatformAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const { isPlatformAdmin, businessIds } = req.body as { isPlatformAdmin?: string; businessIds?: string | string[] };
+  const admin = isPlatformAdmin === "on";
+  if (id === req.session.userId && !admin) {
+    // Mirrors the "can't delete your own account" guard below — revoking
+    // your own admin access here could lock you out of the console entirely
+    // with no one else able to restore it.
+    req.session.flash = { type: "error", message: "You cannot remove your own platform admin access." };
+    res.redirect("/settings");
+    return;
+  }
+  setPlatformAdmin(id, admin);
+  setUserBusinesses(id, admin ? [] : parseBusinessIds(businessIds));
+  req.session.flash = { type: "success", message: "Access updated." };
+  res.redirect("/settings");
+});
+
+settingsRouter.post("/users/:id/delete", requireAdminSession, requirePlatformAdmin, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.session.userId) {
     req.session.flash = { type: "error", message: "You cannot delete your own account." };

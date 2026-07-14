@@ -2,6 +2,7 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
+import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
 import { patchCallsSchema, businessInfoSchema, generalSettingsSchema } from "./schemas";
 import {
   listCallRecords,
@@ -36,6 +37,7 @@ export const apiBusinessRouter = Router({ mergeParams: true });
 
 apiBusinessRouter.use(resolveBusiness);
 apiBusinessRouter.use(requireApiSession);
+apiBusinessRouter.use(requireBusinessAccess);
 
 function parseCallRow(business: Business, record: ReturnType<typeof listCallRecords>[number]) {
   const businessId = business.id;

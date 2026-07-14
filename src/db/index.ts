@@ -5,6 +5,7 @@ import { env } from "../config/env";
 import { bootstrapSchema } from "./schema";
 import { migrateToMultiTenant } from "./migrateToMultiTenant";
 import { migrateCallStatusColumns } from "./migrateCallStatusColumns";
+import { migrateUserBusinessAccess } from "./migrateUserBusinessAccess";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -16,3 +17,4 @@ db.exec("PRAGMA journal_mode = WAL");
 bootstrapSchema(db);
 migrateToMultiTenant(db);
 migrateCallStatusColumns(db);
+migrateUserBusinessAccess(db);

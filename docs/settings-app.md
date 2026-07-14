@@ -14,14 +14,15 @@ Split across two routers — a global one and a per-business one, reflecting the
 
 | Route | Method | Auth required | Purpose |
 |---|---|---|---|
-| `/settings/setup` | GET, POST | none (only reachable if zero users exist yet) | First-run: create the first platform account (email + password) |
-| `/settings/migrate` | GET, POST | none (only reachable for an upgraded install with a legacy password and zero users) | One-time: convert the old single admin password into the first real account |
+| `/settings/setup` | GET, POST | none (only reachable if zero users exist yet) | First-run: create the first platform account (email + password) — always created as a platform admin |
+| `/settings/migrate` | GET, POST | none (only reachable for an upgraded install with a legacy password and zero users) | One-time: convert the old single admin password into the first real account — always created as a platform admin |
 | `/settings/login` | GET, POST | none | Log in with email + password |
 | `/settings/logout` | POST | admin session | Destroy the session |
-| `/settings` | GET | admin session | Render the business list + "Add business" form + Users section |
-| `/settings/businesses` | POST | admin session | Create a business, redirect to its own `/b/:id/settings` |
-| `/settings/users` | POST | admin session | Add a new platform user (email + password) |
-| `/settings/users/:id/delete` | POST | admin session | Remove a platform user (not yourself) |
+| `/settings` | GET | admin session + **platform admin** | Render the business list + "Add business" form + Users section (a non-admin is redirected to `/app` instead) |
+| `/settings/businesses` | POST | admin session + platform admin | Create a business, redirect to its `/app/:id/settings/business-info` |
+| `/settings/users` | POST | admin session + platform admin | Add a new platform user (email + password + optional platform-admin flag + business assignment) |
+| `/settings/users/:id/access` | POST | admin session + platform admin | Update an *existing* user's platform-admin flag and/or business assignments |
+| `/settings/users/:id/delete` | POST | admin session + platform admin | Remove a platform user (not yourself) |
 
 **Per-business credentials now live in the React SPA, not a server-rendered form.** The old `src/settings/businessRoutes.ts` (server-rendered `GET`/`POST /b/:businessId/settings`) was deleted once the SPA covered the same functionality — this platform's business-scoped settings UI is `client/`'s `BusinessInfoSettingsPage`/`GeneralSettingsPage`, served at `/app/:businessId/settings/business-info` and `/app/:businessId/settings/general`, talking to a JSON API instead of posting an HTML form:
 
@@ -71,9 +72,21 @@ An already-running instance has a legacy `admin.passwordHash`/`admin.passwordSal
 
 Note that `/tools/*` (the ElevenLabs webhook endpoints) are a **completely separate auth mechanism** — a shared secret header, not a login session, since ElevenLabs' servers obviously can't fill out a login form. See [elevenlabs-tools.md](elevenlabs-tools.md).
 
-### No admin role — every user is equally privileged, across every business
+### Per-business access control — platform admins vs. scoped users
 
-There's no permission tier: any row in `users` can do everything the platform allows — edit any business's credentials, add/remove other platform users, view any business's call dashboard. This was already true in the single-business days and remains the deliberate scope decision now that there can be many businesses: there's no per-business user or role, just one shared login pool with full access to everything. Worth a caveat if this platform's login pool ever includes anyone outside your own team (e.g. a client's own staff) — at that point "every user can edit every other business's live ServiceTitan credentials" becomes a real operational risk worth revisiting, though it isn't one today.
+Every user is either a **platform admin** (`users.is_platform_admin`) or scoped to specific businesses via a `user_businesses` join table (`user_id, business_id`, simple membership — no per-business role tiers, just "has access" or doesn't). Platform admins bypass the membership table entirely and see/edit every business, exactly like every user did before this existed; a scoped (non-admin) user can only see and act on the businesses they're explicitly assigned to.
+
+**Enforcement is deliberately narrow** — added in exactly two places, since most of this app's surfaces have their own unrelated auth already:
+- **`src/middleware/requireBusinessAccess.ts`**, mounted on `src/api/businessRouter.ts` right after `resolveBusiness`/`requireApiSession` — every `/api/businesses/:businessId/*` call (calls, metrics, settings) 403s for a business the current user isn't assigned to. `GET /api/businesses` (the SPA's business switcher and `FirstBusinessRedirect`) is scoped the same way via `listBusinessesForUser()` — a scoped user simply never sees a business they don't have access to, no client-side filtering needed.
+- **`src/middleware/requirePlatformAdmin.ts`**, on the global `/settings` console (business list, add/remove users, business/admin assignment) — a scoped user has no reason to see every business/user in the system, so hitting `/settings` redirects them straight to `/app` (which resolves to their own first assigned business).
+
+`/b/:businessId/tools/*` and `/webhooks/*` (shared-secret auth, unrelated to user sessions) and the public `/b/:businessId/calls/:conversationId` page (deliberately unauthenticated) are untouched by any of this.
+
+**Migration**: `src/db/migrateUserBusinessAccess.ts` marks every *existing* user a platform admin on deploy — zero surprise/lockout, matching the full access they already had. Only users created *after* this shipped default to scoped/non-admin. The very first account (via `/settings/setup` or `/settings/migrate`) is always created as a platform admin, since there's no one else yet to grant them access.
+
+**Assigning access** happens on the same global `/settings` page, right where each user is already listed: a "Platform admin" checkbox plus one checkbox per business (checked = assigned), submitting to `POST /settings/users/:id/access`. The same two controls are on the "Add a user" form, so a new user can be scoped at creation time too. A user can't revoke their own platform-admin flag (mirrors the existing "can't delete your own account" guard) — the checkbox renders disabled for your own row, and the server rejects it too, to avoid a self-lockout with no one else able to restore access.
+
+**A real bug caught during live testing**: `node:sqlite` enforces foreign keys by default, so `deleteUser()` on a scoped user with rows in `user_businesses` used to throw an unhandled `FOREIGN KEY constraint failed` instead of removing them (the existing "Remove" button would have 500'd for any non-admin user). Fixed by having `deleteUser()` delete that user's `user_businesses` rows in the same transaction before deleting the user row itself.
 
 ### Removing a user
 
