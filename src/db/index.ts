@@ -8,6 +8,7 @@ import { migrateCallStatusColumns } from "./migrateCallStatusColumns";
 import { migrateUserBusinessAccess } from "./migrateUserBusinessAccess";
 import { migrateStatusOverrideColumn } from "./migrateStatusOverrideColumn";
 import { migrateCallReasonOverrideColumn } from "./migrateCallReasonOverrideColumn";
+import { migrateInternalNotesColumn } from "./migrateInternalNotesColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -22,3 +23,4 @@ migrateCallStatusColumns(db);
 migrateUserBusinessAccess(db);
 migrateStatusOverrideColumn(db);
 migrateCallReasonOverrideColumn(db);
+migrateInternalNotesColumn(db);

@@ -85,6 +85,7 @@ export interface CallDetail {
   callReasonOverride: string | null;
   isRead: boolean;
   recoveryStatus: RecoveryStatus;
+  internalNotes: string | null;
   audioUrl: string | null;
 }
 

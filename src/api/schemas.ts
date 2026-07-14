@@ -60,6 +60,7 @@ export const patchCallsSchema = z.object({
   recoveryStatus: z.enum(["recovered", "not_recovered"]).nullable().optional(),
   statusOverride: z.enum(["booked", "not_booked", "excused"]).nullable().optional(),
   callReasonOverride: z.enum(CALL_REASON_OVERRIDE_VALUES).nullable().optional(),
+  internalNotes: z.string().nullable().optional(),
 });
 
 export const businessInfoSchema = z.object({

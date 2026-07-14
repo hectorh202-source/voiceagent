@@ -18,6 +18,8 @@ import {
   CloseIcon,
   AlertIcon,
   ChevronDownIcon,
+  EditIcon,
+  SaveIcon,
 } from "../components/icons";
 
 const STATUS_LABEL: Record<CallStatus, string> = {
@@ -135,12 +137,16 @@ export function CallDetailPage() {
       recoveryStatus?: RecoveryStatus;
       statusOverride?: CallStatus | null;
       callReasonOverride?: string | null;
+      internalNotes?: string | null;
     }) => api.patch(`/api/businesses/${businessId}/calls`, { conversationIds: [conversationId], ...body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
       queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
     },
   });
+
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
 
   if (isLoading) return <div className="centered-spinner">Loading…</div>;
   if (!data) return <div className="centered-spinner">Call not found.</div>;
@@ -306,9 +312,59 @@ export function CallDetailPage() {
             </div>
           </div>
 
-          <div className="info-section empty-state-section">
-            <div className="info-section-title">Internal Notes</div>
-            <div className="muted" style={{ fontSize: 13 }}>Not available yet.</div>
+          <div className="info-section">
+            <div className="info-section-header">
+              <div className="info-section-title">Internal Notes</div>
+              {!isEditingNotes && (
+                <button
+                  className="link-btn"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                  onClick={() => {
+                    setNotesDraft(data.internalNotes ?? "");
+                    setIsEditingNotes(true);
+                  }}
+                >
+                  <EditIcon width={13} height={13} />
+                  {data.internalNotes ? "Edit" : "Add Note"}
+                </button>
+              )}
+            </div>
+            {isEditingNotes ? (
+              <div>
+                <textarea
+                  className="notes-textarea"
+                  placeholder="Add internal notes about this call…"
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  autoFocus
+                />
+                <div className="notes-actions">
+                  <button
+                    className="link-btn"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                    onClick={() => setIsEditingNotes(false)}
+                  >
+                    <CloseIcon width={13} height={13} />
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                    onClick={() => {
+                      patchMutation.mutate({ internalNotes: notesDraft.trim() === "" ? null : notesDraft });
+                      setIsEditingNotes(false);
+                    }}
+                  >
+                    <SaveIcon width={13} height={13} />
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : data.internalNotes ? (
+              <div className="notes-display">{data.internalNotes}</div>
+            ) : (
+              <div className="muted" style={{ fontSize: 13 }}>No notes added yet</div>
+            )}
           </div>
           <div className="info-section empty-state-section">
             <div className="info-section-title">Tasks</div>

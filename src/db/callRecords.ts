@@ -16,6 +16,7 @@ export interface ElevenLabsCallRecord {
   call_reason: string | null;
   status_override: string | null;
   call_reason_override: string | null;
+  internal_notes: string | null;
 }
 
 interface CallTranscriptionEntry {
@@ -69,6 +70,7 @@ export interface CallStatusPatch {
   recoveryStatus?: "recovered" | "not_recovered" | null;
   statusOverride?: "booked" | "not_booked" | "excused" | null;
   callReasonOverride?: string | null;
+  internalNotes?: string | null;
 }
 
 const setIsReadStmt = db.prepare(
@@ -83,10 +85,14 @@ const setStatusOverrideStmt = db.prepare(
 const setCallReasonOverrideStmt = db.prepare(
   `UPDATE elevenlabs_calls SET call_reason_override = @callReasonOverride WHERE conversation_id = @conversationId AND business_id = @businessId`,
 );
+const setInternalNotesStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET internal_notes = @internalNotes WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
 
 // Staff-driven status updates (read/unread, recovered/not recovered, the
-// manual Bookability and Call Reason overrides) — the only writers of these
-// columns; webhook upserts above never touch them.
+// manual Bookability and Call Reason overrides, and free-text internal
+// notes) — the only writers of these columns; webhook upserts above never
+// touch them.
 export function updateCallStatus(businessId: number, conversationIds: string[], patch: CallStatusPatch): void {
   for (const conversationId of conversationIds) {
     if (patch.isRead !== undefined) {
@@ -97,6 +103,12 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
     }
     if (patch.statusOverride !== undefined) {
       setStatusOverrideStmt.run({ conversationId, businessId, statusOverride: patch.statusOverride });
+    }
+    if (patch.callReasonOverride !== undefined) {
+      setCallReasonOverrideStmt.run({ conversationId, businessId, callReasonOverride: patch.callReasonOverride });
+    }
+    if (patch.internalNotes !== undefined) {
+      setInternalNotesStmt.run({ conversationId, businessId, internalNotes: patch.internalNotes });
     }
     if (patch.callReasonOverride !== undefined) {
       setCallReasonOverrideStmt.run({ conversationId, businessId, callReasonOverride: patch.callReasonOverride });

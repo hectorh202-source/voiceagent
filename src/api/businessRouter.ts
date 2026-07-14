@@ -141,8 +141,8 @@ apiBusinessRouter.patch("/calls", (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { conversationIds, isRead, recoveryStatus, statusOverride, callReasonOverride } = parsed.data;
-  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus, statusOverride, callReasonOverride });
+  const { conversationIds, isRead, recoveryStatus, statusOverride, callReasonOverride, internalNotes } = parsed.data;
+  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus, statusOverride, callReasonOverride, internalNotes });
   res.json({ success: true });
 });
 
@@ -160,6 +160,7 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
     durationSecs: record.duration_secs,
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
+    internalNotes: record.internal_notes,
     audioUrl: viewModel.hasAudio ? `/b/${business.id}/calls/${conversationId}/audio` : null,
   });
 });

@@ -141,9 +141,9 @@ This is a separate concept from **Recovered/Not Recovered** (below) — Bookabil
 
 `deriveCallHandler()` reuses the same transcript-parsing `findTransferInfo()` already used by the detail page's transfer-info row: shows **"AI + Human"** only when a `transfer_to_number` call genuinely succeeded (not just attempted), otherwise **"AI"**. There's no stored human-agent identity anywhere in this system today, so this can't show a specific person's name — just whether a human ever actually joined the call.
 
-### New staff-set columns — read/unread, recovered/not recovered, and the Bookability/Call Reason overrides
+### New staff-set columns — read/unread, recovered/not recovered, the Bookability/Call Reason overrides, and Internal Notes
 
-Manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT` via `src/db/migrateCallStatusColumns.ts`; `status_override TEXT` via `src/db/migrateStatusOverrideColumn.ts`; `call_reason_override TEXT` via `src/db/migrateCallReasonOverrideColumn.ts` — all the same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery/Bookability/Call Reason marking — verified directly (set all four fields, re-run the same upsert, confirm they survive).
+Manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT` via `src/db/migrateCallStatusColumns.ts`; `status_override TEXT` via `src/db/migrateStatusOverrideColumn.ts`; `call_reason_override TEXT` via `src/db/migrateCallReasonOverrideColumn.ts`; `internal_notes TEXT` via `src/db/migrateInternalNotesColumn.ts` — all the same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery/Bookability/Call Reason/notes marking — verified directly (set all five fields, re-run the same upsert, confirm they survive).
 
 ### New derived data — call duration and Call Reason
 
@@ -158,6 +158,15 @@ Two more new columns, populated by `webhooks/postCall.ts` at webhook-receipt tim
 The call detail page's "Call Reason" field (previously a disabled, display-only select showing whatever ElevenLabs' Data Collection classified) is now editable, mirroring the Bookability override exactly: a **Default** group showing "Auto (AI) — {current auto value}" live, plus five fixed override groups — **Booked** (4 options), **Follow Up** (9), **Excused** (18), **Unbooked** (8), **Outbound** (6) — a total of 45 specific reasons, defined once in `client/src/pages/CallDetailPage.tsx`'s `CALL_REASON_GROUPS` and mirrored server-side in `src/api/schemas.ts`'s `CALL_REASON_OVERRIDE_VALUES` (the two lists must stay in sync — there's no shared module between client and server in this project, so a new reason added to one must be added to the other by hand).
 
 Unlike Bookability (a closed 3-value enum the server already fully understood), the *auto* `call_reason` value is free text from ElevenLabs — this app never validates it. The *override*, submitted via `PATCH .../calls`'s `callReasonOverride` field, **is** validated against the fixed 45-value list (a `z.enum`) — since it only ever comes from this dropdown, an unrecognized value is rejected with a `400`. Resolution follows the same `override ?? auto` pattern as Bookability: `callReason` (resolved), `autoCallReason` (raw ElevenLabs value), and `callReasonOverride` (raw override, null when unset) are all returned by both the calls-list and call-detail endpoints.
+
+### Internal Notes — free-text, for anything the dropdowns don't cover
+
+Unlike Bookability/Call Reason, this isn't an override of any derived value — it's a plain free-text field (`internal_notes` on `elevenlabs_calls`, submitted via `PATCH .../calls`'s `internalNotes` field, no enum/validation beyond "a string or null") for whatever a staff member needs to flag about a call that none of the structured fields capture. Detail-page-only — not surfaced on the calls list or in `CallListRow`, matching what was actually requested (a per-call scratchpad, not another list column).
+
+Three states on the call detail page (`CallDetailPage.tsx`), matching the reference screenshots exactly:
+1. **No note yet** — "Internal Notes" heading, an "Add Note" link (pencil icon), and "No notes added yet".
+2. **Editing** — a textarea (placeholder "Add internal notes about this call…"), with Cancel and Save buttons below it. Cancel discards the draft without saving; Save submits `internalNotes` (an empty/whitespace-only draft saves `null`, clearing the note) and closes the editor.
+3. **Saved** — the heading's link changes to "Edit," and the note renders in a highlighted box (reusing the existing `--warning-bg`/`--warning-text` theme variables also used for the "Not Recovered" badge, so it adapts correctly in dark mode without a new hardcoded color).
 
 ### Call Metrics page
 
