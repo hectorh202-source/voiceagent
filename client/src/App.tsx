@@ -7,7 +7,6 @@ import { CallsListPage } from "./pages/CallsListPage";
 import { CallDetailPage } from "./pages/CallDetailPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { BusinessInfoSettingsPage } from "./pages/BusinessInfoSettingsPage";
-import { GeneralSettingsPage } from "./pages/GeneralSettingsPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 
 const queryClient = new QueryClient();
@@ -28,7 +27,7 @@ function App() {
               <Route path="calls/:conversationId" element={<CallDetailPage />} />
               <Route path="metrics" element={<MetricsPage />} />
               <Route path="settings/business-info" element={<BusinessInfoSettingsPage />} />
-              <Route path="settings/general" element={<GeneralSettingsPage />} />
+              <Route path="admin" element={<AdminSettingsPage />} />
             </Route>
           </Routes>
         </AuthGate>

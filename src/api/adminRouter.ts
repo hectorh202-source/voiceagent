@@ -2,9 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireApiSession } from "./requireApiSession";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { createBusiness, listBusinesses } from "../db/businesses";
+import { createBusiness, listBusinesses, getBusinessById } from "../db/businesses";
 import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
-import { getUserBusinessIds, setUserBusinesses } from "../db/userBusinesses";
+import { getUserBusinessIds, setUserBusinesses, removeUserFromBusiness } from "../db/userBusinesses";
 
 // The JSON counterpart of the global, server-rendered /settings business/user
 // console (src/settings/routes.ts) — same underlying db functions, just
@@ -94,5 +94,44 @@ adminRouter.delete("/users/:id", (req, res) => {
     return;
   }
   deleteUser(id);
+  res.json({ success: true });
+});
+
+// A business's own admin console (client/src/pages/AdminSettingsPage.tsx in
+// its per-business mode) manages that business's users directly, rather
+// than through the global add-user form — which only ever creates platform
+// admins now. These two routes only ever touch this one business's
+// membership row for a user, never their access to any other business.
+const createBusinessUserSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(8),
+});
+
+adminRouter.post("/businesses/:businessId/users", (req, res) => {
+  const businessId = Number(req.params.businessId);
+  if (!Number.isInteger(businessId) || businessId <= 0 || !getBusinessById(businessId)) {
+    res.status(404).json({ error: "Business not found" });
+    return;
+  }
+  const parsed = createBusinessUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter a valid email and an 8+ character password." });
+    return;
+  }
+  try {
+    // A brand-new user has no existing memberships to preserve, so
+    // replace-all and single-business-add are equivalent here.
+    const user = createUser(parsed.data.email, parsed.data.password, false);
+    setUserBusinesses(user.id, [businessId]);
+    res.json({ success: true });
+  } catch {
+    res.status(409).json({ error: "That email is already in use." });
+  }
+});
+
+adminRouter.delete("/businesses/:businessId/users/:userId", (req, res) => {
+  const businessId = Number(req.params.businessId);
+  const userId = Number(req.params.userId);
+  removeUserFromBusiness(userId, businessId);
   res.json({ success: true });
 });

@@ -6,6 +6,7 @@ import type { User } from "./users";
 const getIdsStmt = db.prepare(`SELECT business_id FROM user_businesses WHERE user_id = ?`);
 const deleteForUserStmt = db.prepare(`DELETE FROM user_businesses WHERE user_id = ?`);
 const insertStmt = db.prepare(`INSERT INTO user_businesses (user_id, business_id) VALUES (?, ?)`);
+const deleteOneStmt = db.prepare(`DELETE FROM user_businesses WHERE user_id = ? AND business_id = ?`);
 
 export function getUserBusinessIds(userId: number): number[] {
   return (getIdsStmt.all(userId) as { business_id: number }[]).map((r) => r.business_id);
@@ -37,4 +38,12 @@ export function listBusinessesForUser(user: User): Business[] {
 export function userHasBusinessAccess(user: User, businessId: number): boolean {
   if (user.isPlatformAdmin) return true;
   return getUserBusinessIds(user.id).includes(businessId);
+}
+
+// A single-business revoke, as opposed to setUserBusinesses' replace-all
+// semantics — used by each business's own admin console to remove just its
+// own membership row without touching a user's access to any other
+// business.
+export function removeUserFromBusiness(userId: number, businessId: number): void {
+  deleteOneStmt.run(userId, businessId);
 }

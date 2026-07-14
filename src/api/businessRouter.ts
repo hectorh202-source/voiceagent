@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
 import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
+import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
 import { patchCallsSchema, businessInfoSchema, generalSettingsSchema } from "./schemas";
 import {
   listCallRecords,
@@ -195,7 +196,11 @@ apiBusinessRouter.put("/settings/business-info", (req, res) => {
   res.json({ success: true });
 });
 
-apiBusinessRouter.get("/settings/general", (req, res) => {
+// Credentials and secrets, not operational metadata like Business Info —
+// only a platform admin can view or change these, and only from that
+// business's own admin console (client/src/pages/AdminSettingsPage.tsx),
+// not the regular per-business Settings nav any business-access user sees.
+apiBusinessRouter.get("/settings/general", requireApiPlatformAdmin, (req, res) => {
   const business = req.business!;
   res.json({
     elevenLabs: getRawElevenLabsSettings(business.id),
@@ -204,7 +209,7 @@ apiBusinessRouter.get("/settings/general", (req, res) => {
   });
 });
 
-apiBusinessRouter.put("/settings/general", (req, res) => {
+apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) => {
   const business = req.business!;
   const parsed = generalSettingsSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -237,7 +242,7 @@ apiBusinessRouter.put("/settings/general", (req, res) => {
   res.json({ success: true });
 });
 
-apiBusinessRouter.post("/settings/general/generate-secret", (req, res) => {
+apiBusinessRouter.post("/settings/general/generate-secret", requireApiPlatformAdmin, (req, res) => {
   const business = req.business!;
   const secret = crypto.randomBytes(24).toString("hex");
   setBusinessSetting(business.id, "operational.toolWebhookSecret", secret);

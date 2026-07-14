@@ -31,9 +31,6 @@ export function AppShell() {
               <NavLink to={`/${businessId}/settings/business-info`} className={navClass}>
                 Business Info
               </NavLink>
-              <NavLink to={`/${businessId}/settings/general`} className={navClass}>
-                General
-              </NavLink>
             </nav>
           </>
         )}

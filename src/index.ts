@@ -117,10 +117,11 @@ function requireAppAccess(req: express.Request, res: express.Response, next: exp
     return;
   }
 
-  // req.params[0] is whatever "/app/*" matched — e.g. "admin",
-  // "1/calls", or "" for a bare /app request (FirstBusinessRedirect,
-  // needs nothing beyond "is there a session").
-  const [first] = (req.params[0] ?? "").split("/").filter(Boolean);
+  // req.params[0] is whatever "/app/*" matched — e.g. "admin", "1/calls",
+  // "1/admin" (a business's own admin console), or "" for a bare /app
+  // request (FirstBusinessRedirect, needs nothing beyond "is there a
+  // session").
+  const [first, second] = (req.params[0] ?? "").split("/").filter(Boolean);
 
   if (first === "admin") {
     if (!user.isPlatformAdmin) {
@@ -129,9 +130,18 @@ function requireAppAccess(req: express.Request, res: express.Response, next: exp
     }
   } else if (first !== undefined) {
     const businessId = Number(first);
-    if (Number.isInteger(businessId) && businessId > 0 && !userHasBusinessAccess(user, businessId)) {
-      res.redirect("/app");
-      return;
+    if (Number.isInteger(businessId) && businessId > 0) {
+      if (!userHasBusinessAccess(user, businessId)) {
+        res.redirect("/app");
+        return;
+      }
+      // /app/:businessId/admin is that business's own admin console — same
+      // isPlatformAdmin requirement as the global /app/admin, just nested.
+      // Business access alone (checked above) isn't enough here.
+      if (second === "admin" && !user.isPlatformAdmin) {
+        res.redirect("/app");
+        return;
+      }
     }
   }
 
