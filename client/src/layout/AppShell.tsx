@@ -15,28 +15,32 @@ export function AppShell() {
       <aside className="sidebar">
         <div className="sidebar-brand">Voice Agent Platform</div>
         <BusinessSwitcher />
-        <nav className="nav-group">
-          <div className="nav-group-label">Channels</div>
-          <NavLink to={`/${businessId}/calls`} className={navClass}>
-            Calls
-          </NavLink>
-          <NavLink to={`/${businessId}/metrics`} className={navClass}>
-            Call Metrics
-          </NavLink>
-        </nav>
-        <nav className="nav-group">
-          <div className="nav-group-label">Settings</div>
-          <NavLink to={`/${businessId}/settings/business-info`} className={navClass}>
-            Business Info
-          </NavLink>
-          <NavLink to={`/${businessId}/settings/general`} className={navClass}>
-            General
-          </NavLink>
-        </nav>
+        {businessId && (
+          <>
+            <nav className="nav-group">
+              <div className="nav-group-label">Channels</div>
+              <NavLink to={`/${businessId}/calls`} className={navClass}>
+                Calls
+              </NavLink>
+              <NavLink to={`/${businessId}/metrics`} className={navClass}>
+                Call Metrics
+              </NavLink>
+            </nav>
+            <nav className="nav-group">
+              <div className="nav-group-label">Settings</div>
+              <NavLink to={`/${businessId}/settings/business-info`} className={navClass}>
+                Business Info
+              </NavLink>
+              <NavLink to={`/${businessId}/settings/general`} className={navClass}>
+                General
+              </NavLink>
+            </nav>
+          </>
+        )}
         {user.isPlatformAdmin && (
           <nav className="nav-group">
             <div className="nav-group-label">Admin</div>
-            <NavLink to={`/${businessId}/admin`} className={navClass}>
+            <NavLink to="/admin" className={navClass}>
               Admin Settings
             </NavLink>
           </nav>

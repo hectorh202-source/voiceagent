@@ -1,26 +1,11 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import { getAuthState, verifyLegacyAdminPassword, clearLegacyAdminPassword, login, type AuthState } from "./auth";
-import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
-import { createBusiness, listBusinesses } from "../db/businesses";
-import { getUserBusinessIds, setUserBusinesses } from "../db/userBusinesses";
+import { createUser } from "../db/users";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
 import { blockIfIpRateLimited, recordFailedLoginAttempt } from "../middleware/loginRateLimiter";
-import { renderSetupPage, renderLoginPage, renderMigratePage, renderBusinessListPage } from "./views";
-
-// Checkbox arrays submit as a single string when only one is checked, an
-// array when multiple are — normalize to always an array of numbers.
-function parseBusinessIds(raw: string | string[] | undefined): number[] {
-  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return values.map(Number).filter((n) => Number.isInteger(n));
-}
-
-declare module "express-session" {
-  interface SessionData {
-    flash?: { type: "success" | "error"; message: string };
-  }
-}
+import { renderSetupPage, renderLoginPage, renderMigratePage } from "./views";
 
 export const settingsRouter = Router();
 
@@ -41,12 +26,6 @@ function redirectToAuthEntryPoint(res: Response, state: AuthState): void {
   } else {
     res.redirect("/settings/login");
   }
-}
-
-function takeFlash(req: Request) {
-  const flash = req.session.flash;
-  req.session.flash = undefined;
-  return flash;
 }
 
 settingsRouter.get("/setup", (req, res) => {
@@ -158,6 +137,13 @@ settingsRouter.post("/logout", (req, res) => {
   });
 });
 
+// The business/user management console itself now lives entirely in the
+// React SPA (client/src/pages/AdminSettingsPage.tsx, /app/admin, backed by
+// src/api/adminRouter.ts) — this route is just the post-login landing
+// dispatcher: authenticated platform admins land in the SPA's admin
+// console, everyone else (a scoped, non-admin user hitting /settings
+// directly) gets bounced to /app, same as requirePlatformAdmin already does
+// for every other server-rendered admin route.
 settingsRouter.get(
   "/",
   (req, res, next) => {
@@ -170,90 +156,7 @@ settingsRouter.get(
   },
   requireAdminSession,
   requirePlatformAdmin,
-  (req, res) => {
-    const flash = takeFlash(req);
-    const users = listUsers();
-    res.send(
-      renderBusinessListPage({
-        businesses: listBusinesses(),
-        users,
-        userBusinessIds: Object.fromEntries(users.map((u) => [u.id, getUserBusinessIds(u.id)])),
-        currentUserId: req.session.userId!,
-        flash,
-      }),
-    );
+  (_req, res) => {
+    res.redirect("/app/admin");
   },
 );
-
-settingsRouter.post("/businesses", requireAdminSession, requirePlatformAdmin, (req, res) => {
-  const { name } = req.body as { name?: string };
-  const trimmed = name?.trim();
-  if (!trimmed) {
-    req.session.flash = { type: "error", message: "Enter a business name." };
-    res.redirect("/settings");
-    return;
-  }
-  const business = createBusiness(trimmed);
-  // Platform admins (the only ones who can reach this route) see every
-  // business regardless of user_businesses — no membership row needed here.
-  res.redirect(`/app/${business.id}/settings/business-info`);
-});
-
-settingsRouter.post("/users", requireAdminSession, requirePlatformAdmin, (req, res) => {
-  const { email: rawEmail, password, confirmPassword, isPlatformAdmin, businessIds } = req.body as {
-    email?: string;
-    password?: string;
-    confirmPassword?: string;
-    isPlatformAdmin?: string;
-    businessIds?: string | string[];
-  };
-  const email = parseEmail(rawEmail);
-  if (!email) {
-    req.session.flash = { type: "error", message: "Enter a valid email address." };
-    res.redirect("/settings");
-    return;
-  }
-  if (!password || password.length < 8 || password !== confirmPassword) {
-    req.session.flash = { type: "error", message: "Password must be at least 8 characters and match confirmation." };
-    res.redirect("/settings");
-    return;
-  }
-  const admin = isPlatformAdmin === "on";
-  try {
-    const user = createUser(email, password, admin);
-    if (!admin) setUserBusinesses(user.id, parseBusinessIds(businessIds));
-    req.session.flash = { type: "success", message: `Added user ${email}.` };
-  } catch {
-    req.session.flash = { type: "error", message: "That email is already in use." };
-  }
-  res.redirect("/settings");
-});
-
-settingsRouter.post("/users/:id/access", requireAdminSession, requirePlatformAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const { isPlatformAdmin, businessIds } = req.body as { isPlatformAdmin?: string; businessIds?: string | string[] };
-  const admin = isPlatformAdmin === "on";
-  if (id === req.session.userId && !admin) {
-    // Mirrors the "can't delete your own account" guard below — revoking
-    // your own admin access here could lock you out of the console entirely
-    // with no one else able to restore it.
-    req.session.flash = { type: "error", message: "You cannot remove your own platform admin access." };
-    res.redirect("/settings");
-    return;
-  }
-  setPlatformAdmin(id, admin);
-  setUserBusinesses(id, admin ? [] : parseBusinessIds(businessIds));
-  req.session.flash = { type: "success", message: "Access updated." };
-  res.redirect("/settings");
-});
-
-settingsRouter.post("/users/:id/delete", requireAdminSession, requirePlatformAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  if (id === req.session.userId) {
-    req.session.flash = { type: "error", message: "You cannot delete your own account." };
-  } else {
-    deleteUser(id);
-    req.session.flash = { type: "success", message: "User removed." };
-  }
-  res.redirect("/settings");
-});

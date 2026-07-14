@@ -19,6 +19,9 @@ function App() {
         <AuthGate>
           <Routes>
             <Route path="/" element={<FirstBusinessRedirect />} />
+            <Route path="/admin" element={<AppShell />}>
+              <Route index element={<AdminSettingsPage />} />
+            </Route>
             <Route path="/:businessId" element={<AppShell />}>
               <Route index element={<Navigate to="calls" replace />} />
               <Route path="calls" element={<CallsListPage />} />
@@ -26,7 +29,6 @@ function App() {
               <Route path="metrics" element={<MetricsPage />} />
               <Route path="settings/business-info" element={<BusinessInfoSettingsPage />} />
               <Route path="settings/general" element={<GeneralSettingsPage />} />
-              <Route path="admin" element={<AdminSettingsPage />} />
             </Route>
           </Routes>
         </AuthGate>
