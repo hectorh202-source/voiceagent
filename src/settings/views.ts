@@ -27,7 +27,19 @@ function page(title: string, body: string): string {
   return `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${layoutStyles}</style></head>
-<body>${body}</body>
+<body>${body}
+<script>
+// Belt-and-suspenders alongside this router's Cache-Control: no-store
+// header (see middleware/noStore.ts) — some browsers can still restore a
+// page from the back/forward cache despite that header. If this page gets
+// resurrected that way after a login/logout, force a real reload so it
+// re-renders fresh from the server (current auth state, empty form fields)
+// instead of silently showing whatever was on screen for a previous user.
+window.addEventListener('pageshow', function (event) {
+  if (event.persisted) window.location.reload();
+});
+</script>
+</body>
 </html>`;
 }
 

@@ -4,6 +4,7 @@ import session from "express-session";
 import { env } from "./config/env";
 import "./db/index";
 import { requestLogger } from "./middleware/requestLogger";
+import { noStore } from "./middleware/noStore";
 import { settingsRouter } from "./settings/routes";
 import { resolveBusiness } from "./middleware/resolveBusiness";
 import { toolsRouter } from "./tools/router";
@@ -53,8 +54,8 @@ app.get("/", (_req, res) => {
   res.redirect("/settings");
 });
 
-app.use("/settings", settingsRouter);
-app.use("/api", apiRouter);
+app.use("/settings", noStore, settingsRouter);
+app.use("/api", noStore, apiRouter);
 
 // Every business-scoped concern (ElevenLabs tool webhooks, the post-call
 // webhook, and the public per-call dashboard) lives under /b/:businessId —
@@ -78,8 +79,19 @@ app.use("/b/:businessId", businessRouter);
 // React Router handle client-side routes like /app/1/calls/:conversationId
 // on a hard refresh, where there's no matching file on disk.
 const clientDistPath = path.join(__dirname, "../client/dist");
-app.use("/app", express.static(clientDistPath));
-app.get("/app/*", (_req, res) => {
+// index: false is required here — express.static's default behavior serves
+// index.html directly for a bare "/app" request (its normal directory-index
+// convenience), which would bypass the noStore catch-all below entirely.
+// Confirmed via a real request: without this, GET /app came back with
+// "Cache-Control: public, max-age=0" instead of "no-store", the exact HTML
+// shell a browser's back-button needs to be blocked from resurrecting.
+app.use("/app", express.static(clientDistPath, { index: false }));
+// noStore only on this catch-all (the SPA's HTML shell) — not on the static
+// mount above, whose JS/CSS filenames are content-hashed by Vite and safe to
+// cache normally. The shell itself must never come from cache/bfcache: it's
+// what the browser's back-button would otherwise resurrect after a user
+// switch, well before React ever gets a chance to re-check /api/session.
+app.get("/app/*", noStore, (_req, res) => {
   res.sendFile(path.join(clientDistPath, "index.html"));
 });
 
