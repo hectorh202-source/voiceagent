@@ -53,6 +53,7 @@ export interface CreateLeadLogRow {
   response_json: string | null;
   created_at: string;
   success: number;
+  phone: string | null;
 }
 
 // Correlates a call_log create_lead row with an elevenlabs_calls record —
@@ -67,7 +68,7 @@ export function findCreateLeadLogByConversationId(
 ): CreateLeadLogRow | undefined {
   return db
     .prepare(
-      `SELECT request_json, response_json, created_at, success FROM call_log
+      `SELECT request_json, response_json, created_at, success, phone FROM call_log
        WHERE business_id = ? AND tool_name = 'create_lead' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )
@@ -84,7 +85,7 @@ export function findBookJobLogByConversationId(
 ): CreateLeadLogRow | undefined {
   return db
     .prepare(
-      `SELECT request_json, response_json, created_at, success FROM call_log
+      `SELECT request_json, response_json, created_at, success, phone FROM call_log
        WHERE business_id = ? AND tool_name = 'book_job' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )

@@ -46,6 +46,14 @@ export function bootstrapSchema(db: DatabaseSync): void {
       internal_notes TEXT
     );
 
+    -- business_id/received_at exist on every install (present since this
+    -- table's original creation), so unlike call_log's conversation_id index
+    -- this one is safe to create unconditionally here rather than needing a
+    -- migration first. Backs every WHERE business_id = ? ORDER BY received_at
+    -- DESC LIMIT ? query — the Calls list, Call Metrics, and Call History
+    -- all go through listCallRecords() and hit exactly this shape.
+    CREATE INDEX IF NOT EXISTS idx_elevenlabs_calls_business_received ON elevenlabs_calls(business_id, received_at);
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,

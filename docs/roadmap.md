@@ -14,8 +14,8 @@ Requires: a schema migration to add the columns (this project already has a migr
 
 ### Real pagination for the flagged calls list
 
-Currently capped at the 50 most recent calls, no pagination, no index backing the query. Three pieces needed together for this to actually scale (discussed in detail, not yet built):
-1. An index on `elevenlabs_calls(business_id, received_at)` — without it, even "the top 50" requires reading every row for that business first.
+Currently capped at the 50 most recent calls, no pagination. One of the three pieces originally scoped for this is now done; two remain:
+1. ~~An index on `elevenlabs_calls(business_id, received_at)`~~ — done (`idx_elevenlabs_calls_business_received`, added directly in `schema.ts` while fixing Call History's performance — see [call-dashboard.md](call-dashboard.md#call-history--every-other-call-from-the-same-caller)). Every `WHERE business_id = ? ORDER BY received_at DESC LIMIT ?` query (Calls list, Call Metrics, Call History) now seeks instead of scanning the whole table first.
 2. Keyset (cursor) pagination rather than `LIMIT/OFFSET` — remember the `received_at` of the last row shown and query "give me the next N older than that," so every page costs the same regardless of how deep you've paged. Plain `OFFSET` still has to skip past every preceding row even with an index.
 3. The write-time flag precompute above, so the row-level cost per page stays flat too.
 

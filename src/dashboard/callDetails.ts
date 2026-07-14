@@ -230,20 +230,17 @@ export interface CallHistoryRow {
 }
 
 // Resolves the same phone the Calls list and this call's own detail view
-// already show — parsed from create_lead/book_job's request body, computed
-// fresh every time rather than stored. A call that never reached a booking
+// already show, computed fresh every time rather than stored. Reads
+// call_log's own phone column directly — that column is populated straight
+// from the tool call's phone argument at write time (see tools/createLead.ts/
+// bookJob.ts), so no JSON parsing is needed here at all, unlike the other
+// fields (name, isEmergency, leadId/jobId) this file pulls out of
+// request_json/response_json elsewhere. A call that never reached a booking
 // tool has no phone here, same as it has none anywhere else in the app.
 function resolveCallPhone(businessId: number, record: ElevenLabsCallRecord): string | null {
   const leadLog = findCreateLeadLogByConversationId(businessId, record.conversation_id);
   const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, record.conversation_id);
-  const bookingLog = leadLog ?? jobLog;
-  if (!bookingLog) return null;
-  try {
-    const request = JSON.parse(bookingLog.request_json) as { phone?: string };
-    return request.phone ?? null;
-  } catch {
-    return null;
-  }
+  return (leadLog ?? jobLog)?.phone ?? null;
 }
 
 // Every other call from the same caller, newest first, including the call
