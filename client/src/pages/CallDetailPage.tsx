@@ -371,6 +371,50 @@ export function CallDetailPage() {
             <div className="info-section-title">Tasks</div>
             <div className="muted" style={{ fontSize: 13 }}>Not available yet.</div>
           </div>
+          <div className="info-section">
+            <div className="info-section-title">Call History</div>
+            {data.callHistory.length === 0 && (
+              <p className="muted" style={{ fontSize: 13 }}>
+                No caller phone number is on file for this call, so no history could be found.
+              </p>
+            )}
+            {data.callHistory.map((call) => (
+              <div
+                key={call.conversationId}
+                className={`history-row ${call.conversationId === conversationId ? "current" : ""}`}
+                onClick={() => {
+                  if (call.conversationId !== conversationId) navigate(`/${businessId}/calls/${call.conversationId}`);
+                }}
+              >
+                <div className="history-row-top">
+                  <strong>{call.customerName ?? "Unknown"}</strong>
+                  <span className="muted" style={{ fontSize: 12 }}>{formatDateTime(call.receivedAt)}</span>
+                </div>
+                <div className="history-row-meta">
+                  <span className="history-row-detail">
+                    <PhoneIcon width={13} height={13} />
+                    {call.phone ? formatPhoneNumber(call.phone) : "—"}
+                  </span>
+                  <span className="history-row-detail">
+                    <ClockIcon width={13} height={13} />
+                    {formatDurationClock(call.durationSecs)}
+                  </span>
+                  <span className={`badge ${STATUS_CLASS[call.status]}`}>{STATUS_LABEL[call.status]}</span>
+                  {call.isEmergency && (
+                    <span className="badge badge-danger" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <AlertIcon width={12} height={12} /> Emergency
+                    </span>
+                  )}
+                  {call.isTransferred && (
+                    <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <TransferIcon width={12} height={12} /> Transferred
+                    </span>
+                  )}
+                </div>
+                {call.summary && <p className="history-row-summary">{call.summary}</p>}
+              </div>
+            ))}
+          </div>
         </aside>
 
         <main className="call-detail-main">
@@ -441,53 +485,6 @@ export function CallDetailPage() {
             ))}
           </div>
 
-          <div className="card">
-            <div className="card-header">
-              <h2>Call History</h2>
-              <span className="badge badge-neutral">{data.callHistory.length}</span>
-            </div>
-            {data.callHistory.length === 0 && (
-              <p className="muted" style={{ fontSize: 13 }}>
-                No caller phone number is on file for this call, so no history could be found.
-              </p>
-            )}
-            {data.callHistory.map((call) => (
-                <div
-                  key={call.conversationId}
-                  className={`history-row ${call.conversationId === conversationId ? "current" : ""}`}
-                  onClick={() => {
-                    if (call.conversationId !== conversationId) navigate(`/${businessId}/calls/${call.conversationId}`);
-                  }}
-                >
-                  <div className="history-row-top">
-                    <strong>{call.customerName ?? "Unknown"}</strong>
-                    <span className="muted" style={{ fontSize: 12 }}>{formatDateTime(call.receivedAt)}</span>
-                  </div>
-                  <div className="history-row-meta">
-                    <span className="history-row-detail">
-                      <PhoneIcon width={13} height={13} />
-                      {call.phone ? formatPhoneNumber(call.phone) : "—"}
-                    </span>
-                    <span className="history-row-detail">
-                      <ClockIcon width={13} height={13} />
-                      {formatDurationClock(call.durationSecs)}
-                    </span>
-                    <span className={`badge ${STATUS_CLASS[call.status]}`}>{STATUS_LABEL[call.status]}</span>
-                    {call.isEmergency && (
-                      <span className="badge badge-danger" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <AlertIcon width={12} height={12} /> Emergency
-                      </span>
-                    )}
-                    {call.isTransferred && (
-                      <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <TransferIcon width={12} height={12} /> Transferred
-                      </span>
-                    )}
-                  </div>
-                  {call.summary && <p className="history-row-summary">{call.summary}</p>}
-                </div>
-              ))}
-          </div>
         </main>
       </div>
     </div>
