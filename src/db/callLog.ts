@@ -10,9 +10,23 @@ interface CallLogEntry {
   errorMessage?: string | null;
 }
 
+// create_lead/book_job's request bodies already carry conversationId (see
+// tools/createLead.ts, tools/bookJob.ts) — pulling it out at write time into
+// its own indexed column is what lets findCreateLeadLogByConversationId/
+// findBookJobLogByConversationId below do an exact indexed lookup instead of
+// scanning every row's request_json. A tool call without one (check_availability,
+// lookup_customer) just stores null, same as always.
+function extractConversationId(request: unknown): string | null {
+  if (request && typeof request === "object" && "conversationId" in request) {
+    const value = (request as { conversationId?: unknown }).conversationId;
+    return typeof value === "string" ? value : null;
+  }
+  return null;
+}
+
 const insertStmt = db.prepare(`
-  INSERT INTO call_log (business_id, tool_name, phone, request_json, response_json, success, error_message)
-  VALUES (@businessId, @toolName, @phone, @requestJson, @responseJson, @success, @errorMessage)
+  INSERT INTO call_log (business_id, tool_name, phone, conversation_id, request_json, response_json, success, error_message)
+  VALUES (@businessId, @toolName, @phone, @conversationId, @requestJson, @responseJson, @success, @errorMessage)
 `);
 
 export function logToolCall(entry: CallLogEntry): void {
@@ -20,6 +34,7 @@ export function logToolCall(entry: CallLogEntry): void {
     businessId: entry.businessId,
     toolName: entry.toolName,
     phone: entry.phone ?? null,
+    conversationId: extractConversationId(entry.request),
     requestJson: JSON.stringify(entry.request),
     responseJson: entry.response !== undefined ? JSON.stringify(entry.response) : null,
     success: entry.success ? 1 : 0,
@@ -41,10 +56,11 @@ export interface CreateLeadLogRow {
 }
 
 // Correlates a call_log create_lead row with an elevenlabs_calls record —
-// the conversationId rides along inside the already-JSON-serialized request,
-// so this is a simple substring match rather than a dedicated indexed column.
-// Always scoped by business_id too, not just conversationId — otherwise a
-// conversationId lookup could cross into another business's row.
+// an indexed exact match on conversation_id (idx_call_log_business_conversation),
+// not a request_json substring scan; see migrateCallLogConversationIdColumn.ts
+// for why that scan was replaced. Always scoped by business_id too, not just
+// conversationId — otherwise a conversationId lookup could cross into
+// another business's row.
 export function findCreateLeadLogByConversationId(
   businessId: number,
   conversationId: string,
@@ -52,10 +68,10 @@ export function findCreateLeadLogByConversationId(
   return db
     .prepare(
       `SELECT request_json, response_json, created_at, success FROM call_log
-       WHERE business_id = ? AND tool_name = 'create_lead' AND request_json LIKE ?
+       WHERE business_id = ? AND tool_name = 'create_lead' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )
-    .get(businessId, `%${conversationId}%`) as CreateLeadLogRow | undefined;
+    .get(businessId, conversationId) as CreateLeadLogRow | undefined;
 }
 
 // Parallel to findCreateLeadLogByConversationId, for job-booking-mode
@@ -69,8 +85,8 @@ export function findBookJobLogByConversationId(
   return db
     .prepare(
       `SELECT request_json, response_json, created_at, success FROM call_log
-       WHERE business_id = ? AND tool_name = 'book_job' AND request_json LIKE ?
+       WHERE business_id = ? AND tool_name = 'book_job' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )
-    .get(businessId, `%${conversationId}%`) as CreateLeadLogRow | undefined;
+    .get(businessId, conversationId) as CreateLeadLogRow | undefined;
 }

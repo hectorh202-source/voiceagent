@@ -14,6 +14,7 @@ export function bootstrapSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       tool_name TEXT NOT NULL,
       phone TEXT,
+      conversation_id TEXT,
       request_json TEXT NOT NULL,
       response_json TEXT,
       success INTEGER NOT NULL,
