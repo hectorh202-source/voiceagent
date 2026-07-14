@@ -33,6 +33,14 @@ export function AppShell() {
             General
           </NavLink>
         </nav>
+        {user.isPlatformAdmin && (
+          <nav className="nav-group">
+            <div className="nav-group-label">Admin</div>
+            <NavLink to={`/${businessId}/admin`} className={navClass}>
+              Admin Settings
+            </NavLink>
+          </nav>
+        )}
         <div className="sidebar-footer">
           <div>{user.email}</div>
           <form method="post" action="/settings/logout">

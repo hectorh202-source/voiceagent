@@ -2,11 +2,18 @@ import { Router } from "express";
 import { requireApiSession } from "./requireApiSession";
 import { listBusinessesForUser } from "../db/userBusinesses";
 import { apiBusinessRouter } from "./businessRouter";
+import { adminRouter } from "./adminRouter";
 
 export const apiRouter = Router();
 
 apiRouter.get("/session", requireApiSession, (req, res) => {
-  res.json({ user: { id: req.currentUser!.id, email: req.currentUser!.email } });
+  res.json({
+    user: {
+      id: req.currentUser!.id,
+      email: req.currentUser!.email,
+      isPlatformAdmin: req.currentUser!.isPlatformAdmin,
+    },
+  });
 });
 
 // Scoped to whatever businesses this user actually has access to — a
@@ -19,3 +26,4 @@ apiRouter.get("/businesses", requireApiSession, (req, res) => {
 });
 
 apiRouter.use("/businesses/:businessId", apiBusinessRouter);
+apiRouter.use("/admin", adminRouter);

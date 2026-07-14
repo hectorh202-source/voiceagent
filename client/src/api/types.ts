@@ -1,12 +1,23 @@
 export interface SessionUser {
   id: number;
   email: string;
+  isPlatformAdmin: boolean;
 }
 
 export interface Business {
   id: number;
   name: string;
   createdAt: string;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  lockedUntil: string | null;
+  isPlatformAdmin: boolean;
+  businessIds: number[];
 }
 
 export type CallStatus = "booked" | "not_booked" | "excused";
