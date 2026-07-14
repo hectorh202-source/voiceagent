@@ -30,6 +30,14 @@ const STATUS_CLASS: Record<CallStatus, string> = {
   not_booked: "badge-danger",
   excused: "badge-neutral",
 };
+// Only used for the Bookability dropdown's "Default" option label, mirroring
+// how the Auto (AI) value is grouped under "Bookable"/"Not Bookable" — the
+// underlying value/badge everywhere else still just says "Excused".
+const AUTO_STATUS_LABEL: Record<CallStatus, string> = {
+  booked: "Bookable - Booked",
+  not_booked: "Bookable - Not Booked",
+  excused: "Not Bookable",
+};
 
 function useCopy(): [(text: string) => void, string | null] {
   const [copied, setCopied] = useState<string | null>(null);
@@ -54,7 +62,7 @@ export function CallDetailPage() {
   });
 
   const patchMutation = useMutation({
-    mutationFn: (body: { isRead?: boolean; recoveryStatus?: RecoveryStatus }) =>
+    mutationFn: (body: { isRead?: boolean; recoveryStatus?: RecoveryStatus; statusOverride?: CallStatus | null }) =>
       api.patch(`/api/businesses/${businessId}/calls`, { conversationIds: [conversationId], ...body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
@@ -65,10 +73,6 @@ export function CallDetailPage() {
   if (isLoading) return <div className="centered-spinner">Loading…</div>;
   if (!data) return <div className="centered-spinner">Call not found.</div>;
 
-  // Booking status isn't returned directly by this endpoint (only leadId/jobId
-  // are) — a Job means booked, a Lead with no Job means not booked, neither
-  // means excused, matching the same rule the calls list derives server-side.
-  const status: CallStatus = data.jobId ? "booked" : data.leadId ? "not_booked" : "excused";
   const publicCallUrl = `${window.location.origin}/b/${businessId}/calls/${conversationId}`;
 
   return (
@@ -86,7 +90,7 @@ export function CallDetailPage() {
       <div className="call-detail-layout">
         <aside className="call-detail-sidebar">
           <div className="badge-row">
-            <span className={`badge ${STATUS_CLASS[status]}`}>{STATUS_LABEL[status]}</span>
+            <span className={`badge ${STATUS_CLASS[data.status]}`}>{STATUS_LABEL[data.status]}</span>
             <span className="badge badge-neutral">{data.isTransferred && !data.transferFailed ? "AI + Human" : "AI"}</span>
             <span className="badge badge-inbound">Inbound</span>
             {data.isEmergency && (
@@ -179,8 +183,24 @@ export function CallDetailPage() {
           <div className="info-section">
             <div className="info-section-title">Bookability</div>
             <div className="select-display-wrap">
-              <select className="select-display" value={status} disabled>
-                <option value={status}>{STATUS_LABEL[status]}</option>
+              <select
+                className="select-display"
+                value={data.statusOverride ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  patchMutation.mutate({ statusOverride: value === "" ? null : (value as CallStatus) });
+                }}
+              >
+                <optgroup label="Default">
+                  <option value="">{`Auto (AI) — ${AUTO_STATUS_LABEL[data.autoStatus]}`}</option>
+                </optgroup>
+                <optgroup label="Bookable">
+                  <option value="booked">Booked</option>
+                  <option value="not_booked">Not Booked</option>
+                </optgroup>
+                <optgroup label="Not Bookable">
+                  <option value="excused">Not Bookable</option>
+                </optgroup>
               </select>
               <ChevronDownIcon width={14} height={14} />
             </div>

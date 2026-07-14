@@ -6,6 +6,7 @@ import { bootstrapSchema } from "./schema";
 import { migrateToMultiTenant } from "./migrateToMultiTenant";
 import { migrateCallStatusColumns } from "./migrateCallStatusColumns";
 import { migrateUserBusinessAccess } from "./migrateUserBusinessAccess";
+import { migrateStatusOverrideColumn } from "./migrateStatusOverrideColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -18,3 +19,4 @@ bootstrapSchema(db);
 migrateToMultiTenant(db);
 migrateCallStatusColumns(db);
 migrateUserBusinessAccess(db);
+migrateStatusOverrideColumn(db);

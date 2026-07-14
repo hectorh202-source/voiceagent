@@ -39,7 +39,8 @@ export function bootstrapSchema(db: DatabaseSync): void {
       is_read INTEGER NOT NULL DEFAULT 0,
       recovery_status TEXT,
       duration_secs INTEGER,
-      call_reason TEXT
+      call_reason TEXT,
+      status_override TEXT
     );
 
     CREATE TABLE IF NOT EXISTS users (

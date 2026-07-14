@@ -65,7 +65,7 @@ export function computeMetrics(business: Business, range: CallDateRange): CallMe
     const leadLog = findCreateLeadLogByConversationId(business.id, record.conversation_id);
     const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, record.conversation_id);
 
-    const status = deriveStatus(leadLog, jobLog);
+    const status = deriveStatus(leadLog, jobLog, record.status_override as "booked" | "not_booked" | "excused" | null);
     if (status === "booked") bookedCount++;
     else if (status === "not_booked") notBookedCount++;
 

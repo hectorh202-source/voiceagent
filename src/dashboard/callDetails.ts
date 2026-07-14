@@ -61,6 +61,9 @@ export interface CallDetailViewModel {
   transcript: { role: string; message: string; timeLabel: string }[];
   terminationReason: string | null;
   hasAudio: boolean;
+  status: CallStatus;
+  autoStatus: CallStatus;
+  statusOverride: CallStatus | null;
 }
 
 function formatTime(secs: number | undefined): string {
@@ -153,6 +156,9 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   }
 
   const { leadUrl, jobUrl } = buildServiceTitanUrls(business.id, leadId, jobId);
+  const autoStatus = deriveStatus(leadLog, jobLog);
+  const statusOverride = (callRecord.status_override as CallStatus | null) ?? null;
+  const status = statusOverride ?? autoStatus;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = {
@@ -196,6 +202,9 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     transcript,
     terminationReason: callRecord.termination_reason,
     hasAudio: !!callRecord.audio_path,
+    status,
+    autoStatus,
+    statusOverride,
   };
 }
 
@@ -268,10 +277,16 @@ export type CallStatus = "booked" | "not_booked" | "excused";
 // Excused = no booking attempt was ever made at all (out of scope, wrong
 // number, disqualified caller, etc.) — mirrors the reasoning already used by
 // noBookingCreated above, just surfaced as a 3-way status instead of a flag.
+//
+// `override` is the staff-set Bookability value (elevenlabs_calls.status_override,
+// null when unset) — when present it always wins over the auto-derived value,
+// letting a human correct a case the AI-driven signal got wrong.
 export function deriveStatus(
   leadLog: CreateLeadLogRow | undefined,
   jobLog: CreateLeadLogRow | undefined,
+  override?: CallStatus | null,
 ): CallStatus {
+  if (override) return override;
   if (jobLog?.success) return "booked";
   if (leadLog || jobLog) return "not_booked";
   return "excused";

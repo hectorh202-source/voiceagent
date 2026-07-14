@@ -4,6 +4,7 @@ export const patchCallsSchema = z.object({
   conversationIds: z.array(z.string().min(1)).min(1),
   isRead: z.boolean().optional(),
   recoveryStatus: z.enum(["recovered", "not_recovered"]).nullable().optional(),
+  statusOverride: z.enum(["booked", "not_booked", "excused"]).nullable().optional(),
 });
 
 export const businessInfoSchema = z.object({

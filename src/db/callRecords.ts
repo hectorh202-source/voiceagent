@@ -14,6 +14,7 @@ export interface ElevenLabsCallRecord {
   recovery_status: string | null;
   duration_secs: number | null;
   call_reason: string | null;
+  status_override: string | null;
 }
 
 interface CallTranscriptionEntry {
@@ -65,6 +66,7 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
 export interface CallStatusPatch {
   isRead?: boolean;
   recoveryStatus?: "recovered" | "not_recovered" | null;
+  statusOverride?: "booked" | "not_booked" | "excused" | null;
 }
 
 const setIsReadStmt = db.prepare(
@@ -73,9 +75,13 @@ const setIsReadStmt = db.prepare(
 const setRecoveryStatusStmt = db.prepare(
   `UPDATE elevenlabs_calls SET recovery_status = @recoveryStatus WHERE conversation_id = @conversationId AND business_id = @businessId`,
 );
+const setStatusOverrideStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET status_override = @statusOverride WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
 
-// Staff-driven status updates (read/unread, recovered/not recovered) — the
-// only writers of these two columns; webhook upserts above never touch them.
+// Staff-driven status updates (read/unread, recovered/not recovered, a
+// manual Bookability override) — the only writers of these columns; webhook
+// upserts above never touch them.
 export function updateCallStatus(businessId: number, conversationIds: string[], patch: CallStatusPatch): void {
   for (const conversationId of conversationIds) {
     if (patch.isRead !== undefined) {
@@ -83,6 +89,9 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
     }
     if (patch.recoveryStatus !== undefined) {
       setRecoveryStatusStmt.run({ conversationId, businessId, recoveryStatus: patch.recoveryStatus });
+    }
+    if (patch.statusOverride !== undefined) {
+      setStatusOverrideStmt.run({ conversationId, businessId, statusOverride: patch.statusOverride });
     }
   }
 }

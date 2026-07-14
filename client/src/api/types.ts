@@ -39,6 +39,8 @@ export interface CallListRow {
   isEmergency: boolean | null;
   callHandler: CallHandler;
   status: CallStatus;
+  autoStatus: CallStatus;
+  statusOverride: CallStatus | null;
   callReason: string | null;
   isRead: boolean;
   recoveryStatus: RecoveryStatus;
@@ -72,6 +74,9 @@ export interface CallDetail {
   transcript: { role: string; message: string; timeLabel: string }[];
   terminationReason: string | null;
   hasAudio: boolean;
+  status: CallStatus;
+  autoStatus: CallStatus;
+  statusOverride: CallStatus | null;
   durationSecs: number | null;
   callReason: string | null;
   isRead: boolean;

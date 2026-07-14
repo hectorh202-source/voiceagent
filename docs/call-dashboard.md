@@ -118,23 +118,32 @@ The admin-facing calls list and per-call detail view moved from server-rendered 
 Clicking anywhere on a table row opens that call's detail page — except the row-select checkbox and the Job/Lead link, both of which call `e.stopPropagation()` so selecting a row for a bulk action, or opening its ServiceTitan record in a new tab, doesn't also navigate away.
 
 - `GET /api/businesses/:businessId/calls` — returns `{ calls: CallListRow[] }`, one entry per call, each with a derived **Status**, the existing three flags, and new fields described below.
-- `PATCH /api/businesses/:businessId/calls` — body `{ conversationIds: string[], isRead?: boolean, recoveryStatus?: "recovered"|"not_recovered"|null }`. The read/recovered indicator in each row is display-only, not clickable — the only ways to change it are the bulk action bar (select rows via checkbox, then "Mark as read/unread/recovered/not recovered") or the same actions on the individual call's detail page. Deliberate: a stray click on a table row shouldn't silently change status.
+- `PATCH /api/businesses/:businessId/calls` — body `{ conversationIds: string[], isRead?: boolean, recoveryStatus?: "recovered"|"not_recovered"|null, statusOverride?: "booked"|"not_booked"|"excused"|null }`. The read/recovered indicator in each row is display-only, not clickable — the only ways to change it are the bulk action bar (select rows via checkbox, then "Mark as read/unread/recovered/not recovered") or the same actions on the individual call's detail page. Deliberate: a stray click on a table row shouldn't silently change status. `statusOverride` is only ever set from the call detail page's Bookability dropdown (see below), not from the list's bulk actions.
 - `GET /api/businesses/:businessId/calls/:conversationId` — reuses the same `buildCallDetailViewModel()` the old HTML detail page used, plus the new fields.
 
-### Status — Booked / Not Booked / Excused (derived, not stored)
+### Status — Booked / Not Booked / Excused (auto-derived, with an optional manual override)
 
-`deriveStatus()` in `callDetails.ts` computes this from the same `leadLog`/`jobLog` lookups already used elsewhere — no new ElevenLabs configuration needed:
+`deriveStatus()` in `callDetails.ts` computes the **auto** value from the same `leadLog`/`jobLog` lookups already used elsewhere — no new ElevenLabs configuration needed:
 - **Booked** — a Job was created successfully (`book_job` succeeded).
 - **Not Booked** — a booking was attempted (a Lead exists, or an attempt failed) but no Job exists.
 - **Excused** — no booking attempt was made at all (call never reached `create_lead`/`book_job`) — an out-of-scope, wrong-number, or disqualified call.
+
+**Bookability override** — the call detail page's "Bookability" dropdown (previously a disabled, display-only placeholder) lets staff override this per call, for the cases the automatic signal gets wrong (e.g. a lead was created but the booking actually happened by phone outside ServiceTitan, or a call the AI treated as a real booking attempt was actually a test/spam call). Structured to match how it's grouped in the UI:
+- **Default** — "Auto (AI) — …" — no override; the value shown always reflects the current auto-derived status, live.
+- **Bookable** — **Booked** / **Not Booked** — force the resolved status to one of these two, regardless of what the lead/job logs say.
+- **Not Bookable** — **Not Bookable** — same underlying value as auto's "Excused" (the enum and existing badge label are unchanged), just labeled "Not Bookable" in this one dropdown to match the grouping shown in the UI reference for this feature.
+
+Every surface that reads a call's status — the list, the detail page's badge, and the Metrics page's Booked Rate — resolves to `statusOverride ?? autoStatus` (`deriveStatus()`'s new optional third parameter). Stored in a new `status_override TEXT` column on `elevenlabs_calls` (`src/db/migrateStatusOverrideColumn.ts`, same idempotent pattern as the other staff-set columns below), written only via `PATCH .../calls`'s `statusOverride` field — nothing else ever sets it, so a redelivered webhook can never clobber a manual correction, same reasoning as `is_read`/`recovery_status` below. `autoStatus` and `statusOverride` are both included in the API response (list and detail) alongside the resolved `status`, so the UI can show "what it is" and "what the AI thought it was" at the same time without recomputing anything client-side.
+
+This is a separate concept from **Recovered/Not Recovered** (below) — Bookability corrects the booking outcome itself; Recovered/Not Recovered tracks whether a lost call was later manually rebooked outside the AI flow. Both can be set independently on the same call.
 
 ### Call Handler — AI or AI + Human
 
 `deriveCallHandler()` reuses the same transcript-parsing `findTransferInfo()` already used by the detail page's transfer-info row: shows **"AI + Human"** only when a `transfer_to_number` call genuinely succeeded (not just attempted), otherwise **"AI"**. There's no stored human-agent identity anywhere in this system today, so this can't show a specific person's name — just whether a human ever actually joined the call.
 
-### New staff-set columns — read/unread and recovered/not recovered
+### New staff-set columns — read/unread, recovered/not recovered, and the Bookability override
 
-Two genuinely new, manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT`) via `src/db/migrateCallStatusColumns.ts` (same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery marking — verified directly (set both fields, re-run the same upsert, confirm they survive).
+Manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT` via `src/db/migrateCallStatusColumns.ts`; `status_override TEXT` via `src/db/migrateStatusOverrideColumn.ts` — same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery/Bookability marking — verified directly (set all three fields, re-run the same upsert, confirm they survive).
 
 ### New derived data — call duration and Call Reason
 
@@ -147,7 +156,7 @@ Two more new columns, populated by `webhooks/postCall.ts` at webhook-receipt tim
 ### Call Metrics page
 
 `GET /api/businesses/:businessId/metrics?from=&to=` (`src/dashboard/metrics.ts`) computes, over a date range:
-- **Total Calls** and **Booked Rate** (booked ÷ (booked + not_booked) — Excused calls excluded from the denominator).
+- **Total Calls** and **Booked Rate** (booked ÷ (booked + not_booked) — Excused calls excluded from the denominator; reflects each call's resolved status, so a manual Bookability override changes this rate too, not just the badge shown on that one call).
 - **Average call duration** (mean of non-null `duration_secs`).
 - **Calls-per-day** (a bar chart, via `recharts` in the client).
 - **Emergency Transfer Rate** ((emergency calls that were transferred) ÷ all calls — `isEmergency` is only known for calls that reached `create_lead`/`book_job`, same limitation the rest of this data model already has).

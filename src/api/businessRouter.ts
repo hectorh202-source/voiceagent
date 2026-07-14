@@ -74,6 +74,8 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
   }
 
   const { leadUrl, jobUrl } = buildServiceTitanUrls(businessId, leadId, jobId);
+  const autoStatus = deriveStatus(leadLog, jobLog);
+  const statusOverride = (record.status_override as "booked" | "not_booked" | "excused" | null) ?? null;
 
   return {
     conversationId: record.conversation_id,
@@ -83,7 +85,9 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     phone,
     isEmergency,
     callHandler: deriveCallHandler(record),
-    status: deriveStatus(leadLog, jobLog),
+    status: statusOverride ?? autoStatus,
+    autoStatus,
+    statusOverride,
     callReason: record.call_reason,
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
@@ -133,8 +137,8 @@ apiBusinessRouter.patch("/calls", (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { conversationIds, isRead, recoveryStatus } = parsed.data;
-  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus });
+  const { conversationIds, isRead, recoveryStatus, statusOverride } = parsed.data;
+  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus, statusOverride });
   res.json({ success: true });
 });
 
