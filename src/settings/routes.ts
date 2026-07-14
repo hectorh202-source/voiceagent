@@ -1,7 +1,7 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { getAuthState, verifyLegacyAdminPassword, clearLegacyAdminPassword, login, type AuthState } from "./auth";
-import { createUser } from "../db/users";
+import { createUser, getUserById } from "../db/users";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
 import { blockIfIpRateLimited, recordFailedLoginAttempt } from "../middleware/loginRateLimiter";
@@ -108,6 +108,16 @@ settingsRouter.get("/login", (req, res) => {
   const state = getAuthState();
   if (state !== "ready") {
     redirectToAuthEntryPoint(res, state);
+    return;
+  }
+  // getAuthState() only tells us whether *some* account exists anywhere in
+  // the system — it says nothing about *this* browser. Without this check,
+  // a currently-logged-in user landing back on /login (e.g. via the back
+  // button after a fresh, non-bfcache navigation) would see a real login
+  // form while still holding a valid session, which isn't how an already-
+  // authenticated user should ever experience this route.
+  if (req.session.userId && getUserById(req.session.userId)) {
+    res.redirect("/app");
     return;
   }
   const returnTo = req.query.returnTo;
