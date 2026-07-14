@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AdminUser, Business } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
@@ -144,11 +145,11 @@ export function AdminSettingsPage() {
   });
 
   if (!currentUser.isPlatformAdmin) {
-    return (
-      <div className="card">
-        <p>You don't have access to this page.</p>
-      </div>
-    );
+    // Bounce silently rather than rendering any "admin" chrome for a
+    // non-admin — a bfcache-restored /app/admin document (e.g. after
+    // logging out and back in as a different user) should land them
+    // somewhere real, not on a page that even names what it's blocking.
+    return <Navigate to="/" replace />;
   }
 
   const businesses = businessData?.businesses ?? [];
