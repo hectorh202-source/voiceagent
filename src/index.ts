@@ -14,6 +14,7 @@ import { apiRouter } from "./api/router";
 import { SqliteSessionStore } from "./settings/sessionStore";
 import { getOrCreateSessionSecret } from "./settings/store";
 import { getUserById } from "./db/users";
+import { userHasBusinessAccess } from "./db/userBusinesses";
 
 const app = express();
 
@@ -88,30 +89,61 @@ const clientDistPath = path.join(__dirname, "../client/dist");
 // shell a browser's back-button needs to be blocked from resurrecting.
 app.use("/app", express.static(clientDistPath, { index: false }));
 
-// Everything else under /app is auth-gated entirely client-side, after the
-// shell has already loaded (AuthGate/AdminSettingsPage check /api/session
-// and redirect or blank the page as needed) — fine for pages where a brief
-// flash of "loading" content isn't a real disclosure. /app/admin is the one
-// exception: unlike a business's own calls/settings, the very existence of
-// an admin console isn't something a non-admin's browser should resolve to
-// at all, so it gets a real pre-render, server-side gate here — same idea
-// as requirePlatformAdmin for /settings, just redirecting instead of
-// rendering, before any HTML is ever sent.
-app.get("/app/admin", noStore, (req, res, next) => {
+// A single, structural gate for the whole SPA shell — every /app/* HTML
+// request passes through here before the file is ever sent, so a page added
+// later inherits the right check automatically just by living at
+// /app/admin or /app/:businessId/..., with no per-route code required (the
+// old version of this only special-cased /app/admin by its exact path
+// string, which meant a *different* future admin-only or business-scoped
+// page would silently get none of this unless someone remembered to copy
+// the same block again).
+//
+// Three cases, checked in order of how much they can rule out:
+// 1. No valid session at all — redirect to the real login page. (Previously
+//    nothing checked this; an anonymous visitor got a real 200 for any
+//    /app/* URL and was only bounced after the SPA's JS loaded and
+//    /api/session came back 401.)
+// 2. /app/admin — requires isPlatformAdmin, same as requirePlatformAdmin
+//    gates /settings.
+// 3. /app/:businessId/... — requires userHasBusinessAccess() for that
+//    specific business, the same check the JSON API already enforces via
+//    requireBusinessAccess, just applied to the shell itself instead of
+//    only the data underneath it.
+function requireAppAccess(req: express.Request, res: express.Response, next: express.NextFunction): void {
   const user = req.session.userId ? getUserById(req.session.userId) : undefined;
-  if (user?.isPlatformAdmin) {
-    next();
+  if (!user) {
+    const returnTo = encodeURIComponent(req.originalUrl);
+    res.redirect(`/settings/login?returnTo=${returnTo}`);
     return;
   }
-  res.redirect("/app");
-});
 
-// noStore only on this catch-all (the SPA's HTML shell) — not on the static
-// mount above, whose JS/CSS filenames are content-hashed by Vite and safe to
-// cache normally. The shell itself must never come from cache/bfcache: it's
-// what the browser's back-button would otherwise resurrect after a user
-// switch, well before React ever gets a chance to re-check /api/session.
-app.get("/app/*", noStore, (_req, res) => {
+  // req.params[0] is whatever "/app/*" matched — e.g. "admin",
+  // "1/calls", or "" for a bare /app request (FirstBusinessRedirect,
+  // needs nothing beyond "is there a session").
+  const [first] = (req.params[0] ?? "").split("/").filter(Boolean);
+
+  if (first === "admin") {
+    if (!user.isPlatformAdmin) {
+      res.redirect("/app");
+      return;
+    }
+  } else if (first !== undefined) {
+    const businessId = Number(first);
+    if (Number.isInteger(businessId) && businessId > 0 && !userHasBusinessAccess(user, businessId)) {
+      res.redirect("/app");
+      return;
+    }
+  }
+
+  next();
+}
+
+// noStore here (not on the static mount above, whose JS/CSS filenames are
+// content-hashed by Vite and safe to cache normally) — the shell itself must
+// never come from cache/bfcache: it's what the browser's back-button would
+// otherwise resurrect after a user switch, well before React ever gets a
+// chance to re-check /api/session.
+app.get("/app/*", noStore, requireAppAccess, (_req, res) => {
   res.sendFile(path.join(clientDistPath, "index.html"));
 });
 

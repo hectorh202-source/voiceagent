@@ -103,7 +103,7 @@ Routers mounted in `index.ts`:
 - `/settings/*` — global: login/setup/migrate, the business list, and platform user management. Protected by admin login (see [settings-app.md](settings-app.md)).
 - `/api/*` — JSON API for the React SPA: `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Protected by `requireApiSession` (session-cookie auth, same as `/settings`, just JSON responses instead of redirects).
 - `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (the post-call webhook), and `/calls/:conversationId` + `/calls/:conversationId/audio` (the public call-detail page/audio stream — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
-- `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes.
+- `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes, gated by `requireAppAccess` (session + admin/business-access checks before the shell is ever sent — see [settings-app.md](settings-app.md#per-business-access-control--platform-admins-vs-scoped-users)).
 
 ## Deployment topology
 
