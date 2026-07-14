@@ -9,8 +9,8 @@ Deeper write-ups on specific subsystems, for anyone picking up this project who 
 ## Core systems (this codebase)
 
 - **[SQLite storage system](sqlite-storage.md)** — the single local database: encrypted credential storage, per-user password hashing, call/tool logging, and persisted web sessions.
-- **[The `/settings` app](settings-app.md)** — the credentials web UI built on top of that storage: routes, multi-user login/brute-force protection, and how per-field saves work (and the bug that shaped that design).
-- **[Per-call record page](call-dashboard.md)** — `dashboard.laughslapper.com/calls/:id`: ingesting ElevenLabs' post-call webhooks (transcript, recording, summary), correlating them with our own `create_lead` data, and the signature verification scheme.
+- **[The `/settings` app](settings-app.md)** — global auth (multi-user login/brute-force protection) and the two per-business settings pages (Business Info, General) in the React admin dashboard (`client/`), talking to a JSON API instead of posting an HTML form.
+- **[Per-call record page & Calls dashboard](call-dashboard.md)** — the public, unauthenticated per-call page (`dashboard.laughslapper.com/b/:id/calls/:conversationId`: transcript, recording, summary, ServiceTitan link) plus the login-gated Calls/Call Metrics sections of the React admin dashboard (`/app/:businessId/calls`), including the Booked/Not Booked/Excused status, read/recovered tracking, and Call Reason tagging.
 
 ## Integrations (external systems this talks to)
 

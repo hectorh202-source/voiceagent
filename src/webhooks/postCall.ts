@@ -24,8 +24,14 @@ interface PostCallTranscriptionPayload {
     agent_id?: string;
     conversation_id: string;
     transcript?: TranscriptTurn[];
-    analysis?: { transcript_summary?: string };
-    metadata?: { termination_reason?: string };
+    analysis?: {
+      transcript_summary?: string;
+      // Populated only if the ElevenLabs agent has a "Data Collection" field
+      // configured — see docs/elevenlabs-tools.md for the exact setup. Keyed
+      // by the field's identifier; we look up "call_reason" specifically.
+      data_collection_results?: Record<string, { value?: string | number | boolean | null }>;
+    };
+    metadata?: { termination_reason?: string; call_duration_secs?: number };
   };
 }
 
@@ -40,6 +46,26 @@ interface PostCallAudioPayload {
 type PostCallPayload = PostCallTranscriptionPayload | PostCallAudioPayload;
 
 const recordingsDir = path.join(path.dirname(env.DATABASE_PATH), "recordings");
+
+// ElevenLabs' payload is expected to include metadata.call_duration_secs
+// directly; the transcript-timestamp fallback only matters if that field is
+// ever absent (unverified until a real payload confirms the exact shape —
+// see docs/elevenlabs-tools.md's Call Metrics section).
+function extractDurationSecs(data: PostCallTranscriptionPayload["data"]): number | null {
+  if (typeof data.metadata?.call_duration_secs === "number") return data.metadata.call_duration_secs;
+  const turns = data.transcript ?? [];
+  const max = turns.reduce((acc, t) => (typeof t.time_in_call_secs === "number" ? Math.max(acc, t.time_in_call_secs) : acc), 0);
+  return turns.length > 0 ? max : null;
+}
+
+// Requires the ElevenLabs agent to have a Data Collection field named
+// exactly "call_reason" — absent for any business that hasn't configured
+// one, which is expected and handled gracefully (column stays null).
+function extractCallReason(data: PostCallTranscriptionPayload["data"]): string | null {
+  const entry = data.analysis?.data_collection_results?.call_reason;
+  if (entry === undefined || entry.value === undefined || entry.value === null) return null;
+  return typeof entry.value === "string" ? entry.value : String(entry.value);
+}
 
 // Once the real AI call summary is available, swap it in for the short
 // constructed narrative used when the lead was first created (mid-call, via
@@ -180,6 +206,8 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       summary: data.analysis?.transcript_summary ?? null,
       terminationReason: data.metadata?.termination_reason ?? null,
       rawPayloadJson: JSON.stringify(payload),
+      durationSecs: extractDurationSecs(data),
+      callReason: extractCallReason(data),
     });
 
     if (data.analysis?.transcript_summary) {

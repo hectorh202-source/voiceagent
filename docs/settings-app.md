@@ -23,15 +23,17 @@ Split across two routers — a global one and a per-business one, reflecting the
 | `/settings/users` | POST | admin session | Add a new platform user (email + password) |
 | `/settings/users/:id/delete` | POST | admin session | Remove a platform user (not yourself) |
 
-**Per-business**, defined in [`src/settings/businessRoutes.ts`](../src/settings/businessRoutes.ts), mounted at `/b/:businessId/settings` under the shared `/b/:businessId` prefix in `index.ts` (see below):
+**Per-business credentials now live in the React SPA, not a server-rendered form.** The old `src/settings/businessRoutes.ts` (server-rendered `GET`/`POST /b/:businessId/settings`) was deleted once the SPA covered the same functionality — this platform's business-scoped settings UI is `client/`'s `BusinessInfoSettingsPage`/`GeneralSettingsPage`, served at `/app/:businessId/settings/business-info` and `/app/:businessId/settings/general`, talking to a JSON API instead of posting an HTML form:
 
 | Route | Method | Auth required | Purpose |
 |---|---|---|---|
-| `/b/:businessId/settings` | GET | admin session + valid business | Render that business's ElevenLabs/ServiceTitan/Operational credentials form |
-| `/b/:businessId/settings` | POST | admin session + valid business | Save that business's credential fields |
-| `/b/:businessId/settings/generate-secret` | POST | admin session + valid business | Generate + save a new random tool webhook secret for that business |
+| `/api/businesses/:businessId/settings/business-info` | GET, PUT | API session + valid business | Business name, default ServiceTitan business unit/campaign/job type IDs, service categories |
+| `/api/businesses/:businessId/settings/general` | GET, PUT | API session + valid business | ElevenLabs/ServiceTitan credentials & environment, tag name, booking mode, operational settings |
+| `/api/businesses/:businessId/settings/general/generate-secret` | POST | API session + valid business | Generate + save a new random tool webhook secret for that business |
 
-Every `/b/:businessId/*` route (this settings form, the ElevenLabs tool webhooks, the post-call webhook, and the public call-detail dashboard) sits behind [`src/middleware/resolveBusiness.ts`](../src/middleware/resolveBusiness.ts), mounted once in `index.ts` ahead of all four sub-routers. It parses `:businessId`, looks up the business, and 404s immediately if it's not a valid positive integer or doesn't match a real business — before any auth/secret check downstream even runs, so an invalid business ID never leaks a confusing 401/503 for something that doesn't exist. One easy-to-miss Express detail that bit this during development: the child `Router()` mounted at `/b/:businessId` **must** be created with `Router({ mergeParams: true })`, or it gets its own empty `req.params` scope and `resolveBusiness` never sees `:businessId` at all.
+These live in `src/api/businessRouter.ts`, gated by `requireApiSession` (`src/api/requireApiSession.ts`) — the same session check as `requireAdminSession` below, just responding `401` JSON instead of redirecting, since the caller is the SPA's `fetch()`, not a browser navigation.
+
+Every `/b/:businessId/*` route (the ElevenLabs tool webhooks, the post-call webhook, and the public call-detail dashboard) and every `/api/businesses/:businessId/*` route sits behind [`src/middleware/resolveBusiness.ts`](../src/middleware/resolveBusiness.ts). It parses `:businessId`, looks up the business, and 404s immediately if it's not a valid positive integer or doesn't match a real business — before any auth/secret check downstream even runs, so an invalid business ID never leaks a confusing 401/503 for something that doesn't exist. One easy-to-miss Express detail that bit this during development: a child `Router()` mounted at a path containing `:businessId` **must** be created with `Router({ mergeParams: true })`, or it gets its own empty `req.params` scope and `resolveBusiness` never sees `:businessId` at all.
 
 ### First-run vs. migration vs. normal flow
 
@@ -105,10 +107,10 @@ docker compose exec app node -e "
 
 ## How saving the form works
 
-The per-business credentials form (rendered by [`src/settings/views.ts`](../src/settings/views.ts)'s `renderSettingsPage()`) posts every field to `POST /b/:businessId/settings` in one request. The handler in `businessRoutes.ts` uses one small helper:
+The React SPA's two settings pages each `PUT` their whole form to their respective `/api/businesses/:businessId/settings/*` endpoint in one request (see `src/api/businessRouter.ts`). Both handlers share one small helper, now living in `src/settings/store.ts` (moved there from the old `businessRoutes.ts` so both the API and any future caller can reuse it):
 
 ```ts
-function maybeSet(businessId: number, key: string, value: string | undefined): void {
+export function maybeSetBusinessSetting(businessId: number, key: string, value: string | undefined): void {
   const trimmed = value?.trim();
   if (trimmed) {
     setBusinessSetting(businessId, key, trimmed);
@@ -116,9 +118,9 @@ function maybeSet(businessId: number, key: string, value: string | undefined): v
 }
 ```
 
-Every field goes through this: **if you left it blank, it's left alone in the database — not cleared.** This is why secret fields (API keys, client secret, tool webhook secret) can be shown as empty password inputs with a placeholder like "•••••••• (unchanged)" rather than ever re-displaying the actual secret — you only need to type a new value when you actually want to change it.
+Every secret/optional field goes through this: **if you left it blank, it's left alone in the database — not cleared.** This is why secret fields (API keys, client secret, tool webhook secret) show as empty password inputs with a placeholder like "(set — leave blank to keep)" rather than ever re-displaying the actual secret — you only need to type a new value when you actually want to change it.
 
-The one exception is `servicetitan.environment` (the Integration/Sandbox vs. Production dropdown), which is always written on every save, since a `<select>` always submits *some* value — there's no "blank" state to distinguish from "user didn't touch this."
+The exception is `servicetitan.environment` (the Integration/Sandbox vs. Production dropdown) and a few other `<select>`-backed fields (booking mode), which are always written on every save, since a dropdown always submits *some* value — there's no "blank" state to distinguish from "user didn't touch this."
 
 ### The bug this design fixes
 
@@ -134,38 +136,38 @@ The fix was moving to **per-field reads and writes** everywhere in the settings 
 
 ## Flash messages
 
-`req.session.flash` carries a one-time success/error message across the redirect after a POST (e.g. "Settings saved.", or the newly-generated secret after clicking "Generate a new random tool webhook secret"). `takeFlash()` in `routes.ts` reads it and immediately clears it, so it only ever displays once, right after the action that set it.
+`req.session.flash` still carries one-time success/error messages for the remaining server-rendered global pages (setup/migrate/login/business-list) — `takeFlash()` in `routes.ts` reads it and immediately clears it. The two per-business settings pages no longer use this at all: they're React forms that show a save confirmation (or the newly-generated secret) directly from the `PUT`/`POST` response, no redirect involved.
 
 ## The rendered page itself
 
-`views.ts` has no templating engine — it's plain template-literal functions returning full HTML strings (`renderSetupPage`, `renderLoginPage`, `renderSettingsPage`). This was a deliberate "keep it simple" choice for a form with a couple dozen fields; if the settings UI grows meaningfully more complex, revisit that decision, but there was no need for a frontend framework at this size. It does now carry a small amount of inline vanilla JS (`onclick`/`onsubmit` attributes, no separate script file) — see below.
+`src/settings/views.ts` still has no templating engine for what remains there — plain template-literal functions returning full HTML strings (`renderSetupPage`, `renderLoginPage`, `renderMigratePage`, `renderBusinessListPage`). The per-business credentials form (previously `renderSettingsPage()`) was deleted from this file — it's now `client/src/pages/BusinessInfoSettingsPage.tsx` and `GeneralSettingsPage.tsx`, real React components, part of the SPA described in [call-dashboard.md](call-dashboard.md#calls-section-react-spa) and [architecture-overview.md](architecture-overview.md).
 
 ## Guardrails against accidental edits
 
-A few fields break things silently if changed by mistake (a stray click, a misplaced keystroke), with no server-side error to catch it — so the UI adds friction before it happens rather than relying on being careful:
+A few fields break things silently if changed by mistake (a stray click, a misplaced keystroke), with no server-side error to catch it — so the UI adds friction before it happens rather than relying on being careful. The mechanism changed with the SPA rewrite, but the same fields are guarded and the same reasoning applies:
 
-- **Agent ID**, **Tenant ID**, and **Lead tag name** are rendered `readonly` and grayed out, each with its own **Change** button that unlocks that one field via a tiny inline `onclick` (removes `readonly`, refocuses, disables the button so it can't be "un-locked" twice). Saving the form runs a combined `onsubmit` on the outer `<form>` that only prompts a `confirm()` for the field(s) actually unlocked (tracked via `window.agentIdChanged` / `window.tenantIdChanged` / `window.tagNameChanged`) — editing other fields and saving is unaffected. Reasoning: pointing the app at the wrong ElevenLabs agent, the wrong ServiceTitan tenant, or a tag name that doesn't exist, doesn't error anywhere — it just quietly breaks calls, hits the wrong account, or leaves leads untagged, so each gets a deliberate "are you sure" step before submit.
-- **Lead tag name** additionally shows a warning box (`#tagNameWarning`) on focus, explaining that the name must exactly match an existing ServiceTitan tag (Settings → Tags) — ServiceTitan doesn't create the tag for you, and a mismatch fails silently (lead created, just untagged).
-- **"Generate a new random tool webhook secret"** (its own separate form, `POST /b/:businessId/settings/generate-secret`) has a `confirm()` on submit, since clicking it immediately invalidates that business's current secret — every tool call for that business fails until the new one is copied into its ElevenLabs agent. Regenerating one business's secret has no effect on any other business's.
+- **`GeneralSettingsPage.tsx`'s `confirmCriticalChanges()`** runs before every save, comparing the current form values against what was loaded from the API — if **Agent ID**, **Tenant ID**, **Lead tag name**, or **Booking Mode** differ from their loaded value, a `window.confirm()` fires with the same wording the old server-rendered form used, one prompt per changed field. Declining any one aborts the save entirely (the mutation never fires). Unlike the old form, there's no separate "unlock" step before editing — the field is always editable, and the confirmation only fires at save time based on what actually changed.
+- **"Generate a new secret"** (a link-styled button next to the Tool webhook secret field) still has no separate confirm of its own — clicking it immediately invalidates that business's current secret via `POST /api/businesses/:businessId/settings/general/generate-secret`, and every tool call for that business fails until the new one is copied into its ElevenLabs agent. Regenerating one business's secret has no effect on any other business's.
 
-None of this is server-enforced; it's UI-only friction on top of the same `POST /b/:businessId/settings` handler described above.
+None of this is server-enforced; it's UI-only friction on top of the same `PUT /api/businesses/:businessId/settings/general` endpoint described above.
 
 ## Fields in the form, grouped
 
-All scoped to one business — every business configures these independently, with zero shared state between businesses:
+Split across the SPA's two settings pages (was one combined form before the rebuild) — every business configures these independently, with zero shared state between businesses:
 
-| Group | Fields |
+| Page | Fields |
 |---|---|
-| ElevenLabs | API key, Agent ID (locked behind Change) |
-| ServiceTitan | Environment (Integration/Production), Client ID, Client secret, App key, Tenant ID (locked behind Change), default Business Unit ID / Campaign ID / Call Reason ID / Job Type ID, Lead tag name (locked behind Change) |
-| Operational | Emergency transfer number, Dashboard display time zone, tool webhook shared secret, post-call webhook secret |
+| **Business Info** (`/app/:businessId/settings/business-info`) | Business name, default ServiceTitan Business Unit ID / Campaign ID / Job Type ID, the 10-row service categories grid |
+| **General** (`/app/:businessId/settings/general`) | ElevenLabs API key + Agent ID; ServiceTitan Environment, Client ID, Client secret, App key, Tenant ID, Call reason ID, Lead tag name, Booking mode; Operational timezone, Dashboard base URL, tool webhook secret, post-call webhook secret |
 
-`operational.timezone` only affects how call times are formatted on that business's call-detail dashboard (`dashboard/views.ts`'s `formatCallTime()`) — it's deliberately unrelated to ElevenLabs' own per-agent time zone setting, which governs the agent's time-awareness *during* a call (greetings, business hours, relative dates). Changing one has no effect on the other; see [call-dashboard.md](call-dashboard.md) for detail.
+The split follows what each field is *for*: Business Info holds the values that map a call to the right ServiceTitan business unit/job type (the things a client themselves might reasonably tweak), while General holds credentials and lower-level operational config.
+
+`operational.timezone` only affects how call times are formatted on that business's call-detail dashboard — it's deliberately unrelated to ElevenLabs' own per-agent time zone setting, which governs the agent's time-awareness *during* a call (greetings, business hours, relative dates). Changing one has no effect on the other; see [call-dashboard.md](call-dashboard.md) for detail.
 
 See [servicetitan-integration.md](servicetitan-integration.md) for what the ServiceTitan fields are actually used for, and [elevenlabs-tools.md](elevenlabs-tools.md) for the operational fields' role in tool auth.
 
 ## Businesses
 
-Every business is one row in the `businesses` table (`src/db/businesses.ts` — `id`, `name`, `created_at`; see [sqlite-storage.md](sqlite-storage.md)). `id` is the value used everywhere in URLs (`/b/:businessId/...`) — there's no separate slug, so renaming a business (`renameBusiness()`) never breaks a URL or a link already pasted into ServiceTitan. The business's `name` is shown publicly on its call-detail dashboard (see [call-dashboard.md](call-dashboard.md)), so a typo made when adding one is worth fixing rather than living with — there's no "rename" button in the UI yet, so do it directly: `docker compose exec app node -e "..."` calling `renameBusiness(id, 'Corrected Name')`, same pattern as the [Removing a user](#removing-a-user) escape hatch above.
+Every business is one row in the `businesses` table (`src/db/businesses.ts` — `id`, `name`, `created_at`; see [sqlite-storage.md](sqlite-storage.md)). `id` is the value used everywhere in URLs (`/b/:businessId/...`, `/app/:businessId/...`) — there's no separate slug, so renaming a business (`renameBusiness()`) never breaks a URL or a link already pasted into ServiceTitan. The business's `name` is shown publicly on its call-detail dashboard (see [call-dashboard.md](call-dashboard.md)) and in the SPA's sidebar business switcher, so a typo made when adding one is worth fixing rather than living with — **renaming is now possible directly through the UI**: the "Business name" field on the Business Info settings page (`/app/:businessId/settings/business-info`) saves via `PUT /api/businesses/:businessId/settings/business-info`, calling `renameBusiness()` under the hood. (No `docker compose exec` needed for this anymore — that direct-DB pattern is still the way to fix anything not exposed in either settings page.)
 
 **Deleting a business is not built** — it would cascade across that business's `business_settings`, `call_log`, `elevenlabs_calls` rows, and its on-disk call recordings, and a half-finished cascade is a worse failure mode than just not offering the button yet. If one ever needs decommissioning, do it by hand via the same direct-DB pattern, deleting from each table in turn.

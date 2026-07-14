@@ -78,6 +78,17 @@ export function deleteBusinessSetting(businessId: number, key: string): void {
   deleteBusinessStmt.run(businessId, key);
 }
 
+// Saves a field only if a non-blank value was submitted, otherwise leaves
+// whatever's already stored untouched — the shared "leave blank to keep
+// current" behavior used by every settings form/API for secret and
+// non-secret fields alike.
+export function maybeSetBusinessSetting(businessId: number, key: string, value: string | undefined): void {
+  const trimmed = value?.trim();
+  if (trimmed) {
+    setBusinessSetting(businessId, key, trimmed);
+  }
+}
+
 // Persisted so login sessions survive server restarts/redeploys instead of
 // being invalidated by a freshly-generated secret every time the process starts.
 export function getOrCreateSessionSecret(): string {

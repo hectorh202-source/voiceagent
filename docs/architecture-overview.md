@@ -64,32 +64,46 @@ Four systems, three of which are entirely outside this codebase:
 3. Every visit after → login form (email + password), session cookie issued and persisted to SQLite
 4. Once logged in: a list of businesses (+ an "Add business" form, + Users
    management for the shared login pool) — not a credentials form directly
-5. Clicking a business goes to /b/:businessId/settings: that ONE business's
-   ElevenLabs / ServiceTitan / Operational credentials, each field saved
-   independently and encrypted at rest, scoped to that business only
+5. Clicking a business goes to /app/:businessId/calls — the React admin
+   dashboard (client/): Calls, Call Metrics, and two settings pages
+   (Business Info, General) that PUT to a JSON API instead of posting an
+   HTML form. Every field still saved independently and encrypted at rest,
+   scoped to that business only.
 ```
 See [settings-app.md](settings-app.md) for the full breakdown and [sqlite-storage.md](sqlite-storage.md) for the storage mechanics underneath it.
 
 ## Code layout
 
 ```
+client/                 # React admin dashboard (Vite + React + TS), served as static
+                          # assets at /app/*; talks to the server only via /api/*
 src/
-  index.ts              # entrypoint — wires up express, sessions, mounts every router
+  index.ts              # entrypoint — wires up express, sessions, mounts every router,
+                          # serves client/dist as static files under /app
   config/env.ts         # non-secret infra config only (PORT, DATABASE_PATH)
+  api/                   # JSON API for the React SPA — session/businesses (router.ts),
+                          # per-business calls/metrics/settings (businessRouter.ts),
+                          # requireApiSession (401-JSON counterpart of requireAdminSession)
   db/                    # SQLite connection, schema, businesses.ts, call-log helpers
   settings/              # encrypted settings store (global + per-business), admin auth,
-                          # session store, the global /settings app, businessRoutes.ts
-                          # (the per-business credentials form)
-  servicetitan/          # OAuth token caching + API client (customers, leads, capacity) —
+                          # session store, the global /settings app (login/setup/migrate/
+                          # business list — the per-business credentials form now lives
+                          # in client/ instead)
+  servicetitan/          # OAuth token caching + API client (customers, leads, jobs, capacity) —
                           # every function takes a businessId
-  tools/                 # the 3 Express routes ElevenLabs calls as webhook tools
+  tools/                 # the Express routes ElevenLabs calls as webhook tools
+  dashboard/              # public per-call page/audio route (views.ts, routes.ts), plus
+                          # callDetails.ts/metrics.ts — pure data-assembly functions reused
+                          # by both the (deleted) old HTML routes and the new /api routes
   middleware/            # request logging, tool-secret auth, admin-session auth,
                           # resolveBusiness (resolves :businessId → a real business or 404s)
 ```
 
 Routers mounted in `index.ts`:
 - `/settings/*` — global: login/setup/migrate, the business list, and platform user management. Protected by admin login (see [settings-app.md](settings-app.md)).
-- `/b/:businessId/*` — everything scoped to one business: `/settings` (that business's credentials form), `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (the post-call webhook), and `/calls/:conversationId` (the public call-detail page). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
+- `/api/*` — JSON API for the React SPA: `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Protected by `requireApiSession` (session-cookie auth, same as `/settings`, just JSON responses instead of redirects).
+- `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (the post-call webhook), and `/calls/:conversationId` + `/calls/:conversationId/audio` (the public call-detail page/audio stream — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
+- `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes.
 
 ## Deployment topology
 

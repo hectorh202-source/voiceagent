@@ -33,12 +33,13 @@ Defined in [`docker-compose.yml`](../docker-compose.yml):
 
 ### `app`
 
-Built from the [`Dockerfile`](../Dockerfile) in this repo (`build: .`). Two-stage build:
+Built from the [`Dockerfile`](../Dockerfile) in this repo (`build: .`). Three-stage build:
 ```dockerfile
-FROM node:24-slim AS builder   # npm ci, tsc build
-FROM node:24-slim AS runtime   # npm ci --omit=dev, copy dist/, run node dist/index.js
+FROM node:24-slim AS client-builder   # npm ci, vite build (the React admin dashboard, client/)
+FROM node:24-slim AS builder          # npm ci, tsc build (the server, src/)
+FROM node:24-slim AS runtime           # npm ci --omit=dev, copy dist/ + client/dist/, run node dist/index.js
 ```
-`node:24` specifically because `node:sqlite` needs to work without the experimental flag (see [sqlite-storage.md](sqlite-storage.md)). No native build tools (`build-essential`, python, etc.) are needed in the image at all, since there are no compiled native dependencies anywhere in this project.
+`node:24` specifically because `node:sqlite` needs to work without the experimental flag (see [sqlite-storage.md](sqlite-storage.md)). No native build tools (`build-essential`, python, etc.) are needed in the image at all, since there are no compiled native dependencies anywhere in this project. The `client-builder` stage is entirely independent of the server's own build — it has its own `package.json`/lockfile (Vite, React, `@tanstack/react-query`, `react-router-dom`, `recharts`) that never gets installed into the runtime image; only its build output (`client/dist`, static HTML/JS/CSS) is copied into `runtime`, served by the Express server at `/app/*` (see [architecture-overview.md](architecture-overview.md)).
 
 Configured via two environment variables (set in `docker-compose.yml`, not baked into the image):
 ```
@@ -92,6 +93,21 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 ```
 Port 3000 doesn't need a firewall rule at all — since it's never published to the host (see above), there's nothing listening on it externally to block in the first place.
+
+## Local development (React client)
+
+The server (`npm run dev`, `tsx watch src/index.ts`) and the React client (`client/`) are two separate processes locally — they only get combined into one artifact at Docker build time.
+
+```bash
+# terminal 1 — the Express server (API + tool webhooks + public call pages)
+npm run dev
+
+# terminal 2 — the Vite dev server (React admin dashboard, hot-reloading)
+cd client
+npm run dev
+```
+
+Visit `http://localhost:5173/app/:businessId/calls` (Vite's own dev port) — `client/vite.config.ts` proxies `/api/*` and `/settings/*` to `http://localhost:3000` (the Express server), so the SPA talks to real data and a real session cookie without CORS issues, exactly as it would through Caddy in production. There's no need to run `npm run build` in `client/` during local development — only the deployed Docker image needs the built static output; `npx tsx src/index.ts` alone is enough to exercise the server and its `/api` routes directly (e.g. via `curl`) even with no client build present.
 
 ## Operational notes
 

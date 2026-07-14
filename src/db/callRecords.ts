@@ -10,6 +10,10 @@ export interface ElevenLabsCallRecord {
   termination_reason: string | null;
   raw_payload_json: string;
   audio_path: string | null;
+  is_read: number;
+  recovery_status: string | null;
+  duration_secs: number | null;
+  call_reason: string | null;
 }
 
 interface CallTranscriptionEntry {
@@ -20,17 +24,28 @@ interface CallTranscriptionEntry {
   summary?: string | null;
   terminationReason?: string | null;
   rawPayloadJson: string;
+  durationSecs?: number | null;
+  callReason?: string | null;
 }
 
+// duration_secs/call_reason come from the webhook payload, so a redelivered
+// webhook should refresh them (included in DO UPDATE SET below). is_read/
+// recovery_status are staff-set only (via updateCallStatus) and deliberately
+// absent from both the INSERT column list and DO UPDATE SET — that's what
+// lets them default once on first insert and survive every later webhook
+// delivery untouched, the same trick setAudioPathStmt already relies on for
+// not clobbering transcript fields.
 const upsertTranscriptionStmt = db.prepare(`
-  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json)
-  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson)
+  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json, duration_secs, call_reason)
+  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson, @durationSecs, @callReason)
   ON CONFLICT(conversation_id) DO UPDATE SET
     agent_id = excluded.agent_id,
     transcript_json = excluded.transcript_json,
     summary = excluded.summary,
     termination_reason = excluded.termination_reason,
-    raw_payload_json = excluded.raw_payload_json
+    raw_payload_json = excluded.raw_payload_json,
+    duration_secs = excluded.duration_secs,
+    call_reason = excluded.call_reason
 `);
 
 export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
@@ -42,7 +57,34 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
     summary: entry.summary ?? null,
     terminationReason: entry.terminationReason ?? null,
     rawPayloadJson: entry.rawPayloadJson,
+    durationSecs: entry.durationSecs ?? null,
+    callReason: entry.callReason ?? null,
   });
+}
+
+export interface CallStatusPatch {
+  isRead?: boolean;
+  recoveryStatus?: "recovered" | "not_recovered" | null;
+}
+
+const setIsReadStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET is_read = @isRead WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
+const setRecoveryStatusStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET recovery_status = @recoveryStatus WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
+
+// Staff-driven status updates (read/unread, recovered/not recovered) — the
+// only writers of these two columns; webhook upserts above never touch them.
+export function updateCallStatus(businessId: number, conversationIds: string[], patch: CallStatusPatch): void {
+  for (const conversationId of conversationIds) {
+    if (patch.isRead !== undefined) {
+      setIsReadStmt.run({ conversationId, businessId, isRead: patch.isRead ? 1 : 0 });
+    }
+    if (patch.recoveryStatus !== undefined) {
+      setRecoveryStatusStmt.run({ conversationId, businessId, recoveryStatus: patch.recoveryStatus });
+    }
+  }
 }
 
 // The audio webhook can arrive before or after the transcription webhook, so

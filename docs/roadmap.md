@@ -29,6 +29,12 @@ This doesn't block `book_job` (it writes directly to Jobs and never touches capa
 
 **Action item:** check with whoever administers the sandbox tenant whether technician shifts/capacity can be configured there. Once it is, re-run a real test call to confirm `check_availability` returns real slots and `book_job` completes the full flow end-to-end (not just via manual tool tests).
 
+### Verify ElevenLabs' real post-call payload shape for call duration + Call Reason
+
+The React admin dashboard's Calls page (see [call-dashboard.md](call-dashboard.md#new-derived-data--call-duration-and-call-reason)) added two new fields extracted from the post-call webhook: `duration_secs` (from `metadata.call_duration_secs`) and `call_reason` (from `analysis.data_collection_results.call_reason.value`, only populated once a business configures a Data Collection field — see [elevenlabs-tools.md](elevenlabs-tools.md#call-reason-data-collection-setup)). Both extraction helpers (`webhooks/postCall.ts`'s `extractDurationSecs`/`extractCallReason`) were written from ElevenLabs' documented schema, not yet confirmed against a real payload — this project's established discipline (see the many "confirmed against a real call" notes elsewhere in these docs) is to verify real API shapes rather than trust documentation.
+
+**Action item:** once a business configures the `call_reason` Data Collection field, place one real test call, then inspect that call's stored `raw_payload_json` to confirm both fields' actual shape matches what's assumed. Adjust the two helpers if it differs.
+
 ### Emergency Dispatch node — `create_lead` never wired up + transfer number shows "Unknown"
 
 Explicitly put on hold by the user, kept here so it isn't lost. Confirmed via a real test call (Emergency Dispatch / burning-smell transcript): the ElevenLabs "Emergency Dispatch" agent node goes straight to a `transfer_to_number` attempt and never calls `create_lead` at all — in a multi-agent ElevenLabs workflow, each node has its own separate tool configuration, so this node most likely just doesn't have `create_lead` wired up, or lacks the instruction to use it. Separately, the transfer itself failed with destination "Unknown number" — `operational.emergencyTransferNumber` (since removed from `/settings`, see below) was never the same thing as ElevenLabs' own transfer-tool destination, which is a separate manual setting inside that agent node.
@@ -49,7 +55,9 @@ From an earlier security review of this codebase. Multi-user login + brute-force
 ## Other deferred items
 
 - **Real-time/automatic Lead→Job conversion tracking** — the ServiceTitan link on a call's detail page always points at the Lead this app created, never at the Job it becomes once staff convert it (see [call-dashboard.md](call-dashboard.md#deferred)).
-- **Per-business user roles/permissions** — every user in the `users` table currently has full access to every business (edit any business's live credentials, view any business's calls). Fine for a single internal team; would need real scoping the moment this login pool ever includes anyone outside your own team (see [settings-app.md](settings-app.md)).
+- **Per-business user roles/permissions** — every user in the `users` table currently has full access to every business (edit any business's live credentials, view any business's calls). Fine for a single internal team; would need real scoping the moment this login pool ever includes anyone outside your own team (see [settings-app.md](settings-app.md)). Explicitly re-confirmed as deferred during the React admin dashboard rebuild — the SPA's business switcher assumes this same "any logged-in user sees every business" model, so building real scoping later means adding it to both the API layer and the SPA, not just the old server-rendered pages.
+- **Fold the remaining global `/settings` pages into the SPA** — login, first-run setup, migration, the business list, and platform user management are still server-rendered HTML (`src/settings/routes.ts`/`views.ts`), deliberately left alone during the React rebuild to keep that already-large task scoped to the per-business Calls/Metrics/Settings sections. A future pass could bring these into `client/` too for a fully consistent UI, but they're low-traffic, admin-only screens where the inconsistency has little practical cost today.
+- **Bundle size** — the client's production build produces one ~650KB JS chunk (Vite warns above its default 500KB threshold). Not a problem at today's usage (internal admin tool, not a public-facing page optimized for first-load speed), but if it grows further, code-splitting by route (`React.lazy`) is the natural fix.
 
 ## Future considerations (not concrete tasks — things to watch for)
 

@@ -1,24 +1,22 @@
 import { Router } from "express";
 import fs from "node:fs";
-import { buildCallDetailViewModel, computeCallFlags, matchesBadgeFilters } from "./callDetails";
-import type { CallListFilters } from "./callDetails";
-import { renderCallDetailPage, renderCallNotFoundPage, renderCallListPage } from "./views";
-import { getCallRecord, listCallRecords } from "../db/callRecords";
-import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
+import { buildCallDetailViewModel } from "./callDetails";
+import { renderCallDetailPage, renderCallNotFoundPage } from "./views";
+import { getCallRecord } from "../db/callRecords";
 import { limitCallPageRequests, limitCallAudioRequests } from "../middleware/dashboardRateLimiter";
-import { requireAdminSession } from "../middleware/requireAdminSession";
 
 export const dashboardRouter = Router();
 
-// Intentionally NO router-wide auth gate. The detail/audio routes below are
-// meant to be link-shareable like an unlisted YouTube video: anyone holding
-// the exact conversationId URL can view/hear it, no login. Do NOT reflexively
-// add `dashboardRouter.use(requireAdminSession)` back here — that would
-// break those two intentionally-public routes. The `/calls` list route below
-// is a fundamentally different exposure (a browsable list of every call) and
-// brings its own explicit `requireAdminSession` for that reason.
+// Intentionally NO router-wide auth gate. Both routes below are meant to be
+// link-shareable like an unlisted YouTube video: anyone holding the exact
+// conversationId URL can view/hear it, no login. Do NOT reflexively add
+// `dashboardRouter.use(requireAdminSession)` back here — that would break
+// this intentionally-public design. The browsable, authenticated call list
+// now lives in the React SPA (see src/api/businessRouter.ts's GET /calls,
+// gated by requireApiSession) — this router only ever served the two public
+// routes below plus a since-removed HTML list route.
 //
-// Since the URL itself is the only access control for the public routes,
+// Since the URL itself is the only access control for these public routes,
 // harden it the way an unlisted link needs: never indexable/discoverable,
 // and never leaked to a third party via the Referer header when the page's
 // one outbound link (to ServiceTitan) is clicked.
@@ -26,35 +24,6 @@ dashboardRouter.use((req, res, next) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
-});
-
-dashboardRouter.get("/calls", requireAdminSession, (req, res) => {
-  const { business } = req;
-  if (!business) {
-    res.status(404).end();
-    return;
-  }
-
-  const query = req.query as Record<string, string | undefined>;
-  const filters: CallListFilters = {
-    failedTransfer: query.failedTransfer === "1",
-    noBookingCreated: query.noBookingCreated === "1",
-    endedEarly: query.endedEarly === "1",
-    from: query.from || undefined,
-    to: query.to || undefined,
-  };
-
-  const records = listCallRecords(business.id, 50, { from: filters.from, to: filters.to });
-  const rows = records
-    .map((record) => ({
-      record,
-      flags: computeCallFlags(business, record),
-      leadLog: findCreateLeadLogByConversationId(business.id, record.conversation_id),
-      jobLog: findBookJobLogByConversationId(business.id, record.conversation_id),
-    }))
-    .filter((row) => matchesBadgeFilters(row.flags, filters));
-
-  res.send(renderCallListPage(business, rows, filters));
 });
 
 dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) => {

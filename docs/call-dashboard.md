@@ -2,7 +2,7 @@
 
 A single-call detail page — `https://dashboard.laughslapper.com/b/{businessId}/calls/{conversationId}` — showing everything about one AI-handled call: recording, transcript, AI summary, whether it was transferred, and a link to the ServiceTitan Lead it produced. The link isn't just meant to be pasted in manually either: `create_lead`'s Lead summary now includes this same link automatically as a "Call Details" line (see [servicetitan-integration.md](servicetitan-integration.md#3-lead-creation--createleadbusinessid-input)), built from `getDashboardBaseUrl(businessId)`.
 
-There's also a **flagged calls list** — `https://dashboard.laughslapper.com/b/{businessId}/calls` — a login-gated (unlike the detail pages) overview of recent calls with automated flags for the ones worth a human's attention, so staff aren't manually scanning every transcript. See [Flagged calls list](#flagged-calls-list) below.
+There's also the **Calls section of the React admin dashboard** — `https://dashboard.laughslapper.com/app/{businessId}/calls` — a login-gated (unlike the detail pages) overview of recent calls with a Booked/Not Booked/Excused status, automated flags for the ones worth a human's attention, and manual read/recovered controls, so staff aren't manually scanning every transcript. This used to be a server-rendered HTML page at `/b/:businessId/calls`; it's now part of the React SPA in `client/`, backed by a JSON API (`src/api/businessRouter.ts`) rather than a page render. See [Calls section (React SPA)](#calls-section-react-spa) below.
 
 This page is scoped to one business at a time (`:businessId` in the path) — see [architecture-overview.md](architecture-overview.md) for the platform's multi-business model. Every table/lookup this page depends on (`elevenlabs_calls`, `call_log`) is filtered by that business's ID, not just `conversationId` alone, so a conversation ID belonging to one business can never be viewed through another business's path.
 
@@ -91,7 +91,7 @@ Name, phone, address, and whether it was an emergency all already flow through o
 
 `/b/:businessId/calls/*` has **no login gate at all** — `dashboard/routes.ts` deliberately does not apply `requireAdminSession`. These pages are meant to be pasted into a ServiceTitan lead's notes and opened by any staff member (dispatchers, techs) who don't have — and shouldn't need — a login to this app. The trust model is the same as an unlisted YouTube video: the URL itself (`businessId` + ElevenLabs' own `conversation_id`) is the *only* access control. Anyone holding the exact link can view the transcript, recording, summary, and customer PII on that page, indefinitely, with no login. `businessId` alone isn't a secret (business IDs are small sequential integers) — `getCallRecord()`/`findCreateLeadLogByConversationId()` still require both the right `businessId` *and* the right `conversation_id` to match a row, so guessing a low business ID gets you nothing without also knowing a real conversation ID for it.
 
-**This means there is no audit trail of who viewed a given call's PII.** That's an accepted, permanent consequence of "anyone with the link," not a gap intended to be closed later — don't reflexively add a login gate back without revisiting this decision first. The flagged calls list (below) *is* a browsable view of every call, and does bring its own explicit `requireAdminSession` for exactly this reason — a browsable list is a fundamentally different exposure than one opaque per-call link, so it doesn't get the same "no login" treatment.
+**This means there is no audit trail of who viewed a given call's PII.** That's an accepted, permanent consequence of "anyone with the link," not a gap intended to be closed later — don't reflexively add a login gate back without revisiting this decision first. The Calls section of the React SPA (below) *is* a browsable view of every call, and does bring its own explicit auth (`requireApiSession` on its API routes) for exactly this reason — a browsable list is a fundamentally different exposure than one opaque per-call link, so it doesn't get the same "no login" treatment.
 
 Since the link is the only secret, `dashboard/routes.ts` hardens it accordingly:
 - **`X-Robots-Tag: noindex, nofollow`** on every response from this router (HTML page and the binary audio route alike) — these pages must never be *discoverable* (e.g. crawled/indexed), only reachable by someone who already has the exact link.
@@ -111,26 +111,51 @@ dashboard.laughslapper.com {
 ```
 Caddy auto-provisions a separate Let's Encrypt cert for this second hostname. Express doesn't branch on hostname at all — `/b/:businessId/calls/*` would work identically on either domain; `dashboard.laughslapper.com` is just the intended/documented one. Requires one more DNS A record (`dashboard` → the same VPS IP), same as `voiceagent` was added earlier. Adding a new business needs **no** Caddy/DNS changes at all — its `:businessId` is just a different path segment on the same domain.
 
-## Flagged calls list
+## Calls section (React SPA)
 
-`GET /b/:businessId/calls` ([`dashboard/routes.ts`](../src/dashboard/routes.ts)) — a login-gated overview of the most recent 50 calls (`listCallRecords()` in [`db/callRecords.ts`](../src/db/callRecords.ts), no pagination yet, revisit only if that limit becomes a real constraint), each annotated with automated flags computed purely from data already stored — no new AI/ML involved. `requireAdminSession` is applied to this **one route only**, not the whole `dashboardRouter` — the detail/audio routes stay public exactly as before.
+The admin-facing calls list and per-call detail view moved from server-rendered HTML (`dashboard/views.ts`'s old `renderCallListPage`, deleted) into a React SPA (`client/`), served as static assets at `/app/*` and backed by a thin JSON API (`src/api/businessRouter.ts`, mounted at `/api/businesses/:businessId`, gated by `requireApiSession` — the JSON counterpart of `requireAdminSession`, returning `401` instead of redirecting). The **public, unauthenticated per-call page and audio route** (`/b/:businessId/calls/:conversationId` and its `/audio` route, described above) are completely unchanged by this — only the browsable, login-gated list and an in-app detail view moved.
 
-`computeCallFlags()` in `callDetails.ts` derives three flags per call:
-- **Failed transfer** — the transcript's `tool_results` contains a `transfer_to_number` entry with `is_error: true`.
-- **No lead created** — the transcript shows real activity (a `lookup_customer` tool call) but `findCreateLeadLogByConversationId()` finds no corresponding `create_lead` row for that conversation. Deliberately narrow: a call that hung up before any real activity (e.g. an immediate wrong-number hangup) isn't flagged for a lead it was never going to produce.
-- **Ended early** — `termination_reason` is exactly `"Call ended by remote party"` (the caller hanging up before the agent wrapped up on its own), as opposed to the normal `"end_call tool was called."` This one is shown as a softer signal (amber badge) rather than an alarm (red), since it can mean either a real problem or just a wrong number.
+- `GET /api/businesses/:businessId/calls` — returns `{ calls: CallListRow[] }`, one entry per call, each with a derived **Status**, the existing three flags, and new fields described below.
+- `PATCH /api/businesses/:businessId/calls` — body `{ conversationIds: string[], isRead?: boolean, recoveryStatus?: "recovered"|"not_recovered"|null }`, used for both the per-row read toggle and the bulk action bar (select rows via checkbox, then "Mark as read/unread/recovered/not recovered").
+- `GET /api/businesses/:businessId/calls/:conversationId` — reuses the same `buildCallDetailViewModel()` the old HTML detail page used, plus the new fields.
+
+### Status — Booked / Not Booked / Excused (derived, not stored)
+
+`deriveStatus()` in `callDetails.ts` computes this from the same `leadLog`/`jobLog` lookups already used elsewhere — no new ElevenLabs configuration needed:
+- **Booked** — a Job was created successfully (`book_job` succeeded).
+- **Not Booked** — a booking was attempted (a Lead exists, or an attempt failed) but no Job exists.
+- **Excused** — no booking attempt was made at all (call never reached `create_lead`/`book_job`) — an out-of-scope, wrong-number, or disqualified call.
+
+### Call Handler — AI or AI + Human
+
+`deriveCallHandler()` reuses the same transcript-parsing `findTransferInfo()` already used by the detail page's transfer-info row: shows **"AI + Human"** only when a `transfer_to_number` call genuinely succeeded (not just attempted), otherwise **"AI"**. There's no stored human-agent identity anywhere in this system today, so this can't show a specific person's name — just whether a human ever actually joined the call.
+
+### New staff-set columns — read/unread and recovered/not recovered
+
+Two genuinely new, manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT`) via `src/db/migrateCallStatusColumns.ts` (same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery marking — verified directly (set both fields, re-run the same upsert, confirm they survive).
+
+### New derived data — call duration and Call Reason
+
+Two more new columns, populated by `webhooks/postCall.ts` at webhook-receipt time (same file, same `post_call_transcription` handler — see the section above):
+- **`duration_secs`** — `metadata.call_duration_secs` from ElevenLabs' payload, with a fallback of `max(transcript[].time_in_call_secs)` if that field is ever absent. Shown as the Duration column and used for the Metrics page's average.
+- **`call_reason`** — a granular label like "Unbooked Price Concern" or "Excused Not Qualified Caller," populated **only if** the business's ElevenLabs agent has a Data Collection field configured named exactly `call_reason` — see [elevenlabs-tools.md](elevenlabs-tools.md#call-reason-data-collection-setup) for the exact dashboard steps. Blank/dash for any call before that's configured, or for a business that never configures it — this is optional, not required for the rest of the dashboard to work.
+
+**Open risk, not yet confirmed against a real payload**: `metadata.call_duration_secs` and `analysis.data_collection_results`'s exact key/shape are assumed based on ElevenLabs' documented webhook schema, not yet verified the way `termination_reason` and the transfer-detection fields were (see Known gaps above). Trigger a real call once `call_reason` is configured, inspect the stored `raw_payload_json`, and adjust `postCall.ts`'s `extractDurationSecs`/`extractCallReason` helpers if the real shape differs.
+
+### Call Metrics page
+
+`GET /api/businesses/:businessId/metrics?from=&to=` (`src/dashboard/metrics.ts`) computes, over a date range:
+- **Total Calls** and **Booked Rate** (booked ÷ (booked + not_booked) — Excused calls excluded from the denominator).
+- **Average call duration** (mean of non-null `duration_secs`).
+- **Calls-per-day** (a bar chart, via `recharts` in the client).
+- **Emergency Transfer Rate** ((emergency calls that were transferred) ÷ all calls — `isEmergency` is only known for calls that reached `create_lead`/`book_job`, same limitation the rest of this data model already has).
 
 ### Filtering
 
-The list has a filter form (checkboxes for the three flags above, plus a `from`/`to` date range) — plain `GET` query params (`?failedTransfer=1&endedEarly=1&from=2026-07-01&to=2026-07-13`), so filtered views are bookmarkable/shareable links, no client-side JS needed.
-
-- **Badge checkboxes are OR'd together, not AND'd**: checking none shows every call; checking one or more shows any call matching *at least one* of the checked flags (`matchesBadgeFilters()` in `callDetails.ts`) — this is meant as "show me problem calls of these kinds," not a stricter combined-condition search.
-- **The date range is a separate `AND` condition** on top of the badge filter, pushed down into the SQL query itself (`listCallRecords()`'s new `range` parameter) rather than filtered in JS like the badges — `received_at` is an indexable column, unlike the flags, which only exist by parsing `transcript_json` at request time.
-- **The date boundaries are UTC calendar days, not the business's local day.** `received_at` is stored as UTC with no timezone marker (same fact `formatCallTime()` already accounts for on display), so a call right at a local-day boundary could land in the adjacent day's filter results by a few hours. Accepted as a coarse-filter tradeoff rather than building timezone-aware SQL boundary math for what's a "roughly this week" filter, not a precise audit query — revisit only if this mismatch becomes a real complaint.
-
-All three were confirmed against a real flagged call (the Emergency Dispatch burning-smell test — see [servicetitan-integration.md](servicetitan-integration.md) and [elevenlabs-tools.md](elevenlabs-tools.md) for that flow) before being built, not guessed.
+Same three flags as before (`failedTransfer`/`noBookingCreated`/`endedEarly`, OR'd together) plus new `status`/`isRead`/`recoveryStatus` filters, and the same `from`/`to` date range — now query params on the `GET /calls` API call rather than a server-rendered `<form>`, kept in the URL's search params client-side so filtered views stay bookmarkable.
 
 ## Deferred
 
-- Pagination on the flagged calls list, if 50 recent calls stops being enough.
+- Pagination on the calls list, if the current flat `LIMIT 500` stops being enough (see [roadmap.md](roadmap.md)).
 - Real-time/automatic Lead→Job conversion tracking (the ST link always points at the Lead we create, never a Job).
+- Confirming the real shape of `metadata.call_duration_secs`/`analysis.data_collection_results` against an actual ElevenLabs payload (see above).

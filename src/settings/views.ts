@@ -1,4 +1,3 @@
-import type { getRawElevenLabsSettings, getRawOperationalSettings, getRawServiceTitanSettings } from "./store";
 import type { User } from "../db/users";
 import type { Business } from "../db/businesses";
 
@@ -9,16 +8,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
-const TIMEZONE_OPTIONS = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Phoenix",
-  "America/Los_Angeles",
-  "America/Anchorage",
-  "Pacific/Honolulu",
-];
 
 const layoutStyles = `
   body { font-family: -apple-system, Segoe UI, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
@@ -123,7 +112,7 @@ export function renderBusinessListPage(props: BusinessListPageProps): string {
             .map(
               (business) => `
         <div class="details-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0;">
-          <a href="/b/${business.id}/settings">${escapeHtml(business.name)}</a>
+          <a href="/app/${business.id}/calls">${escapeHtml(business.name)}</a>
         </div>`,
             )
             .join("")
@@ -166,135 +155,3 @@ export function renderBusinessListPage(props: BusinessListPageProps): string {
   );
 }
 
-interface SettingsPageProps {
-  business: Business;
-  elevenLabs: ReturnType<typeof getRawElevenLabsSettings>;
-  serviceTitan: ReturnType<typeof getRawServiceTitanSettings>;
-  operational: ReturnType<typeof getRawOperationalSettings>;
-  flash?: { type: "success" | "error"; message: string };
-}
-
-export function renderSettingsPage(props: SettingsPageProps): string {
-  const { business, elevenLabs, serviceTitan, operational, flash } = props;
-
-  return page(
-    `Settings — ${business.name}`,
-    `
-    <div class="row">
-      <h1>Settings — ${escapeHtml(business.name)}</h1>
-      <div>
-        <a href="/settings">&larr; All businesses</a>
-        <a href="/b/${business.id}/calls">View calls</a>
-        <form class="inline" method="post" action="/settings/logout"><button type="submit">Log out</button></form>
-      </div>
-    </div>
-    ${flash ? `<div class="flash-${flash.type}">${escapeHtml(flash.message)}</div>` : ""}
-
-    <form method="post" action="/b/${business.id}/settings" onsubmit="return (!window.agentIdChanged || confirm('You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?')) && (!window.tenantIdChanged || confirm('You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?')) && (!window.tagNameChanged || confirm('You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?')) && (!window.bookingModeChanged || confirm('You are changing what calls produce in ServiceTitan (Lead vs. booked Job). Make sure the ElevenLabs agent\'s tools/prompt are already set up to match this mode, or calls will behave incorrectly. Continue?'))">
-      <h2>ElevenLabs</h2>
-      <label>API key ${elevenLabs.apiKeySet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="elevenLabsApiKey" placeholder="${elevenLabs.apiKeySet ? "•••••••• (unchanged)" : "sk_..."}" autocomplete="off" />
-
-      <label>Agent ID</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="agentIdInput" name="elevenLabsAgentId" value="${escapeHtml(elevenLabs.agentId)}" readonly style="background:#eee; color:#666; flex:1;" />
-        <button type="button" onclick="const i=document.getElementById('agentIdInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.agentIdChanged=true; this.disabled=true;">Change</button>
-      </div>
-
-      <h2>ServiceTitan</h2>
-      <label>Environment</label>
-      <select name="serviceTitanEnvironment">
-        <option value="integration" ${serviceTitan.environment === "integration" ? "selected" : ""}>Integration / Sandbox</option>
-        <option value="production" ${serviceTitan.environment === "production" ? "selected" : ""}>Production</option>
-      </select>
-
-      <label>Client ID ${serviceTitan.clientIdSet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanClientId" placeholder="${serviceTitan.clientIdSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
-
-      <label>Client secret ${serviceTitan.clientSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanClientSecret" placeholder="${serviceTitan.clientSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
-
-      <label>App key ${serviceTitan.appKeySet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="serviceTitanAppKey" placeholder="${serviceTitan.appKeySet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
-
-      <label>Tenant ID</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="tenantIdInput" name="serviceTitanTenantId" value="${escapeHtml(serviceTitan.tenantId)}" readonly style="background:#eee; color:#666; flex:1;" />
-        <button type="button" onclick="const i=document.getElementById('tenantIdInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.tenantIdChanged=true; this.disabled=true;">Change</button>
-      </div>
-
-      <label>Default business unit ID (used if no service category matches)</label>
-      <input type="text" name="serviceTitanBusinessUnitId" value="${escapeHtml(serviceTitan.businessUnitId)}" />
-
-      <label>Default campaign ID (required for lead creation)</label>
-      <input type="text" name="serviceTitanCampaignId" value="${escapeHtml(serviceTitan.campaignId)}" />
-
-      <label>Default call reason ID</label>
-      <input type="text" name="serviceTitanCallReasonId" value="${escapeHtml(serviceTitan.callReasonId)}" />
-
-      <label>Default job type ID (used if no service category matches)</label>
-      <input type="text" name="serviceTitanJobTypeId" value="${escapeHtml(serviceTitan.jobTypeId)}" />
-      <div class="hint">Find these IDs in your ServiceTitan admin UI (Settings). Used to categorize leads/jobs created by the agent.</div>
-
-      <label>Service categories (optional)</label>
-      <div class="hint">Classify calls by trade instead of always using the defaults above — e.g. a "Plumbing" category and an "HVAC" category, each with its own business unit/job type. The agent picks one by name (see elevenlabs-tools.md). Leave a row's name blank to skip it.</div>
-      <div style="display:flex; gap:8px; font-size:0.8rem; color:#666; margin-top:8px;">
-        <div style="flex:2;">Name</div>
-        <div style="flex:1;">Business Unit ID</div>
-        <div style="flex:1;">Job Type ID</div>
-      </div>
-      ${Array.from({ length: 10 }, (_, i) => {
-        const cat = serviceTitan.serviceCategories[i] ?? { name: "", businessUnitId: "", jobTypeId: "" };
-        return `
-      <div style="display:flex; gap:8px; margin-bottom:4px;">
-        <input type="text" name="serviceCategoryName${i}" value="${escapeHtml(cat.name)}" placeholder="e.g. Plumbing" style="flex:2;" />
-        <input type="text" name="serviceCategoryBusinessUnitId${i}" value="${escapeHtml(cat.businessUnitId)}" style="flex:1;" />
-        <input type="text" name="serviceCategoryJobTypeId${i}" value="${escapeHtml(cat.jobTypeId)}" style="flex:1;" />
-      </div>`;
-      }).join("")}
-
-      <label>Lead tag name (optional)</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="tagNameInput" name="serviceTitanTagName" value="${escapeHtml(serviceTitan.tagName)}" placeholder="e.g. AI Voice Agent" readonly style="background:#eee; color:#666; flex:1;" onfocus="document.getElementById('tagNameWarning').style.display='block'" />
-        <button type="button" onclick="const i=document.getElementById('tagNameInput'); i.readOnly=false; i.style.background=''; i.style.color=''; i.focus(); window.tagNameChanged=true; this.disabled=true;">Change</button>
-      </div>
-      <div id="tagNameWarning" class="flash-error" style="display:none">This must exactly match a tag that already exists in ServiceTitan (Settings → Tags) — it is not created automatically. If no matching tag exists there, leads will still be created, just without a tag, with no error shown here.</div>
-      <div class="hint">Enter the exact name of an existing ServiceTitan tag (Settings → Tags) — no ID needed. Every lead this agent creates will be tagged with it, so it's identifiable once it becomes a job.</div>
-
-      <label>What calls produce in ServiceTitan</label>
-      <select name="serviceTitanBookingMode" onchange="window.bookingModeChanged=true">
-        <option value="lead" ${serviceTitan.bookingMode === "lead" ? "selected" : ""}>Lead (staff confirms and converts to a Job)</option>
-        <option value="job" ${serviceTitan.bookingMode === "job" ? "selected" : ""}>Job (booked directly, real appointment reserved)</option>
-      </select>
-      <div class="hint">"Job" requires the ElevenLabs agent to have the <code>book_job</code> tool configured and a prompt instruction to offer real appointment times — see elevenlabs-tools.md. Emergencies always create a Lead regardless of this setting.</div>
-
-      <h2>Operational</h2>
-      <label>Dashboard display time zone</label>
-      <select name="timezone">
-        ${TIMEZONE_OPTIONS.map(
-          (tz) => `<option value="${tz}" ${operational.timezone === tz ? "selected" : ""}>${tz}</option>`,
-        ).join("")}
-      </select>
-      <div class="hint">Only affects how call times are formatted on this dashboard. This is separate from the agent's own time zone setting in ElevenLabs, which controls the agent's time-awareness during calls (greetings, business hours, relative dates) — changing one does not change the other.</div>
-
-      <label>Public dashboard base URL (optional override)</label>
-      <input type="text" name="dashboardBaseUrl" value="${escapeHtml(operational.dashboardBaseUrl)}" placeholder="https://dashboard.laughslapper.com (default)" />
-      <div class="hint">Used to build the "Call Details" link included in every ServiceTitan lead's summary. Already defaults to this deployment's dashboard domain — only set this if the dashboard is ever hosted at a different one. No trailing slash.</div>
-
-      <label>Tool webhook shared secret ${operational.toolWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="toolWebhookSecret" placeholder="${operational.toolWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
-      <div class="hint">This value must match the "X-Tool-Secret" header you configure on each ElevenLabs webhook tool.</div>
-
-      <label>Post-call webhook secret ${operational.postCallWebhookSecretSet ? "(saved — leave blank to keep current)" : ""}</label>
-      <input type="password" name="postCallWebhookSecret" placeholder="${operational.postCallWebhookSecretSet ? "•••••••• (unchanged)" : ""}" autocomplete="off" />
-      <div class="hint">This must match the signing secret shown when you create the post-call webhook in ElevenLabs' Workspace Settings → Webhooks.</div>
-
-      <button type="submit">Save settings</button>
-    </form>
-
-    <form method="post" action="/b/${business.id}/settings/generate-secret" onsubmit="return confirm('This will invalidate the current tool webhook secret immediately. The agent\\'s tools will fail until you update the new secret in ElevenLabs. Continue?')">
-      <button type="submit">Generate a new random tool webhook secret</button>
-    </form>
-  `,
-  );
-}

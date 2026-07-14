@@ -35,7 +35,11 @@ export function bootstrapSchema(db: DatabaseSync): void {
       summary TEXT,
       termination_reason TEXT,
       raw_payload_json TEXT NOT NULL,
-      audio_path TEXT
+      audio_path TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      recovery_status TEXT,
+      duration_secs INTEGER,
+      call_reason TEXT
     );
 
     CREATE TABLE IF NOT EXISTS users (

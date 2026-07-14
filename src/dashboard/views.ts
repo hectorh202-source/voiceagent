@@ -1,7 +1,4 @@
-import type { CallDetailViewModel, CallFlags, CallListFilters } from "./callDetails";
-import type { ElevenLabsCallRecord } from "../db/callRecords";
-import type { CreateLeadLogRow } from "../db/callLog";
-import type { Business } from "../db/businesses";
+import type { CallDetailViewModel } from "./callDetails";
 import { getAgentTimezone } from "../settings/store";
 import { formatPhoneNumber } from "../lib/format";
 
@@ -41,14 +38,6 @@ const styles = `
   .turn.user { align-self: flex-end; background: #2563eb; color: #fff; }
   .turn-time { font-size: 0.7rem; opacity: 0.6; margin-bottom: 4px; }
   .conv-id { font-family: monospace; font-size: 0.85rem; word-break: break-all; }
-  .call-list-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
-  .call-list-row:last-child { border-bottom: none; }
-  .call-list-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .badge-error { background: #fce8e6; border: 1px solid #ea4335; color: #a50e0e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
-  .badge-warning { background: #fef7e0; border: 1px solid #f9ab00; color: #7a5900; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; white-space: nowrap; }
-  .filter-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 0.9rem; }
-  .filter-form label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .filter-form input[type="date"] { font-family: inherit; }
 `;
 
 function page(title: string, body: string): string {
@@ -64,79 +53,6 @@ function copyCallLink() {
 </script>
 </body>
 </html>`;
-}
-
-export interface CallListRow {
-  record: ElevenLabsCallRecord;
-  flags: CallFlags;
-  // Mutually exclusive — a call only ever produces a Lead or a booked Job.
-  leadLog: CreateLeadLogRow | undefined;
-  jobLog: CreateLeadLogRow | undefined;
-}
-
-export function renderCallListPage(business: Business, rows: CallListRow[], filters: CallListFilters): string {
-  const checkbox = (name: string, label: string, checked: boolean) =>
-    `<label><input type="checkbox" name="${name}" value="1" ${checked ? "checked" : ""} /> ${label}</label>`;
-
-  const filterFormHtml = `
-    <form method="get" class="filter-form">
-      ${checkbox("failedTransfer", "Failed transfer", filters.failedTransfer)}
-      ${checkbox("noBookingCreated", "No lead/job created", filters.noBookingCreated)}
-      ${checkbox("endedEarly", "Ended early", filters.endedEarly)}
-      <label>From <input type="date" name="from" value="${escapeHtml(filters.from ?? "")}" /></label>
-      <label>To <input type="date" name="to" value="${escapeHtml(filters.to ?? "")}" /></label>
-      <button type="submit">Filter</button>
-      <a href="/b/${business.id}/calls">Clear filters</a>
-    </form>`;
-
-  const rowsHtml = rows.length
-    ? rows
-        .map(({ record, flags, leadLog, jobLog }) => {
-          let customerName: string | null = null;
-          let phone: string | null = null;
-          const bookingLog = leadLog ?? jobLog;
-          if (bookingLog) {
-            try {
-              const request = JSON.parse(bookingLog.request_json) as { name?: string; phone?: string };
-              customerName = request.name ?? null;
-              phone = request.phone ?? null;
-            } catch {
-              // leave as unknown rather than crash on a malformed row
-            }
-          }
-
-          const badges = [
-            flags.failedTransfer ? `<span class="badge-error">Failed transfer</span>` : "",
-            flags.noBookingCreated ? `<span class="badge-error">No lead/job created</span>` : "",
-            flags.endedEarly ? `<span class="badge-warning">Ended early</span>` : "",
-          ].join("");
-
-          return `
-        <div class="call-list-row">
-          <div>
-            <a href="/b/${business.id}/calls/${encodeURIComponent(record.conversation_id)}">
-              ${escapeHtml(formatCallTime(record.received_at, business.id))}
-            </a>
-            <div class="details-label">${escapeHtml(customerName ?? "—")}${phone ? " · " + escapeHtml(formatPhoneNumber(phone)) : ""}</div>
-          </div>
-          <div class="call-list-badges">${badges}</div>
-        </div>`;
-        })
-        .join("")
-    : `<p>${
-        filters.failedTransfer || filters.noBookingCreated || filters.endedEarly || filters.from || filters.to
-          ? "No calls match these filters."
-          : "No calls yet."
-      }</p>`;
-
-  return page(
-    `Calls — ${business.name}`,
-    `
-    <h1>Calls — ${escapeHtml(business.name)}</h1>
-    <div class="card">${filterFormHtml}</div>
-    <div class="card">${rowsHtml}</div>
-  `,
-  );
 }
 
 export function renderCallDetailPage(vm: CallDetailViewModel): string {

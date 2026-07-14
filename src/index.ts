@@ -1,14 +1,15 @@
 import express, { Router } from "express";
+import path from "node:path";
 import session from "express-session";
 import { env } from "./config/env";
 import "./db/index";
 import { requestLogger } from "./middleware/requestLogger";
 import { settingsRouter } from "./settings/routes";
-import { businessSettingsRouter } from "./settings/businessRoutes";
 import { resolveBusiness } from "./middleware/resolveBusiness";
 import { toolsRouter } from "./tools/router";
 import { webhooksRouter } from "./webhooks/router";
 import { dashboardRouter } from "./dashboard/routes";
+import { apiRouter } from "./api/router";
 import { SqliteSessionStore } from "./settings/sessionStore";
 import { getOrCreateSessionSecret } from "./settings/store";
 
@@ -53,22 +54,34 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/settings", settingsRouter);
+app.use("/api", apiRouter);
 
-// Every business-scoped concern (credentials, ElevenLabs tool webhooks, the
-// post-call webhook, and the public per-call dashboard) lives under
-// /b/:businessId — resolveBusiness runs first for all of them, 404ing
-// immediately on an invalid/nonexistent business before any of the
-// downstream auth/secret checks even run.
+// Every business-scoped concern (ElevenLabs tool webhooks, the post-call
+// webhook, and the public per-call dashboard) lives under /b/:businessId —
+// resolveBusiness runs first for all of them, 404ing immediately on an
+// invalid/nonexistent business before any of the downstream auth/secret
+// checks even run. Business-scoped credentials/settings now live in the
+// React SPA (/app/:businessId/settings/*) via /api instead of a server-
+// rendered form here.
 // mergeParams: true is required here — without it, this child router gets
 // its own fresh req.params scope and never sees :businessId from the parent
 // mount path, so resolveBusiness would always see an empty req.params.
 const businessRouter = Router({ mergeParams: true });
 businessRouter.use(resolveBusiness);
-businessRouter.use("/settings", businessSettingsRouter);
 businessRouter.use("/tools", toolsRouter);
 businessRouter.use("/webhooks", webhooksRouter);
 businessRouter.use(dashboardRouter);
 app.use("/b/:businessId", businessRouter);
+
+// The React SPA (client/) — built separately (see client/package.json's
+// build script) and served as static assets. The GET /app/* catch-all lets
+// React Router handle client-side routes like /app/1/calls/:conversationId
+// on a hard refresh, where there's no matching file on disk.
+const clientDistPath = path.join(__dirname, "../client/dist");
+app.use("/app", express.static(clientDistPath));
+app.get("/app/*", (_req, res) => {
+  res.sendFile(path.join(clientDistPath, "index.html"));
+});
 
 app.listen(env.PORT, () => {
   console.log(`Voice agent platform listening on port ${env.PORT}`);

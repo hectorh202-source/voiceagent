@@ -1,6 +1,7 @@
 import { getCallRecord } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
+import type { CreateLeadLogRow } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
 import type { Business } from "../db/businesses";
 
@@ -246,4 +247,36 @@ export function matchesBadgeFilters(flags: CallFlags, filters: CallListFilters):
     (filters.noBookingCreated && flags.noBookingCreated) ||
     (filters.endedEarly && flags.endedEarly)
   );
+}
+
+export type CallStatus = "booked" | "not_booked" | "excused";
+
+// Booked = a Job was actually created; Not Booked = a genuine booking attempt
+// happened (a Lead was created, or an attempt failed) but no Job exists;
+// Excused = no booking attempt was ever made at all (out of scope, wrong
+// number, disqualified caller, etc.) — mirrors the reasoning already used by
+// noBookingCreated above, just surfaced as a 3-way status instead of a flag.
+export function deriveStatus(
+  leadLog: CreateLeadLogRow | undefined,
+  jobLog: CreateLeadLogRow | undefined,
+): CallStatus {
+  if (jobLog?.success) return "booked";
+  if (leadLog || jobLog) return "not_booked";
+  return "excused";
+}
+
+export type CallHandler = "ai" | "ai_human";
+
+// "ai_human" only when a transfer_to_number call genuinely succeeded — reuses
+// the same transcript-parsing logic as buildCallDetailViewModel's transfer
+// detection, so the two never disagree about what counts as a real transfer.
+export function deriveCallHandler(record: ElevenLabsCallRecord): CallHandler {
+  if (!record.transcript_json) return "ai";
+  try {
+    const turns = JSON.parse(record.transcript_json) as TranscriptTurn[];
+    const { isTransferred, transferFailed } = findTransferInfo(turns);
+    return isTransferred && !transferFailed ? "ai_human" : "ai";
+  } catch {
+    return "ai";
+  }
 }
