@@ -41,6 +41,15 @@ interface PostCallTranscriptionPayload {
       // payload (see extractCallerPhone below).
       phone_call?: { external_number?: string };
     };
+    // ElevenLabs echoes back the dynamic variables bound at conversation
+    // start — system__caller_id is the same variable already confirmed
+    // working elsewhere in this app (bound to lookup_customer's phone
+    // parameter, see docs/elevenlabs-tools.md), so unlike phone_call above
+    // this one has real precedent, not just a documented-but-unverified
+    // guess.
+    conversation_initiation_client_data?: {
+      dynamic_variables?: { system__caller_id?: string };
+    };
   };
 }
 
@@ -78,11 +87,42 @@ function extractCallReason(data: PostCallTranscriptionPayload["data"]): string |
 
 // Powers Call History (docs/call-dashboard.md) — correlating every call from
 // the same customer, including short calls that never reached create_lead/
-// book_job and so never captured a phone number any other way. Unverified
-// against a real payload; place a real test call and inspect raw_payload_json
-// to confirm the exact field name/shape, then adjust this if it differs.
-function extractCallerPhone(data: PostCallTranscriptionPayload["data"]): string | null {
-  return data.metadata?.phone_call?.external_number ?? null;
+// book_job and so never captured a phone number any other way.
+//
+// Three layers, most to least confident:
+// 1. system__caller_id, echoed back via conversation_initiation_client_data
+//    — a real ElevenLabs dynamic variable this app already relies on
+//    elsewhere (lookup_customer's phone parameter), so this path has actual
+//    precedent, not just a documented shape.
+// 2. metadata.phone_call.external_number — ElevenLabs' documented field for
+//    a phone-based conversation, still unconfirmed against a real payload.
+// 3. Falls back to the phone captured via create_lead/book_job's own
+//    request body — call_log is already populated by the time this
+//    post-call webhook arrives, since tool calls happen mid-conversation.
+//    Doesn't help a genuinely tool-less call, but means a wrong/missing
+//    field name in (1) or (2) doesn't silently break history correlation
+//    for every other call too.
+//
+// Place a real test call and inspect the stored raw_payload_json to confirm
+// which of these actually appears — adjust or reorder if the real shape
+// differs.
+function extractCallerPhone(businessId: number, data: PostCallTranscriptionPayload["data"]): string | null {
+  const fromEcho = data.conversation_initiation_client_data?.dynamic_variables?.system__caller_id;
+  if (fromEcho) return fromEcho;
+
+  const fromMetadata = data.metadata?.phone_call?.external_number;
+  if (fromMetadata) return fromMetadata;
+
+  const leadLog = findCreateLeadLogByConversationId(businessId, data.conversation_id);
+  const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, data.conversation_id);
+  const bookingLog = leadLog ?? jobLog;
+  if (!bookingLog) return null;
+  try {
+    const request = JSON.parse(bookingLog.request_json) as { phone?: string };
+    return request.phone ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Once the real AI call summary is available, swap it in for the short
@@ -226,7 +266,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       rawPayloadJson: JSON.stringify(payload),
       durationSecs: extractDurationSecs(data),
       callReason: extractCallReason(data),
-      callerPhone: extractCallerPhone(data),
+      callerPhone: extractCallerPhone(business.id, data),
     });
 
     if (data.analysis?.transcript_summary) {

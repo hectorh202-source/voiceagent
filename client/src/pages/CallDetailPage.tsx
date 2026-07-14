@@ -441,13 +441,17 @@ export function CallDetailPage() {
             ))}
           </div>
 
-          {data.callHistory.length > 0 && (
-            <div className="card">
-              <div className="card-header">
-                <h2>Call History</h2>
-                <span className="badge badge-neutral">{data.callHistory.length}</span>
-              </div>
-              {data.callHistory.map((call) => (
+          <div className="card">
+            <div className="card-header">
+              <h2>Call History</h2>
+              <span className="badge badge-neutral">{data.callHistory.length}</span>
+            </div>
+            {data.callHistory.length === 0 && (
+              <p className="muted" style={{ fontSize: 13 }}>
+                No caller phone number is on file for this call, so no history could be found.
+              </p>
+            )}
+            {data.callHistory.map((call) => (
                 <div
                   key={call.conversationId}
                   className={`history-row ${call.conversationId === conversationId ? "current" : ""}`}
@@ -483,8 +487,7 @@ export function CallDetailPage() {
                   {call.summary && <p className="history-row-summary">{call.summary}</p>}
                 </div>
               ))}
-            </div>
-          )}
+          </div>
         </main>
       </div>
     </div>
