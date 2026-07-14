@@ -94,10 +94,6 @@ export function CallsListPage() {
     });
   }
 
-  function toggleRead(id: string, current: boolean) {
-    patchMutation.mutate({ conversationIds: [id], isRead: !current });
-  }
-
   function bulkAction(patch: { isRead?: boolean; recoveryStatus?: RecoveryStatus }) {
     patchMutation.mutate({ conversationIds: Array.from(selected), ...patch });
     setSelected(new Set());
@@ -146,7 +142,6 @@ export function CallsListPage() {
             selected={selected}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
-            onToggleRead={toggleRead}
           />
         )}
       </div>

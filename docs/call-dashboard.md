@@ -115,8 +115,10 @@ Caddy auto-provisions a separate Let's Encrypt cert for this second hostname. Ex
 
 The admin-facing calls list and per-call detail view moved from server-rendered HTML (`dashboard/views.ts`'s old `renderCallListPage`, deleted) into a React SPA (`client/`), served as static assets at `/app/*` and backed by a thin JSON API (`src/api/businessRouter.ts`, mounted at `/api/businesses/:businessId`, gated by `requireApiSession` — the JSON counterpart of `requireAdminSession`, returning `401` instead of redirecting). The **public, unauthenticated per-call page and audio route** (`/b/:businessId/calls/:conversationId` and its `/audio` route, described above) are completely unchanged by this — only the browsable, login-gated list and an in-app detail view moved.
 
+Clicking anywhere on a table row opens that call's detail page — except the row-select checkbox and the Job/Lead link, both of which call `e.stopPropagation()` so selecting a row for a bulk action, or opening its ServiceTitan record in a new tab, doesn't also navigate away.
+
 - `GET /api/businesses/:businessId/calls` — returns `{ calls: CallListRow[] }`, one entry per call, each with a derived **Status**, the existing three flags, and new fields described below.
-- `PATCH /api/businesses/:businessId/calls` — body `{ conversationIds: string[], isRead?: boolean, recoveryStatus?: "recovered"|"not_recovered"|null }`, used for both the per-row read toggle and the bulk action bar (select rows via checkbox, then "Mark as read/unread/recovered/not recovered").
+- `PATCH /api/businesses/:businessId/calls` — body `{ conversationIds: string[], isRead?: boolean, recoveryStatus?: "recovered"|"not_recovered"|null }`. The read/recovered indicator in each row is display-only, not clickable — the only ways to change it are the bulk action bar (select rows via checkbox, then "Mark as read/unread/recovered/not recovered") or the same actions on the individual call's detail page. Deliberate: a stray click on a table row shouldn't silently change status.
 - `GET /api/businesses/:businessId/calls/:conversationId` — reuses the same `buildCallDetailViewModel()` the old HTML detail page used, plus the new fields.
 
 ### Status — Booked / Not Booked / Excused (derived, not stored)

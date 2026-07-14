@@ -13,6 +13,23 @@ const ST_WEB_HOSTS: Record<string, string> = {
   production: "go.servicetitan.com",
 };
 
+// Shared by buildCallDetailViewModel and the calls-list API (businessRouter.ts)
+// so both surfaces link to the exact same ServiceTitan record — jobUrl's
+// pattern is assumed to mirror the Lead URL convention (unconfirmed until
+// verified against one real booked job, same as the Lead URL originally was).
+export function buildServiceTitanUrls(
+  businessId: number,
+  leadId: string | null,
+  jobId: string | null,
+): { leadUrl: string | null; jobUrl: string | null } {
+  const stEnvironment = getRawServiceTitanSettings(businessId).environment;
+  const stWebHost = ST_WEB_HOSTS[stEnvironment] ?? ST_WEB_HOSTS.production;
+  return {
+    leadUrl: leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null,
+    jobUrl: jobId ? `https://${stWebHost}/#/Job/Index/${jobId}` : null,
+  };
+}
+
 interface TranscriptTurn {
   role: string;
   message?: string;
@@ -135,12 +152,7 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     }
   }
 
-  const stEnvironment = getRawServiceTitanSettings(business.id).environment;
-  const stWebHost = ST_WEB_HOSTS[stEnvironment] ?? ST_WEB_HOSTS.production;
-  const leadUrl = leadId ? `https://${stWebHost}/#/Lead/Index/${leadId}` : null;
-  // Assumed to mirror the Lead URL convention — unconfirmed until verified
-  // against one real booked job, same as the Lead URL originally was.
-  const jobUrl = jobId ? `https://${stWebHost}/#/Job/Index/${jobId}` : null;
+  const { leadUrl, jobUrl } = buildServiceTitanUrls(business.id, leadId, jobId);
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = {

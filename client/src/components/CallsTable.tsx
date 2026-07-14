@@ -1,7 +1,7 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { CallListRow } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
-import { formatDateTime, formatDuration } from "../lib/format";
+import { formatDateTime, formatDuration, formatPhoneNumber } from "../lib/format";
 
 export function CallsTable({
   businessId,
@@ -9,15 +9,14 @@ export function CallsTable({
   selected,
   onToggleSelect,
   onToggleSelectAll,
-  onToggleRead,
 }: {
   businessId: string;
   rows: CallListRow[];
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
-  onToggleRead: (id: string, current: boolean) => void;
 }) {
+  const navigate = useNavigate();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.conversationId));
 
   return (
@@ -39,45 +38,50 @@ export function CallsTable({
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.conversationId}>
-            <td>
+          <tr
+            key={row.conversationId}
+            className="clickable-row"
+            onClick={() => navigate(`/${businessId}/calls/${row.conversationId}`)}
+          >
+            <td onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 checked={selected.has(row.conversationId)}
                 onChange={() => onToggleSelect(row.conversationId)}
               />{" "}
-              <button
-                className="link-btn"
-                title={row.isRead ? "Mark as unread" : "Mark as read"}
-                onClick={() => onToggleRead(row.conversationId, row.isRead)}
-              >
-                {row.isRead ? "Read" : <strong>Unread</strong>}
-              </button>
+              {/* Read/unread is display-only here — the only way to change it
+                  is the bulk action bar (select rows, then "Mark as
+                  read"/"Mark as unread"), not a per-row click. */}
+              {row.isRead ? "Read" : <strong>Unread</strong>}
             </td>
             <td>
               <StatusBadge status={row.status} recoveryStatus={row.recoveryStatus} />
             </td>
-            <td>
-              <Link to={`/${businessId}/calls/${row.conversationId}`}>{formatDateTime(row.receivedAt)}</Link>
-            </td>
+            <td>{formatDateTime(row.receivedAt)}</td>
             <td>{formatDuration(row.durationSecs)}</td>
             <td>
               {row.customerName ?? <span className="muted">Unknown</span>}
               {row.phone && (
                 <>
                   <br />
-                  <span className="muted">{row.phone}</span>
+                  <span className="muted">{formatPhoneNumber(row.phone)}</span>
                 </>
               )}
             </td>
             <td>{row.callHandler === "ai_human" ? "AI + Human" : "AI"}</td>
             <td>{row.isEmergency ? "⚠️" : "—"}</td>
             <td>{row.callReason ?? <span className="muted">—</span>}</td>
-            <td>
-              {row.jobId && (
-                <span className="badge badge-neutral">Job #{row.jobId}</span>
+            <td onClick={(e) => e.stopPropagation()}>
+              {row.jobId && row.jobUrl && (
+                <a className="badge badge-neutral" href={row.jobUrl} target="_blank" rel="noopener noreferrer">
+                  Job #{row.jobId}
+                </a>
               )}
-              {!row.jobId && row.leadId && <span className="badge badge-neutral">Lead #{row.leadId}</span>}
+              {!row.jobId && row.leadId && row.leadUrl && (
+                <a className="badge badge-neutral" href={row.leadUrl} target="_blank" rel="noopener noreferrer">
+                  Lead #{row.leadId}
+                </a>
+              )}
               {!row.jobId && !row.leadId && <span className="muted">—</span>}
             </td>
           </tr>

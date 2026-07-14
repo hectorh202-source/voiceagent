@@ -33,6 +33,8 @@ export interface CallListRow {
   recoveryStatus: RecoveryStatus;
   leadId: string | null;
   jobId: string | null;
+  leadUrl: string | null;
+  jobUrl: string | null;
   flags: CallFlags;
 }
 

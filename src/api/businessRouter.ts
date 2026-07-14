@@ -16,6 +16,7 @@ import {
   deriveStatus,
   deriveCallHandler,
   matchesBadgeFilters,
+  buildServiceTitanUrls,
 } from "../dashboard/callDetails";
 import type { CallListFilters } from "../dashboard/callDetails";
 import { computeMetrics } from "../dashboard/metrics";
@@ -69,6 +70,8 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     }
   }
 
+  const { leadUrl, jobUrl } = buildServiceTitanUrls(businessId, leadId, jobId);
+
   return {
     conversationId: record.conversation_id,
     receivedAt: record.received_at,
@@ -83,6 +86,8 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     leadId,
     jobId,
+    leadUrl,
+    jobUrl,
     flags,
   };
 }

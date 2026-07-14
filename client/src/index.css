@@ -238,6 +238,10 @@ table.data-table {
   background: var(--neutral-bg);
 }
 
+.data-table tr.clickable-row {
+  cursor: pointer;
+}
+
 .badge {
   display: inline-block;
   padding: 3px 8px;
@@ -245,6 +249,14 @@ table.data-table {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+a.badge {
+  text-decoration: none;
+}
+
+a.badge:hover {
+  filter: brightness(0.95);
 }
 
 .badge-success {
