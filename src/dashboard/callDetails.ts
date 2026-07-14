@@ -1,4 +1,4 @@
-import { getCallRecord } from "../db/callRecords";
+import { getCallRecord, listCallRecordsByPhone } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import type { CreateLeadLogRow } from "../db/callLog";
@@ -215,6 +215,72 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     autoCallReason,
     callReasonOverride,
   };
+}
+
+export interface CallHistoryRow {
+  conversationId: string;
+  receivedAt: string;
+  durationSecs: number | null;
+  customerName: string | null;
+  phone: string | null;
+  status: CallStatus;
+  isEmergency: boolean | null;
+  isTransferred: boolean;
+  summary: string | null;
+}
+
+// Every other call from the same caller (by caller_phone — see
+// webhooks/postCall.ts's extractCallerPhone), newest first, including the
+// call currently being viewed. Only ever called with a non-null phone (the
+// route handler checks first), so a call whose caller_phone was never
+// captured (no phone-based metadata, or predates this feature) simply shows
+// no history rather than an empty list.
+export function buildCallHistory(business: Business, callerPhone: string, limit = 50): CallHistoryRow[] {
+  const records = listCallRecordsByPhone(business.id, callerPhone, limit);
+  return records.map((record) => {
+    const leadLog = findCreateLeadLogByConversationId(business.id, record.conversation_id);
+    const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, record.conversation_id);
+    const bookingLog = leadLog ?? jobLog;
+
+    let customerName: string | null = null;
+    let isEmergency: boolean | null = null;
+    if (bookingLog) {
+      try {
+        const request = JSON.parse(bookingLog.request_json) as { name?: string; isEmergency?: boolean };
+        customerName = request.name ?? null;
+        isEmergency = request.isEmergency ?? null;
+      } catch {
+        // leave null on a malformed row rather than crash the list
+      }
+    }
+
+    const autoStatus = deriveStatus(leadLog, jobLog);
+    const statusOverride = (record.status_override as CallStatus | null) ?? null;
+    const status = statusOverride ?? autoStatus;
+
+    let isTransferred = false;
+    if (record.transcript_json) {
+      try {
+        const turns = JSON.parse(record.transcript_json) as TranscriptTurn[];
+        const info = findTransferInfo(turns);
+        isTransferred = info.isTransferred && !info.transferFailed;
+      } catch {
+        // leave false rather than crash on a malformed transcript
+      }
+    }
+
+    return {
+      conversationId: record.conversation_id,
+      receivedAt: record.received_at,
+      durationSecs: record.duration_secs,
+      customerName,
+      phone: record.caller_phone,
+      status,
+      isEmergency,
+      isTransferred,
+      summary: record.summary,
+    };
+  });
 }
 
 export interface CallFlags {

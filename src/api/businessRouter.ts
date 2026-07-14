@@ -15,6 +15,7 @@ import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } fro
 import {
   computeCallFlags,
   buildCallDetailViewModel,
+  buildCallHistory,
   deriveStatus,
   deriveCallHandler,
   matchesBadgeFilters,
@@ -162,6 +163,7 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     internalNotes: record.internal_notes,
     audioUrl: viewModel.hasAudio ? `/b/${business.id}/calls/${conversationId}/audio` : null,
+    callHistory: record.caller_phone ? buildCallHistory(business, record.caller_phone) : [],
   });
 });
 

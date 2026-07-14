@@ -168,6 +168,16 @@ Three states on the call detail page (`CallDetailPage.tsx`), matching the refere
 2. **Editing** — a textarea (placeholder "Add internal notes about this call…"), with Cancel and Save buttons below it. Cancel discards the draft without saving; Save submits `internalNotes` (an empty/whitespace-only draft saves `null`, clearing the note) and closes the editor.
 3. **Saved** — the heading's link changes to "Edit," and the note renders in a highlighted box (reusing the existing `--warning-bg`/`--warning-text` theme variables also used for the "Not Recovered" badge, so it adapts correctly in dark mode without a new hardcoded color).
 
+### Call History — every other call from the same caller
+
+A card at the bottom of the call detail page's main column (`CallDetailPage.tsx`) listing every call from the same phone number, newest first, including the call currently being viewed (highlighted with an accent-colored left border). Each row shows the customer name, timestamp, phone, duration, the resolved Bookability status badge, `Emergency`/`Transferred` flag badges when applicable, and a two-line-clamped summary excerpt — clicking any row (other than the current one) navigates to that call's detail page. Hidden entirely (no empty-state card) when the current call has no `caller_phone` captured.
+
+**Correlation requires a new column this app didn't previously capture.** Phone number was only ever available via `create_lead`/`book_job`'s request body — meaning a short call that never reached a tool call (a silent hangup, a wrong number) had no stored phone at all, and so could never be matched to other calls from the same customer. `webhooks/postCall.ts`'s new `extractCallerPhone()` reads `metadata.phone_call.external_number` from every webhook delivery instead, independent of whether any tool ran, and stores it in a new `caller_phone` column (`src/db/migrateCallerPhoneColumn.ts`) — refreshed on webhook redelivery like `duration_secs`/`call_reason` (not staff-set, so *not* protected from being overwritten the way `is_read`/overrides are).
+
+**Not yet confirmed against a real payload** — same caveat as `metadata.call_duration_secs` above: `phone_call.external_number` is ElevenLabs' documented field name for a phone-based (SIP/Twilio-native) conversation's caller ID, chosen deliberately so history correlation works even for tool-less calls, but unverified against an actual delivered webhook. Place a real test call, inspect the stored `raw_payload_json`, and adjust `extractCallerPhone()` if the real shape differs. Until confirmed, a business with all-web (non-phone) conversations, or a real payload shaped differently than assumed, will see no Call History at all — a silent no-op, not an error, so this doesn't block anything else on the page.
+
+`listCallRecordsByPhone()` in `db/callRecords.ts` does the lookup (`WHERE business_id = ? AND caller_phone = ?`, scoped by business the same way `getCallRecord()` is); `buildCallHistory()` in `dashboard/callDetails.ts` turns each matching row into a `CallHistoryRow` (reusing the same `create_lead`/`book_job` parsing and `findTransferInfo()` transcript logic `buildCallDetailViewModel` already has), returned as `callHistory` on the `GET /calls/:conversationId` response only — not on the calls list, since a list of every other call there would be redundant with the list itself.
+
 ### Call Metrics page
 
 `GET /api/businesses/:businessId/metrics?from=&to=` (`src/dashboard/metrics.ts`) computes, over a date range:
@@ -186,4 +196,4 @@ Same three flags as before (`failedTransfer`/`noBookingCreated`/`endedEarly`, OR
 
 - Pagination on the calls list, if the current flat `LIMIT 500` stops being enough (see [roadmap.md](roadmap.md)).
 - Real-time/automatic Lead→Job conversion tracking (the ST link always points at the Lead we create, never a Job).
-- Confirming the real shape of `metadata.call_duration_secs`/`analysis.data_collection_results` against an actual ElevenLabs payload (see above).
+- Confirming the real shape of `metadata.call_duration_secs`/`analysis.data_collection_results`/`metadata.phone_call.external_number` against an actual ElevenLabs payload (see above).

@@ -30,6 +30,18 @@ export interface CallFlags {
   endedEarly: boolean;
 }
 
+export interface CallHistoryRow {
+  conversationId: string;
+  receivedAt: string;
+  durationSecs: number | null;
+  customerName: string | null;
+  phone: string | null;
+  status: CallStatus;
+  isEmergency: boolean | null;
+  isTransferred: boolean;
+  summary: string | null;
+}
+
 export interface CallListRow {
   conversationId: string;
   receivedAt: string;
@@ -87,6 +99,7 @@ export interface CallDetail {
   recoveryStatus: RecoveryStatus;
   internalNotes: string | null;
   audioUrl: string | null;
+  callHistory: CallHistoryRow[];
 }
 
 export interface CallMetrics {

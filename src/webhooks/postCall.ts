@@ -31,7 +31,16 @@ interface PostCallTranscriptionPayload {
       // by the field's identifier; we look up "call_reason" specifically.
       data_collection_results?: Record<string, { value?: string | number | boolean | null }>;
     };
-    metadata?: { termination_reason?: string; call_duration_secs?: number };
+    metadata?: {
+      termination_reason?: string;
+      call_duration_secs?: number;
+      // Present for a phone-based (SIP/Twilio-native) conversation, per
+      // ElevenLabs' documented webhook schema — independent of whether
+      // create_lead/book_job ever ran, unlike the phone number captured via
+      // those tools' request bodies. Not yet confirmed against a real
+      // payload (see extractCallerPhone below).
+      phone_call?: { external_number?: string };
+    };
   };
 }
 
@@ -65,6 +74,15 @@ function extractCallReason(data: PostCallTranscriptionPayload["data"]): string |
   const entry = data.analysis?.data_collection_results?.call_reason;
   if (entry === undefined || entry.value === undefined || entry.value === null) return null;
   return typeof entry.value === "string" ? entry.value : String(entry.value);
+}
+
+// Powers Call History (docs/call-dashboard.md) — correlating every call from
+// the same customer, including short calls that never reached create_lead/
+// book_job and so never captured a phone number any other way. Unverified
+// against a real payload; place a real test call and inspect raw_payload_json
+// to confirm the exact field name/shape, then adjust this if it differs.
+function extractCallerPhone(data: PostCallTranscriptionPayload["data"]): string | null {
+  return data.metadata?.phone_call?.external_number ?? null;
 }
 
 // Once the real AI call summary is available, swap it in for the short
@@ -208,6 +226,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       rawPayloadJson: JSON.stringify(payload),
       durationSecs: extractDurationSecs(data),
       callReason: extractCallReason(data),
+      callerPhone: extractCallerPhone(data),
     });
 
     if (data.analysis?.transcript_summary) {

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CallDetail, CallStatus, RecoveryStatus } from "../api/types";
-import { formatDateTime, formatDuration, formatPhoneNumber } from "../lib/format";
+import { formatDateTime, formatDuration, formatDurationClock, formatPhoneNumber } from "../lib/format";
 import {
   UserIcon,
   PhoneIcon,
@@ -20,6 +20,7 @@ import {
   ChevronDownIcon,
   EditIcon,
   SaveIcon,
+  TransferIcon,
 } from "../components/icons";
 
 const STATUS_LABEL: Record<CallStatus, string> = {
@@ -370,10 +371,6 @@ export function CallDetailPage() {
             <div className="info-section-title">Tasks</div>
             <div className="muted" style={{ fontSize: 13 }}>Not available yet.</div>
           </div>
-          <div className="info-section empty-state-section">
-            <div className="info-section-title">Call History</div>
-            <div className="muted" style={{ fontSize: 13 }}>Not available yet.</div>
-          </div>
         </aside>
 
         <main className="call-detail-main">
@@ -443,6 +440,51 @@ export function CallDetailPage() {
               </div>
             ))}
           </div>
+
+          {data.callHistory.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h2>Call History</h2>
+                <span className="badge badge-neutral">{data.callHistory.length}</span>
+              </div>
+              {data.callHistory.map((call) => (
+                <div
+                  key={call.conversationId}
+                  className={`history-row ${call.conversationId === conversationId ? "current" : ""}`}
+                  onClick={() => {
+                    if (call.conversationId !== conversationId) navigate(`/${businessId}/calls/${call.conversationId}`);
+                  }}
+                >
+                  <div className="history-row-top">
+                    <strong>{call.customerName ?? "Unknown"}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>{formatDateTime(call.receivedAt)}</span>
+                  </div>
+                  <div className="history-row-meta">
+                    <span className="history-row-detail">
+                      <PhoneIcon width={13} height={13} />
+                      {call.phone ? formatPhoneNumber(call.phone) : "—"}
+                    </span>
+                    <span className="history-row-detail">
+                      <ClockIcon width={13} height={13} />
+                      {formatDurationClock(call.durationSecs)}
+                    </span>
+                    <span className={`badge ${STATUS_CLASS[call.status]}`}>{STATUS_LABEL[call.status]}</span>
+                    {call.isEmergency && (
+                      <span className="badge badge-danger" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <AlertIcon width={12} height={12} /> Emergency
+                      </span>
+                    )}
+                    {call.isTransferred && (
+                      <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <TransferIcon width={12} height={12} /> Transferred
+                      </span>
+                    )}
+                  </div>
+                  {call.summary && <p className="history-row-summary">{call.summary}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       </div>
     </div>

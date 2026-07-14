@@ -17,6 +17,7 @@ export interface ElevenLabsCallRecord {
   status_override: string | null;
   call_reason_override: string | null;
   internal_notes: string | null;
+  caller_phone: string | null;
 }
 
 interface CallTranscriptionEntry {
@@ -29,18 +30,19 @@ interface CallTranscriptionEntry {
   rawPayloadJson: string;
   durationSecs?: number | null;
   callReason?: string | null;
+  callerPhone?: string | null;
 }
 
-// duration_secs/call_reason come from the webhook payload, so a redelivered
-// webhook should refresh them (included in DO UPDATE SET below). is_read/
-// recovery_status are staff-set only (via updateCallStatus) and deliberately
-// absent from both the INSERT column list and DO UPDATE SET — that's what
-// lets them default once on first insert and survive every later webhook
-// delivery untouched, the same trick setAudioPathStmt already relies on for
-// not clobbering transcript fields.
+// duration_secs/call_reason/caller_phone come from the webhook payload, so a
+// redelivered webhook should refresh them (included in DO UPDATE SET below).
+// is_read/recovery_status are staff-set only (via updateCallStatus) and
+// deliberately absent from both the INSERT column list and DO UPDATE SET —
+// that's what lets them default once on first insert and survive every
+// later webhook delivery untouched, the same trick setAudioPathStmt already
+// relies on for not clobbering transcript fields.
 const upsertTranscriptionStmt = db.prepare(`
-  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json, duration_secs, call_reason)
-  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson, @durationSecs, @callReason)
+  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json, duration_secs, call_reason, caller_phone)
+  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson, @durationSecs, @callReason, @callerPhone)
   ON CONFLICT(conversation_id) DO UPDATE SET
     agent_id = excluded.agent_id,
     transcript_json = excluded.transcript_json,
@@ -48,7 +50,8 @@ const upsertTranscriptionStmt = db.prepare(`
     termination_reason = excluded.termination_reason,
     raw_payload_json = excluded.raw_payload_json,
     duration_secs = excluded.duration_secs,
-    call_reason = excluded.call_reason
+    call_reason = excluded.call_reason,
+    caller_phone = excluded.caller_phone
 `);
 
 export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
@@ -62,6 +65,7 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
     rawPayloadJson: entry.rawPayloadJson,
     durationSecs: entry.durationSecs ?? null,
     callReason: entry.callReason ?? null,
+    callerPhone: entry.callerPhone ?? null,
   });
 }
 
@@ -110,9 +114,6 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
     if (patch.internalNotes !== undefined) {
       setInternalNotesStmt.run({ conversationId, businessId, internalNotes: patch.internalNotes });
     }
-    if (patch.callReasonOverride !== undefined) {
-      setCallReasonOverrideStmt.run({ conversationId, businessId, callReasonOverride: patch.callReasonOverride });
-    }
   }
 }
 
@@ -138,6 +139,18 @@ export function getCallRecord(businessId: number, conversationId: string): Eleve
   return db
     .prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`)
     .get(conversationId, businessId) as ElevenLabsCallRecord | undefined;
+}
+
+// Powers Call History (docs/call-dashboard.md) — every other call from the
+// same caller, newest first, including the call being viewed itself (the
+// caller passed in is that call's own caller_phone). Scoped by business_id
+// for the same tenant-isolation reason as getCallRecord above.
+export function listCallRecordsByPhone(businessId: number, callerPhone: string, limit = 50): ElevenLabsCallRecord[] {
+  return db
+    .prepare(
+      `SELECT * FROM elevenlabs_calls WHERE business_id = ? AND caller_phone = ? ORDER BY received_at DESC LIMIT ?`,
+    )
+    .all(businessId, callerPhone, limit) as unknown as ElevenLabsCallRecord[];
 }
 
 export interface CallDateRange {
