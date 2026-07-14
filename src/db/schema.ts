@@ -42,8 +42,7 @@ export function bootstrapSchema(db: DatabaseSync): void {
       call_reason TEXT,
       status_override TEXT,
       call_reason_override TEXT,
-      internal_notes TEXT,
-      caller_phone TEXT
+      internal_notes TEXT
     );
 
     CREATE TABLE IF NOT EXISTS users (

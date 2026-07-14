@@ -1,4 +1,4 @@
-import { getCallRecord, listCallRecordsByPhone } from "../db/callRecords";
+import { getCallRecord, listCallRecords } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import type { CreateLeadLogRow } from "../db/callLog";
@@ -229,14 +229,37 @@ export interface CallHistoryRow {
   summary: string | null;
 }
 
-// Every other call from the same caller (by caller_phone — see
-// webhooks/postCall.ts's extractCallerPhone), newest first, including the
-// call currently being viewed. Only ever called with a non-null phone (the
-// route handler checks first), so a call whose caller_phone was never
-// captured (no phone-based metadata, or predates this feature) simply shows
-// no history rather than an empty list.
-export function buildCallHistory(business: Business, callerPhone: string, limit = 50): CallHistoryRow[] {
-  const records = listCallRecordsByPhone(business.id, callerPhone, limit);
+// Resolves the same phone the Calls list and this call's own detail view
+// already show — parsed from create_lead/book_job's request body, computed
+// fresh every time rather than stored. A call that never reached a booking
+// tool has no phone here, same as it has none anywhere else in the app.
+function resolveCallPhone(businessId: number, record: ElevenLabsCallRecord): string | null {
+  const leadLog = findCreateLeadLogByConversationId(businessId, record.conversation_id);
+  const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, record.conversation_id);
+  const bookingLog = leadLog ?? jobLog;
+  if (!bookingLog) return null;
+  try {
+    const request = JSON.parse(bookingLog.request_json) as { phone?: string };
+    return request.phone ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Every other call from the same caller, newest first, including the call
+// currently being viewed — matched by re-deriving each candidate call's
+// phone the exact same way the Calls list and this call's own detail view
+// already do (via resolveCallPhone above), rather than a separately stored
+// column. This is what makes it work immediately for every call already in
+// the database, not just ones received after some new tracking landed.
+export function buildCallHistory(business: Business, currentRecord: ElevenLabsCallRecord, limit = 1000): CallHistoryRow[] {
+  const phone = resolveCallPhone(business.id, currentRecord);
+  if (!phone) return [];
+
+  const records = listCallRecords(business.id, limit).filter(
+    (record) => resolveCallPhone(business.id, record) === phone,
+  );
+
   return records.map((record) => {
     const leadLog = findCreateLeadLogByConversationId(business.id, record.conversation_id);
     const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, record.conversation_id);
@@ -274,7 +297,7 @@ export function buildCallHistory(business: Business, callerPhone: string, limit 
       receivedAt: record.received_at,
       durationSecs: record.duration_secs,
       customerName,
-      phone: record.caller_phone,
+      phone,
       status,
       isEmergency,
       isTransferred,
