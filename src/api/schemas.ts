@@ -1,10 +1,65 @@
 import { z } from "zod";
 
+// The fixed set of values the Call Reason override dropdown offers (see
+// client/src/pages/CallDetailPage.tsx's CALL_REASON_GROUPS, which must stay
+// in sync with this list). The *auto* call_reason column isn't validated
+// against this — it's free text from ElevenLabs' own Data Collection field —
+// but a manual override is always one of these, since it's chosen from this
+// exact fixed dropdown.
+export const CALL_REASON_OVERRIDE_VALUES = [
+  "Booked - Repair",
+  "Booked - Maintenance",
+  "Booked - Sales/Estimate",
+  "Booked - Service",
+  "Follow Up - Cancel",
+  "Follow Up - Membership Cancel",
+  "Follow Up - ETA",
+  "Follow Up - Reschedule",
+  "Follow Up - Other Update",
+  "Follow Up - Complaint",
+  "Follow Up - Compliment",
+  "Follow Up - Invoice/Payment",
+  "Follow Up - Confirming Time",
+  "Excused - Test Call",
+  "Excused - Outside of Area",
+  "Excused - Outside of Services",
+  "Excused - Telemarketing",
+  "Excused - Spam",
+  "Excused - Internal Call",
+  "Excused - Employment",
+  "Excused - Update Profile",
+  "Excused - Other Questions",
+  "Excused - No Reason",
+  "Excused - Silent Call",
+  "Excused - Not Homeowner",
+  "Excused - Installation Call",
+  "Excused - Live Agent Request",
+  "Excused - Transfer to Specific Person",
+  "Excused - Membership Inquiry",
+  "Excused - Installation Pictures",
+  "Excused - Returning Call",
+  "Unbooked - Reject Agent",
+  "Unbooked - Time Concern",
+  "Unbooked - Price Concern",
+  "Unbooked - Call Back Later",
+  "Unbooked - Trip Charge",
+  "Unbooked - Commercial",
+  "Unbooked - Pending Coordination",
+  "Unbooked - Callback (Previous Job)",
+  "Outbound - Voicemail",
+  "Outbound - Not Interested",
+  "Outbound - Not Available",
+  "Outbound - Disconnected",
+  "Outbound - Moved",
+  "Outbound - Do Not Call",
+] as const;
+
 export const patchCallsSchema = z.object({
   conversationIds: z.array(z.string().min(1)).min(1),
   isRead: z.boolean().optional(),
   recoveryStatus: z.enum(["recovered", "not_recovered"]).nullable().optional(),
   statusOverride: z.enum(["booked", "not_booked", "excused"]).nullable().optional(),
+  callReasonOverride: z.enum(CALL_REASON_OVERRIDE_VALUES).nullable().optional(),
 });
 
 export const businessInfoSchema = z.object({

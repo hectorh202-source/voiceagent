@@ -141,9 +141,9 @@ This is a separate concept from **Recovered/Not Recovered** (below) — Bookabil
 
 `deriveCallHandler()` reuses the same transcript-parsing `findTransferInfo()` already used by the detail page's transfer-info row: shows **"AI + Human"** only when a `transfer_to_number` call genuinely succeeded (not just attempted), otherwise **"AI"**. There's no stored human-agent identity anywhere in this system today, so this can't show a specific person's name — just whether a human ever actually joined the call.
 
-### New staff-set columns — read/unread, recovered/not recovered, and the Bookability override
+### New staff-set columns — read/unread, recovered/not recovered, and the Bookability/Call Reason overrides
 
-Manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT` via `src/db/migrateCallStatusColumns.ts`; `status_override TEXT` via `src/db/migrateStatusOverrideColumn.ts` — same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery/Bookability marking — verified directly (set all three fields, re-run the same upsert, confirm they survive).
+Manually-set fields, added as real columns on `elevenlabs_calls` (`is_read INTEGER`, `recovery_status TEXT` via `src/db/migrateCallStatusColumns.ts`; `status_override TEXT` via `src/db/migrateStatusOverrideColumn.ts`; `call_reason_override TEXT` via `src/db/migrateCallReasonOverrideColumn.ts` — all the same idempotent `ALTER TABLE` pattern as `migrateToMultiTenant.ts`). Deliberately **excluded** from the post-call webhook's `upsertCallTranscription()` `ON CONFLICT DO UPDATE SET` clause, so a redelivered/duplicate webhook for the same call never resets a staff member's read/recovery/Bookability/Call Reason marking — verified directly (set all four fields, re-run the same upsert, confirm they survive).
 
 ### New derived data — call duration and Call Reason
 
@@ -152,6 +152,12 @@ Two more new columns, populated by `webhooks/postCall.ts` at webhook-receipt tim
 - **`call_reason`** — a granular label like "Unbooked Price Concern" or "Excused Not Qualified Caller," populated **only if** the business's ElevenLabs agent has a Data Collection field configured named exactly `call_reason` — see [elevenlabs-tools.md](elevenlabs-tools.md#call-reason-data-collection-setup) for the exact dashboard steps. Blank/dash for any call before that's configured, or for a business that never configures it — this is optional, not required for the rest of the dashboard to work.
 
 **Open risk, not yet confirmed against a real payload**: `metadata.call_duration_secs` and `analysis.data_collection_results`'s exact key/shape are assumed based on ElevenLabs' documented webhook schema, not yet verified the way `termination_reason` and the transfer-detection fields were (see Known gaps above). Trigger a real call once `call_reason` is configured, inspect the stored `raw_payload_json`, and adjust `postCall.ts`'s `extractDurationSecs`/`extractCallReason` helpers if the real shape differs.
+
+### Call Reason override — a fixed dropdown, same pattern as Bookability
+
+The call detail page's "Call Reason" field (previously a disabled, display-only select showing whatever ElevenLabs' Data Collection classified) is now editable, mirroring the Bookability override exactly: a **Default** group showing "Auto (AI) — {current auto value}" live, plus five fixed override groups — **Booked** (4 options), **Follow Up** (9), **Excused** (18), **Unbooked** (8), **Outbound** (6) — a total of 45 specific reasons, defined once in `client/src/pages/CallDetailPage.tsx`'s `CALL_REASON_GROUPS` and mirrored server-side in `src/api/schemas.ts`'s `CALL_REASON_OVERRIDE_VALUES` (the two lists must stay in sync — there's no shared module between client and server in this project, so a new reason added to one must be added to the other by hand).
+
+Unlike Bookability (a closed 3-value enum the server already fully understood), the *auto* `call_reason` value is free text from ElevenLabs — this app never validates it. The *override*, submitted via `PATCH .../calls`'s `callReasonOverride` field, **is** validated against the fixed 45-value list (a `z.enum`) — since it only ever comes from this dropdown, an unrecognized value is rejected with a `400`. Resolution follows the same `override ?? auto` pattern as Bookability: `callReason` (resolved), `autoCallReason` (raw ElevenLabs value), and `callReasonOverride` (raw override, null when unset) are all returned by both the calls-list and call-detail endpoints.
 
 ### Call Metrics page
 

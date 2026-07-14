@@ -76,6 +76,8 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
   const { leadUrl, jobUrl } = buildServiceTitanUrls(businessId, leadId, jobId);
   const autoStatus = deriveStatus(leadLog, jobLog);
   const statusOverride = (record.status_override as "booked" | "not_booked" | "excused" | null) ?? null;
+  const autoCallReason = record.call_reason;
+  const callReasonOverride = record.call_reason_override;
 
   return {
     conversationId: record.conversation_id,
@@ -88,7 +90,9 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     status: statusOverride ?? autoStatus,
     autoStatus,
     statusOverride,
-    callReason: record.call_reason,
+    callReason: callReasonOverride ?? autoCallReason,
+    autoCallReason,
+    callReasonOverride,
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     leadId,
@@ -137,8 +141,8 @@ apiBusinessRouter.patch("/calls", (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { conversationIds, isRead, recoveryStatus, statusOverride } = parsed.data;
-  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus, statusOverride });
+  const { conversationIds, isRead, recoveryStatus, statusOverride, callReasonOverride } = parsed.data;
+  updateCallStatus(business.id, conversationIds, { isRead, recoveryStatus, statusOverride, callReasonOverride });
   res.json({ success: true });
 });
 
@@ -154,7 +158,6 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
   res.json({
     ...viewModel,
     durationSecs: record.duration_secs,
-    callReason: record.call_reason,
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     audioUrl: viewModel.hasAudio ? `/b/${business.id}/calls/${conversationId}/audio` : null,

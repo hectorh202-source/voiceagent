@@ -42,6 +42,8 @@ export interface CallListRow {
   autoStatus: CallStatus;
   statusOverride: CallStatus | null;
   callReason: string | null;
+  autoCallReason: string | null;
+  callReasonOverride: string | null;
   isRead: boolean;
   recoveryStatus: RecoveryStatus;
   leadId: string | null;
@@ -79,6 +81,8 @@ export interface CallDetail {
   statusOverride: CallStatus | null;
   durationSecs: number | null;
   callReason: string | null;
+  autoCallReason: string | null;
+  callReasonOverride: string | null;
   isRead: boolean;
   recoveryStatus: RecoveryStatus;
   audioUrl: string | null;

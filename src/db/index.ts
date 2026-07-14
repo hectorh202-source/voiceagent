@@ -7,6 +7,7 @@ import { migrateToMultiTenant } from "./migrateToMultiTenant";
 import { migrateCallStatusColumns } from "./migrateCallStatusColumns";
 import { migrateUserBusinessAccess } from "./migrateUserBusinessAccess";
 import { migrateStatusOverrideColumn } from "./migrateStatusOverrideColumn";
+import { migrateCallReasonOverrideColumn } from "./migrateCallReasonOverrideColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -20,3 +21,4 @@ migrateToMultiTenant(db);
 migrateCallStatusColumns(db);
 migrateUserBusinessAccess(db);
 migrateStatusOverrideColumn(db);
+migrateCallReasonOverrideColumn(db);

@@ -64,6 +64,9 @@ export interface CallDetailViewModel {
   status: CallStatus;
   autoStatus: CallStatus;
   statusOverride: CallStatus | null;
+  callReason: string | null;
+  autoCallReason: string | null;
+  callReasonOverride: string | null;
 }
 
 function formatTime(secs: number | undefined): string {
@@ -159,6 +162,9 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   const autoStatus = deriveStatus(leadLog, jobLog);
   const statusOverride = (callRecord.status_override as CallStatus | null) ?? null;
   const status = statusOverride ?? autoStatus;
+  const autoCallReason = callRecord.call_reason;
+  const callReasonOverride = callRecord.call_reason_override;
+  const callReason = callReasonOverride ?? autoCallReason;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = {
@@ -205,6 +211,9 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     status,
     autoStatus,
     statusOverride,
+    callReason,
+    autoCallReason,
+    callReasonOverride,
   };
 }
 

@@ -39,6 +39,74 @@ const AUTO_STATUS_LABEL: Record<CallStatus, string> = {
   excused: "Not Bookable",
 };
 
+// The Call Reason override dropdown's fixed groups — must stay in sync with
+// src/api/schemas.ts's CALL_REASON_OVERRIDE_VALUES on the server, which
+// validates a submitted override against this exact same list.
+const CALL_REASON_GROUPS: { label: string; options: string[] }[] = [
+  { label: "Booked", options: ["Booked - Repair", "Booked - Maintenance", "Booked - Sales/Estimate", "Booked - Service"] },
+  {
+    label: "Follow Up",
+    options: [
+      "Follow Up - Cancel",
+      "Follow Up - Membership Cancel",
+      "Follow Up - ETA",
+      "Follow Up - Reschedule",
+      "Follow Up - Other Update",
+      "Follow Up - Complaint",
+      "Follow Up - Compliment",
+      "Follow Up - Invoice/Payment",
+      "Follow Up - Confirming Time",
+    ],
+  },
+  {
+    label: "Excused",
+    options: [
+      "Excused - Test Call",
+      "Excused - Outside of Area",
+      "Excused - Outside of Services",
+      "Excused - Telemarketing",
+      "Excused - Spam",
+      "Excused - Internal Call",
+      "Excused - Employment",
+      "Excused - Update Profile",
+      "Excused - Other Questions",
+      "Excused - No Reason",
+      "Excused - Silent Call",
+      "Excused - Not Homeowner",
+      "Excused - Installation Call",
+      "Excused - Live Agent Request",
+      "Excused - Transfer to Specific Person",
+      "Excused - Membership Inquiry",
+      "Excused - Installation Pictures",
+      "Excused - Returning Call",
+    ],
+  },
+  {
+    label: "Unbooked",
+    options: [
+      "Unbooked - Reject Agent",
+      "Unbooked - Time Concern",
+      "Unbooked - Price Concern",
+      "Unbooked - Call Back Later",
+      "Unbooked - Trip Charge",
+      "Unbooked - Commercial",
+      "Unbooked - Pending Coordination",
+      "Unbooked - Callback (Previous Job)",
+    ],
+  },
+  {
+    label: "Outbound",
+    options: [
+      "Outbound - Voicemail",
+      "Outbound - Not Interested",
+      "Outbound - Not Available",
+      "Outbound - Disconnected",
+      "Outbound - Moved",
+      "Outbound - Do Not Call",
+    ],
+  },
+];
+
 function useCopy(): [(text: string) => void, string | null] {
   const [copied, setCopied] = useState<string | null>(null);
   function copy(text: string) {
@@ -62,8 +130,12 @@ export function CallDetailPage() {
   });
 
   const patchMutation = useMutation({
-    mutationFn: (body: { isRead?: boolean; recoveryStatus?: RecoveryStatus; statusOverride?: CallStatus | null }) =>
-      api.patch(`/api/businesses/${businessId}/calls`, { conversationIds: [conversationId], ...body }),
+    mutationFn: (body: {
+      isRead?: boolean;
+      recoveryStatus?: RecoveryStatus;
+      statusOverride?: CallStatus | null;
+      callReasonOverride?: string | null;
+    }) => api.patch(`/api/businesses/${businessId}/calls`, { conversationIds: [conversationId], ...body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
       queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
@@ -209,8 +281,26 @@ export function CallDetailPage() {
           <div className="info-section">
             <div className="info-section-title">Call Reason</div>
             <div className="select-display-wrap">
-              <select className="select-display" value={data.callReason ?? ""} disabled>
-                <option value={data.callReason ?? ""}>{data.callReason ?? "Not classified yet"}</option>
+              <select
+                className="select-display"
+                value={data.callReasonOverride ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  patchMutation.mutate({ callReasonOverride: value === "" ? null : value });
+                }}
+              >
+                <optgroup label="Default">
+                  <option value="">{`Auto (AI) — ${data.autoCallReason ?? "Not classified yet"}`}</option>
+                </optgroup>
+                {CALL_REASON_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
               <ChevronDownIcon width={14} height={14} />
             </div>
