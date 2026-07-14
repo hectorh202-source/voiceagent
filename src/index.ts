@@ -13,6 +13,7 @@ import { dashboardRouter } from "./dashboard/routes";
 import { apiRouter } from "./api/router";
 import { SqliteSessionStore } from "./settings/sessionStore";
 import { getOrCreateSessionSecret } from "./settings/store";
+import { getUserById } from "./db/users";
 
 const app = express();
 
@@ -86,6 +87,25 @@ const clientDistPath = path.join(__dirname, "../client/dist");
 // "Cache-Control: public, max-age=0" instead of "no-store", the exact HTML
 // shell a browser's back-button needs to be blocked from resurrecting.
 app.use("/app", express.static(clientDistPath, { index: false }));
+
+// Everything else under /app is auth-gated entirely client-side, after the
+// shell has already loaded (AuthGate/AdminSettingsPage check /api/session
+// and redirect or blank the page as needed) — fine for pages where a brief
+// flash of "loading" content isn't a real disclosure. /app/admin is the one
+// exception: unlike a business's own calls/settings, the very existence of
+// an admin console isn't something a non-admin's browser should resolve to
+// at all, so it gets a real pre-render, server-side gate here — same idea
+// as requirePlatformAdmin for /settings, just redirecting instead of
+// rendering, before any HTML is ever sent.
+app.get("/app/admin", noStore, (req, res, next) => {
+  const user = req.session.userId ? getUserById(req.session.userId) : undefined;
+  if (user?.isPlatformAdmin) {
+    next();
+    return;
+  }
+  res.redirect("/app");
+});
+
 // noStore only on this catch-all (the SPA's HTML shell) — not on the static
 // mount above, whose JS/CSS filenames are content-hashed by Vite and safe to
 // cache normally. The shell itself must never come from cache/bfcache: it's
