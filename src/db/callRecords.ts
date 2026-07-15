@@ -18,6 +18,8 @@ export interface ElevenLabsCallRecord {
   status_override: string | null;
   call_reason_override: string | null;
   internal_notes: string | null;
+  failed_transfer: number;
+  no_booking_created: number;
 }
 
 // transcript_json/summary/raw_payload_json/internal_notes carry customer PII
@@ -144,6 +146,24 @@ export function setCallAudioPath(businessId: number, conversationId: string, aud
   // only ever touched by this INSERT (audio webhook arriving before the
   // transcription webhook) would fail to decrypt.
   setAudioPathStmt.run({ conversationId, businessId, audioPath, emptyPayload: encryptField("{}") });
+}
+
+const setCallFlagsStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET failed_transfer = @failedTransfer, no_booking_created = @noBookingCreated
+   WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
+
+// Called once from webhooks/postCall.ts, right after a transcript is stored
+// (and redelivered on a webhook retry, same as duration_secs/call_reason) —
+// see dashboard/callDetails.ts's computeCallFlags for what's actually being
+// computed and why this moved from read time to write time.
+export function setCallFlags(businessId: number, conversationId: string, failedTransfer: boolean, noBookingCreated: boolean): void {
+  setCallFlagsStmt.run({
+    conversationId,
+    businessId,
+    failedTransfer: failedTransfer ? 1 : 0,
+    noBookingCreated: noBookingCreated ? 1 : 0,
+  });
 }
 
 // Scoped by business_id as well as conversation_id — this is the one lookup

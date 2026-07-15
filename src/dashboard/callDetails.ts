@@ -4,6 +4,7 @@ import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } fro
 import type { CreateLeadLogRow } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
 import type { Business } from "../db/businesses";
+import { computeCallFlagsFromTranscript } from "../lib/callFlags";
 
 // ServiceTitan's web UI hostname differs by environment: the integration/
 // sandbox tenant lives under integration.servicetitan.com, while production
@@ -309,26 +310,29 @@ export interface CallFlags {
   endedEarly: boolean;
 }
 
-// Surfaces calls worth a human glance, using only data already captured —
-// no new AI/ML involved, just deriving signals from the same transcript and
-// call_log rows the detail page already reads.
-export function computeCallFlags(business: Business, record: ElevenLabsCallRecord): CallFlags {
-  let failedTransfer = false;
-  let hadRealActivity = false;
-  if (record.transcript_json) {
-    try {
-      const turns = JSON.parse(record.transcript_json) as TranscriptTurn[];
-      failedTransfer = turns.some((t) =>
-        (t.tool_results ?? []).some((r) => r.tool_name === "transfer_to_number" && r.is_error),
-      );
-      // Deliberately narrow — a call that hung up before any real activity
-      // (e.g. an immediate wrong-number hangup) was never going to produce a
-      // booking, so it shouldn't be flagged for missing one.
-      hadRealActivity = turns.some((t) => (t.tool_calls ?? []).some((c) => c.tool_name === "lookup_customer"));
-    } catch {
-      // malformed/unexpected transcript shape — leave flags false rather than crash
-    }
-  }
+// Cheap enough (a one-line comparison against the already-decrypted
+// termination_reason column) to derive at read time always — unlike
+// failedTransfer/noBookingCreated below, it never needed a stored column.
+export function isEndedEarly(record: Pick<ElevenLabsCallRecord, "termination_reason">): boolean {
+  return record.termination_reason === "Call ended by remote party";
+}
+
+// Computed once at write time — webhooks/postCall.ts calls this right after
+// a transcript is stored, persisting the result into elevenlabs_calls'
+// failed_transfer/no_booking_created columns (see
+// db/migrateCallFlagsColumns.ts) — rather than on every row of every Calls-
+// list page load, which is how this worked before. The Calls list
+// (api/businessRouter.ts) just reads those two columns directly now. The
+// transcript-parsing half of this lives in lib/callFlags.ts (kept dependency-
+// free so migrateCallFlagsColumns.ts can reuse it without a circular import
+// back through db/callLog.ts) — this wrapper adds the call_log lookup that
+// decides noBookingCreated, using whichever business's call_log rows the
+// detail page already reads.
+export function computeCallFlags(
+  businessId: number,
+  record: Pick<ElevenLabsCallRecord, "conversation_id" | "transcript_json">,
+): { failedTransfer: boolean; noBookingCreated: boolean } {
+  const { failedTransfer, hadRealActivity } = computeCallFlagsFromTranscript(record.transcript_json);
 
   // Neither a Lead nor a Job exists for this call — checked against both,
   // since a job-booking-mode call that successfully booked a Job legitimately
@@ -336,11 +340,10 @@ export function computeCallFlags(business: Business, record: ElevenLabsCallRecor
   // only the lead log would falsely flag every successful booking.
   const noBookingCreated =
     hadRealActivity &&
-    !findCreateLeadLogByConversationId(business.id, record.conversation_id) &&
-    !findBookJobLogByConversationId(business.id, record.conversation_id);
-  const endedEarly = record.termination_reason === "Call ended by remote party";
+    !findCreateLeadLogByConversationId(businessId, record.conversation_id) &&
+    !findBookJobLogByConversationId(businessId, record.conversation_id);
 
-  return { failedTransfer, noBookingCreated, endedEarly };
+  return { failedTransfer, noBookingCreated };
 }
 
 export interface CallListFilters {

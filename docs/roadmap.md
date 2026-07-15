@@ -4,22 +4,22 @@ Things discussed and deliberately deferred, not yet implemented. This is a plann
 
 ## Near-term
 
-### Precompute call flags at write-time instead of read-time
+### ~~Precompute call flags at write-time instead of read-time~~ — done
 
-The flagged calls list ([call-dashboard.md](call-dashboard.md#flagged-calls-list)) currently computes `failedTransfer`/`noLeadCreated` by parsing `transcript_json` and querying `call_log` fresh on every page load, once per row. `findCreateLeadLogByConversationId()`/`findBookJobLogByConversationId()` now do an indexed exact-match lookup on `call_log(business_id, conversation_id)` rather than an unindexed `LIKE '%...%'` scan (fixed once Call History's `buildCallHistory()` started calling these per-candidate-call and made the old scan's cost sharply worse — see [call-dashboard.md](call-dashboard.md#call-history--every-other-call-from-the-same-caller)), so the *per-lookup* cost no longer grows with total history size. The remaining cost is still one query (now cheap) per row rather than a single batched read — fine at today's volumes, but still worth precomputing at write time if the list ever needs to scale to a much larger page size or a much higher per-page row count.
+See [call-dashboard.md](call-dashboard.md#failedtransfernobookingcreated--computed-once-at-write-time-not-on-every-page-load) for the full design. `failed_transfer`/`no_booking_created` are now columns on `elevenlabs_calls`, computed once in `webhooks/postCall.ts` as each transcript arrives (and on redelivery) rather than on every row of every Calls-list page load. `db/migrateCallFlagsColumns.ts` backfilled the rows already stored before this landed. `endedEarly` still doesn't need a column — cheap enough to derive at read time always.
 
-Fix: add `failed_transfer`/`no_lead_created` boolean columns to `elevenlabs_calls`, computed exactly once — inside the post-call webhook handler (`webhooks/postCall.ts`), at the moment the transcript first arrives, reusing the parsing logic already in `computeCallFlags()`. (`endedEarly` doesn't need a column — it's already a one-line comparison against the existing `termination_reason` column.) The list route then just reads three plain columns per row: no JSON parsing, no `call_log` scan, at read time, regardless of history size.
+Verified: a scratch-data round-trip test covering all three real scenarios (failed transfer only, real activity with no booking, real activity with a matching booking) against a copy of the dev DB, an idempotency check, confirmation that pre-existing encrypted PII columns were untouched by this migration, and a live browser check that the Calls-list "Failed transfer"/"No booking created" filter checkboxes correctly include and exclude a seeded row.
 
-Requires: a schema migration to add the columns (this project already has a migration-script pattern — see `db/migrateToMultiTenant.ts`), and a one-time backfill for the handful of calls already stored before this lands.
+Ran into (and fixed) a real circular-import bug along the way: the migration originally imported `computeCallFlags()` from `dashboard/callDetails.ts`, which imports `db/callLog.ts` for the `call_log` lookup — and `db/callLog.ts` imports the `db` singleton from `db/index.ts`, the very module whose own initialization runs this migration. Fixed by extracting the pure transcript-parsing half into dependency-free `src/lib/callFlags.ts`, which the migration imports instead; the migration does its own raw `call_log` lookup against the `db` connection it's handed rather than importing `db/callLog.ts` at all.
 
 ### Real pagination for the flagged calls list
 
-Currently capped at the 50 most recent calls, no pagination. One of the three pieces originally scoped for this is now done; two remain:
+Currently capped at the 50 most recent calls, no pagination. Two of the three pieces originally scoped for this are now done; one remains:
 1. ~~An index on `elevenlabs_calls(business_id, received_at)`~~ — done (`idx_elevenlabs_calls_business_received`, added directly in `schema.ts` while fixing Call History's performance — see [call-dashboard.md](call-dashboard.md#call-history--every-other-call-from-the-same-caller)). Every `WHERE business_id = ? ORDER BY received_at DESC LIMIT ?` query (Calls list, Call Metrics, Call History) now seeks instead of scanning the whole table first.
-2. Keyset (cursor) pagination rather than `LIMIT/OFFSET` — remember the `received_at` of the last row shown and query "give me the next N older than that," so every page costs the same regardless of how deep you've paged. Plain `OFFSET` still has to skip past every preceding row even with an index.
-3. The write-time flag precompute above, so the row-level cost per page stays flat too.
+2. ~~The write-time flag precompute~~ — done, see above.
+3. Keyset (cursor) pagination rather than `LIMIT/OFFSET` — remember the `received_at` of the last row shown and query "give me the next N older than that," so every page costs the same regardless of how deep you've paged. Plain `OFFSET` still has to skip past every preceding row even with an index.
 
-None of this is urgent at current call volumes — see the "when does this actually matter" discussion below.
+Not urgent at current call volumes — see the "when does this actually matter" discussion below.
 
 ### ServiceTitan sandbox has no Adaptive Capacity configured — job-mode `check_availability` always returns empty slots
 

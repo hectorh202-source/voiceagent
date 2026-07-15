@@ -3,11 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { getBusinessSetting } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
-import { upsertCallTranscription, setCallAudioPath } from "../db/callRecords";
+import { upsertCallTranscription, setCallAudioPath, setCallFlags } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
 import { updateJobSummary } from "../servicetitan/jobs";
+import { computeCallFlags } from "../dashboard/callDetails";
 import { env } from "../config/env";
 
 interface TranscriptTurn {
@@ -206,17 +207,27 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
 
   if (payload.type === "post_call_transcription") {
     const { data } = payload;
+    const transcriptJson = data.transcript ? JSON.stringify(data.transcript) : null;
     upsertCallTranscription({
       conversationId: data.conversation_id,
       businessId: business.id,
       agentId: data.agent_id ?? null,
-      transcriptJson: data.transcript ? JSON.stringify(data.transcript) : null,
+      transcriptJson,
       summary: data.analysis?.transcript_summary ?? null,
       terminationReason: data.metadata?.termination_reason ?? null,
       rawPayloadJson: JSON.stringify(payload),
       durationSecs: extractDurationSecs(data),
       callReason: extractCallReason(data),
     });
+
+    // Computed once here (and recomputed on a webhook redelivery, same as
+    // duration_secs/call_reason above) rather than on every row of every
+    // Calls-list page load — see dashboard/callDetails.ts's computeCallFlags.
+    const { failedTransfer, noBookingCreated } = computeCallFlags(business.id, {
+      conversation_id: data.conversation_id,
+      transcript_json: transcriptJson,
+    });
+    setCallFlags(business.id, data.conversation_id, failedTransfer, noBookingCreated);
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);

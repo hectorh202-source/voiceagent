@@ -13,7 +13,7 @@ import {
 import type { CallDateRange } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import {
-  computeCallFlags,
+  isEndedEarly,
   buildCallDetailViewModel,
   buildCallHistory,
   deriveStatus,
@@ -21,6 +21,7 @@ import {
   matchesBadgeFilters,
   buildServiceTitanUrls,
 } from "../dashboard/callDetails";
+import type { CallFlags } from "../dashboard/callDetails";
 import type { CallListFilters } from "../dashboard/callDetails";
 import { computeMetrics } from "../dashboard/metrics";
 import { renameBusiness } from "../db/businesses";
@@ -45,7 +46,14 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
   const businessId = business.id;
   const leadLog = findCreateLeadLogByConversationId(businessId, record.conversation_id);
   const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, record.conversation_id);
-  const flags = computeCallFlags(business, record);
+  // Precomputed once at write time (webhooks/postCall.ts) instead of parsing
+  // the transcript and re-querying call_log on every row of every page load
+  // — see dashboard/callDetails.ts's computeCallFlags.
+  const flags: CallFlags = {
+    failedTransfer: !!record.failed_transfer,
+    noBookingCreated: !!record.no_booking_created,
+    endedEarly: isEndedEarly(record),
+  };
   const bookingLog = leadLog ?? jobLog;
 
   let customerName: string | null = null;

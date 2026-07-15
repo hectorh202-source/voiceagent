@@ -200,6 +200,12 @@ Two more found in the same pass, fixed proactively rather than waiting for them 
 
 Same three flags as before (`failedTransfer`/`noBookingCreated`/`endedEarly`, OR'd together) plus new `status`/`isRead`/`recoveryStatus` filters, and the same `from`/`to` date range — now query params on the `GET /calls` API call rather than a server-rendered `<form>`, kept in the URL's search params client-side so filtered views stay bookmarkable.
 
+### `failedTransfer`/`noBookingCreated` — computed once at write time, not on every page load
+
+These two flags used to be computed by `computeCallFlags()` on **every row of every Calls-list page load**: parsing that row's transcript JSON, then querying `call_log` up to twice per row to check for a booking. Now computed exactly once — `webhooks/postCall.ts` calls `computeCallFlags()` right after a transcript is stored (and again on a webhook redelivery, same as `duration_secs`/`call_reason`), persisting the result into two new `elevenlabs_calls` columns, `failed_transfer`/`no_booking_created`. `api/businessRouter.ts`'s `parseCallRow()` just reads those two columns directly now — no transcript parsing, no `call_log` query, at read time, regardless of how many calls are on the page. `endedEarly` still doesn't need a column — it's a one-line comparison against the already-decrypted `termination_reason` column, cheap enough to derive at read time always (see `isEndedEarly()`).
+
+The actual transcript-parsing logic (`computeCallFlagsFromTranscript()`) lives in `src/lib/callFlags.ts`, deliberately dependency-free — `dashboard/callDetails.ts`'s `computeCallFlags()` wraps it with the `call_log` lookup that decides `noBookingCreated`. That split exists because `db/migrateCallFlagsColumns.ts` (the one-time backfill for rows stored before this migration) needs the pure parsing logic without pulling in `db/callLog.ts`, which imports the `db` singleton from `db/index.ts` — importing it from a migration, which itself runs during `db/index.ts`'s own module initialization, is a circular import that crashes with `Cannot access 'db' before initialization`. The migration does its own raw `call_log` lookup directly against the `db` connection it's handed instead.
+
 ## Deferred
 
 - Pagination on the calls list, if the current flat `LIMIT 500` stops being enough (see [roadmap.md](roadmap.md)).
