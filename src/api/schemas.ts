@@ -79,6 +79,20 @@ export const businessInfoSchema = z.object({
     .optional(),
 });
 
+export const emailSettingsSchema = z.object({
+  smtpHost: z.string().optional(),
+  smtpPort: z.string().optional(),
+  smtpSecure: z.boolean().optional(),
+  smtpUsername: z.string().optional(),
+  smtpPassword: z.string().optional(),
+  fromAddress: z.string().optional(),
+  fromName: z.string().optional(),
+});
+
+export const testEmailSchema = z.object({
+  to: z.string().trim().toLowerCase().email(),
+});
+
 export const generalSettingsSchema = z.object({
   elevenLabsApiKey: z.string().optional(),
   elevenLabsAgentId: z.string().optional(),

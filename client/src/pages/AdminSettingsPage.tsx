@@ -1,10 +1,117 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AdminUser, Business } from "../api/types";
+import type { AdminUser, Business, EmailSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
+
+function EmailSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin-email-settings"],
+    queryFn: () => api.get<EmailSettings>("/api/admin/email-settings"),
+  });
+
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [fromAddress, setFromAddress] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!data) return;
+    setSmtpHost(data.smtpHost);
+    setSmtpPort(data.smtpPort);
+    setSmtpSecure(data.smtpSecure);
+    setSmtpUsername(data.smtpUsername);
+    setFromAddress(data.fromAddress);
+    setFromName(data.fromName);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.put("/api/admin/email-settings", {
+        smtpHost,
+        smtpPort,
+        smtpSecure,
+        smtpUsername,
+        smtpPassword: smtpPassword || undefined,
+        fromAddress,
+        fromName,
+      }),
+    onSuccess: () => {
+      setMessage("Settings saved.");
+      setSmtpPassword("");
+      queryClient.invalidateQueries({ queryKey: ["admin-email-settings"] });
+    },
+  });
+
+  const [testEmail, setTestEmail] = useState("");
+  const [testMessage, setTestMessage] = useState("");
+  const testMutation = useMutation({
+    mutationFn: () => api.post<{ success?: boolean }>("/api/admin/email-settings/test-email", { to: testEmail }),
+    onSuccess: () => setTestMessage(`Test email sent to ${testEmail}.`),
+    onError: (err: Error) => setTestMessage(err.message),
+  });
+
+  return (
+    <div className="card">
+      <h2>Email (SMTP) Settings</h2>
+      <p className="form-hint">Used to send password-reset emails. Enter your mail provider's SMTP details below.</p>
+      <div className="form-row">
+        <label>SMTP host</label>
+        <input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="mail.yourdomain.com" />
+      </div>
+      <div className="form-row">
+        <label>Port</label>
+        <input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+      </div>
+      <div className="form-row">
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+          <input type="checkbox" checked={smtpSecure} onChange={(e) => setSmtpSecure(e.target.checked)} />
+          Use SSL/TLS (usually only for port 465)
+        </label>
+      </div>
+      <div className="form-row">
+        <label>Username</label>
+        <input value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} placeholder="usually your full email address" />
+      </div>
+      <div className="form-row">
+        <label>
+          Password {data?.smtpPasswordSet && <span className="muted">(set — leave blank to keep)</span>}
+        </label>
+        <input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="form-row">
+        <label>From address</label>
+        <input type="email" value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} placeholder="noreply@yourdomain.com" />
+      </div>
+      <div className="form-row">
+        <label>From name</label>
+        <input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Voice Agent Platform" />
+      </div>
+      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+        Save
+      </button>
+      {message && <span className="muted" style={{ marginLeft: 8 }}>{message}</span>}
+
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+        <div className="form-row">
+          <label>Send a test email to</label>
+          <input type="email" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="you@yourdomain.com" />
+        </div>
+        <button className="btn" onClick={() => testMutation.mutate()} disabled={!testEmail || testMutation.isPending}>
+          Send test email
+        </button>
+        {testMessage && <div className="muted" style={{ marginTop: 8 }}>{testMessage}</div>}
+      </div>
+    </div>
+  );
+}
 
 function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUserId: number }) {
   const queryClient = useQueryClient();
@@ -223,6 +330,8 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
           Pick a business from the switcher above to manage its users and general settings.
         </div>
       </div>
+
+      <EmailSettingsSection />
 
       <h2>Platform Admins</h2>
       {admins.map((u) => (

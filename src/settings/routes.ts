@@ -1,11 +1,26 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { getAuthState, verifyLegacyAdminPassword, clearLegacyAdminPassword, login, type AuthState } from "./auth";
-import { createUser, getUserById } from "../db/users";
+import { createUser, getUserById, getUserByEmail, setPassword } from "../db/users";
+import { createPasswordResetToken, isValidResetToken, consumeResetToken } from "../db/passwordResetTokens";
+import { sendPasswordResetEmail } from "./email";
 import { requireAdminSession } from "../middleware/requireAdminSession";
 import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
-import { blockIfIpRateLimited, recordFailedLoginAttempt } from "../middleware/loginRateLimiter";
-import { renderSetupPage, renderLoginPage, renderMigratePage } from "./views";
+import {
+  blockIfIpRateLimited,
+  recordFailedLoginAttempt,
+  isForgotPasswordRateLimited,
+  recordForgotPasswordRequest,
+} from "../middleware/loginRateLimiter";
+import {
+  renderSetupPage,
+  renderLoginPage,
+  renderMigratePage,
+  renderForgotPasswordPage,
+  renderForgotPasswordSentPage,
+  renderResetPasswordPage,
+  renderResetPasswordInvalidPage,
+} from "./views";
 
 export const settingsRouter = Router();
 
@@ -139,6 +154,99 @@ settingsRouter.post("/login", blockIfIpRateLimited, (req, res) => {
   }
   recordFailedLoginAttempt(req.ip ?? "unknown");
   res.send(renderLoginPage("Invalid email or password.", returnTo));
+});
+
+settingsRouter.get("/forgot-password", (req, res) => {
+  const state = getAuthState();
+  if (state !== "ready") {
+    redirectToAuthEntryPoint(res, state);
+    return;
+  }
+  res.send(renderForgotPasswordPage());
+});
+
+settingsRouter.post("/forgot-password", async (req, res) => {
+  const state = getAuthState();
+  if (state !== "ready") {
+    redirectToAuthEntryPoint(res, state);
+    return;
+  }
+  const ip = req.ip ?? "unknown";
+  if (isForgotPasswordRateLimited(ip)) {
+    res.status(429).send(renderForgotPasswordPage("Too many requests from this network. Try again in a few minutes."));
+    return;
+  }
+  recordForgotPasswordRequest(ip);
+
+  const { email: rawEmail } = req.body as { email?: string };
+  const email = parseEmail(rawEmail);
+  if (!email) {
+    res.send(renderForgotPasswordPage("Enter a valid email address."));
+    return;
+  }
+
+  // Always render the identical success page below regardless of whether
+  // this email actually matches an account, or whether sending even
+  // succeeded — anything that varies the response here would let an
+  // attacker enumerate which emails have accounts on this deployment.
+  const user = getUserByEmail(email);
+  if (user) {
+    try {
+      const token = createPasswordResetToken(user.id);
+      const resetUrl = `${req.protocol}://${req.get("host")}/settings/reset-password?token=${token}`;
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (err) {
+      console.error("Failed to send password reset email:", err);
+    }
+  }
+
+  res.send(renderForgotPasswordSentPage());
+});
+
+settingsRouter.get("/reset-password", (req, res) => {
+  const state = getAuthState();
+  if (state !== "ready") {
+    redirectToAuthEntryPoint(res, state);
+    return;
+  }
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token || !isValidResetToken(token)) {
+    res.send(renderResetPasswordInvalidPage());
+    return;
+  }
+  res.send(renderResetPasswordPage(token));
+});
+
+settingsRouter.post("/reset-password", (req, res) => {
+  const state = getAuthState();
+  if (state !== "ready") {
+    redirectToAuthEntryPoint(res, state);
+    return;
+  }
+  const { token, password, confirmPassword } = req.body as {
+    token?: string;
+    password?: string;
+    confirmPassword?: string;
+  };
+  if (!token) {
+    res.send(renderResetPasswordInvalidPage());
+    return;
+  }
+  if (!password || password.length < 8 || password !== confirmPassword) {
+    res.send(renderResetPasswordPage(token, "Password must be at least 8 characters and match confirmation."));
+    return;
+  }
+  // Consuming (not just validating) here — this is the one real state
+  // change, so the token must become unusable the moment it's spent, same
+  // as any other single-use credential.
+  const userId = consumeResetToken(token);
+  if (!userId) {
+    res.send(renderResetPasswordInvalidPage());
+    return;
+  }
+  setPassword(userId, password);
+  req.session.userId = userId;
+  res.redirect("/settings");
 });
 
 settingsRouter.post("/logout", (req, res) => {

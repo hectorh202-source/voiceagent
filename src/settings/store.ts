@@ -242,6 +242,63 @@ export function getAgentTimezone(businessId: number): string {
   return getBusinessSetting(businessId, "operational.timezone") ?? "America/New_York";
 }
 
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  password: string;
+  fromAddress: string;
+  fromName: string;
+}
+
+// Global, not business-scoped — login/password-reset isn't tied to any one
+// business, so this lives in `settings` (encrypted, same as the session
+// secret) rather than `business_settings`. Strict/all-required, mirroring
+// getServiceTitanConfig's reasoning: an email actually needs every one of
+// these to send at all, so a partial config should behave exactly like no
+// config rather than silently trying and failing.
+export function getSmtpConfig(): SmtpConfig | null {
+  const host = getSetting("email.smtpHost");
+  const username = getSetting("email.smtpUsername");
+  const password = getSetting("email.smtpPassword");
+  const fromAddress = getSetting("email.fromAddress");
+  if (!host || !username || !password || !fromAddress) return null;
+  return {
+    host,
+    port: Number(getSetting("email.smtpPort") ?? "587"),
+    secure: getSetting("email.smtpSecure") === "true",
+    username,
+    password,
+    fromAddress,
+    fromName: getSetting("email.fromName") ?? "Voice Agent Platform",
+  };
+}
+
+// Per-field view for the admin settings UI — same "leave blank to keep"
+// pattern as every other credential in this app (see maybeSetBusinessSetting
+// below): the password is only ever reported as set/unset, never echoed back.
+export function getRawEmailSettings() {
+  return {
+    smtpHost: getSetting("email.smtpHost") ?? "",
+    smtpPort: getSetting("email.smtpPort") ?? "587",
+    smtpSecure: getSetting("email.smtpSecure") === "true",
+    smtpUsername: getSetting("email.smtpUsername") ?? "",
+    smtpPasswordSet: !!getSetting("email.smtpPassword"),
+    fromAddress: getSetting("email.fromAddress") ?? "",
+    fromName: getSetting("email.fromName") ?? "",
+  };
+}
+
+// Same "blank means unchanged" semantics as maybeSetBusinessSetting, for the
+// global (non-business-scoped) settings table.
+export function maybeSetSetting(key: string, value: string | undefined): void {
+  const trimmed = value?.trim();
+  if (trimmed) {
+    setSetting(key, trimmed);
+  }
+}
+
 // Base URL used to build links to the public /b/:businessId/calls/:conversationId
 // page (e.g. inside a ServiceTitan lead's summary). Defaults to this
 // deployment's known dashboard domain (same one hardcoded in the Caddyfile)

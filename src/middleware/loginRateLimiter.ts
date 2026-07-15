@@ -29,3 +29,28 @@ export function blockIfIpRateLimited(req: Request, res: Response, next: NextFunc
   }
   next();
 }
+
+// A separate counter/map from the login one above — a burst of forgot-
+// password requests shouldn't consume or be consumed by login-attempt
+// budget, since they're different abuse patterns (spamming an inbox with
+// reset emails vs. guessing a password). Deliberately more permissive than
+// login's 20/15min: a legitimate user might reasonably retry a few times if
+// an email doesn't show up right away.
+const MAX_RESET_REQUESTS_PER_IP = 10;
+const resetAttempts = new Map<string, number[]>();
+
+function pruneReset(ip: string): number[] {
+  const now = Date.now();
+  const list = (resetAttempts.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
+  resetAttempts.set(ip, list);
+  return list;
+}
+
+export function isForgotPasswordRateLimited(ip: string): boolean {
+  return pruneReset(ip).length >= MAX_RESET_REQUESTS_PER_IP;
+}
+
+export function recordForgotPasswordRequest(ip: string): void {
+  const list = pruneReset(ip);
+  list.push(Date.now());
+}

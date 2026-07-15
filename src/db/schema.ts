@@ -85,5 +85,20 @@ export function bootstrapSchema(db: DatabaseSync): void {
       business_id INTEGER NOT NULL REFERENCES businesses(id),
       PRIMARY KEY (user_id, business_id)
     );
+
+    -- Only the SHA-256 hash of the reset token is ever stored — the raw
+    -- token exists only in the emailed link and the requesting browser's
+    -- memory, same principle as password hashing (a DB leak alone can't be
+    -- used to reset anyone's password). used_at makes a token strictly
+    -- single-use; expires_at is checked alongside it on every lookup.
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
   `);
 }

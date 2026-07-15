@@ -20,6 +20,16 @@ export interface AdminUser {
   businessIds: number[];
 }
 
+export interface EmailSettings {
+  smtpHost: string;
+  smtpPort: string;
+  smtpSecure: boolean;
+  smtpUsername: string;
+  smtpPasswordSet: boolean;
+  fromAddress: string;
+  fromName: string;
+}
+
 export type CallStatus = "booked" | "not_booked" | "excused";
 export type CallHandler = "ai" | "ai_human";
 export type RecoveryStatus = "recovered" | "not_recovered" | null;

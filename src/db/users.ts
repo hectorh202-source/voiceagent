@@ -62,6 +62,9 @@ const resetOnSuccessStmt = db.prepare(
   `UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?`,
 );
 const setPlatformAdminStmt = db.prepare(`UPDATE users SET is_platform_admin = ? WHERE id = ?`);
+const setPasswordStmt = db.prepare(
+  `UPDATE users SET password_salt = ?, password_hash = ?, failed_login_count = 0, locked_until = NULL WHERE id = ?`,
+);
 
 export function userCount(): number {
   return (countStmt.get() as { count: number }).count;
@@ -84,8 +87,27 @@ export function setPlatformAdmin(id: number, isPlatformAdmin: boolean): void {
   setPlatformAdminStmt.run(isPlatformAdmin ? 1 : 0, id);
 }
 
+// Used by the password-reset flow (only entry point besides createUser that
+// ever writes a password) — also clears any brute-force lockout, since
+// proving control of the account's email is at least as strong a signal as
+// a correct password, and there's no reason to make someone wait out a
+// lockout right after successfully resetting.
+export function setPassword(id: number, newPassword: string): void {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = hashPassword(newPassword, salt);
+  setPasswordStmt.run(salt, hash, id);
+}
+
 export function getUserById(id: number): User | undefined {
   const row = getByIdStmt.get(id) as unknown as UserRow | undefined;
+  return row ? rowToUser(row) : undefined;
+}
+
+// Used by the forgot-password flow to find who a submitted email belongs to
+// (if anyone) — callers must still respond identically whether or not a
+// match is found, to avoid leaking which emails have accounts.
+export function getUserByEmail(email: string): User | undefined {
+  const row = getByEmailStmt.get(normalizeEmail(email)) as unknown as UserRow | undefined;
   return row ? rowToUser(row) : undefined;
 }
 
@@ -94,15 +116,20 @@ export function listUsers(): User[] {
 }
 
 const deleteUserBusinessesStmt = db.prepare(`DELETE FROM user_businesses WHERE user_id = ?`);
+const deleteUserResetTokensStmt = db.prepare(`DELETE FROM password_reset_tokens WHERE user_id = ?`);
 
 // node:sqlite enforces foreign keys by default — deleting a user who still
-// has rows in user_businesses fails outright otherwise (confirmed via a real
-// FOREIGN KEY constraint failed error during live testing), so their
-// business assignments must go first.
+// has rows in user_businesses (or, since the password-reset flow shipped,
+// password_reset_tokens — e.g. someone requested a reset and was removed
+// before using it) fails outright otherwise (confirmed via a real FOREIGN
+// KEY constraint failed error during live testing for user_businesses, and
+// again while writing the scratch-cleanup script for the reset-token
+// feature), so both must go first.
 export function deleteUser(id: number): void {
   db.exec("BEGIN");
   try {
     deleteUserBusinessesStmt.run(id);
+    deleteUserResetTokensStmt.run(id);
     deleteStmt.run(id);
     db.exec("COMMIT");
   } catch (err) {

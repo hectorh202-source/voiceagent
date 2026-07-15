@@ -2,9 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireApiSession } from "./requireApiSession";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
+import { emailSettingsSchema, testEmailSchema } from "./schemas";
 import { createBusiness, listBusinesses, getBusinessById } from "../db/businesses";
 import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
 import { getUserBusinessIds, setUserBusinesses, removeUserFromBusiness } from "../db/userBusinesses";
+import { getRawEmailSettings, setSetting, maybeSetSetting } from "../settings/store";
+import { sendTestEmail, EmailNotConfiguredError } from "../settings/email";
 
 // The JSON counterpart of the global, server-rendered /settings business/user
 // console (src/settings/routes.ts) — same underlying db functions, just
@@ -134,4 +137,51 @@ adminRouter.delete("/businesses/:businessId/users/:userId", (req, res) => {
   const userId = Number(req.params.userId);
   removeUserFromBusiness(userId, businessId);
   res.json({ success: true });
+});
+
+// SMTP settings for the forgot-password email flow (src/settings/email.ts).
+// Global, not business-scoped — login isn't tied to any one business — so
+// this reads/writes the plain `settings` table via store.ts rather than
+// business_settings.
+adminRouter.get("/email-settings", (_req, res) => {
+  res.json(getRawEmailSettings());
+});
+
+adminRouter.put("/email-settings", (req, res) => {
+  const parsed = emailSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const body = parsed.data;
+  maybeSetSetting("email.smtpHost", body.smtpHost);
+  maybeSetSetting("email.smtpUsername", body.smtpUsername);
+  maybeSetSetting("email.smtpPassword", body.smtpPassword);
+  maybeSetSetting("email.fromAddress", body.fromAddress);
+  maybeSetSetting("email.fromName", body.fromName);
+  // Select/checkbox-backed fields always write, same reasoning as
+  // servicetitan.environment in businessRouter.ts — there's no "blank" state
+  // for a port number or a toggle to distinguish from "left unchanged".
+  if (body.smtpPort) setSetting("email.smtpPort", body.smtpPort);
+  if (body.smtpSecure !== undefined) setSetting("email.smtpSecure", body.smtpSecure ? "true" : "false");
+  res.json({ success: true });
+});
+
+adminRouter.post("/email-settings/test-email", async (req, res) => {
+  const parsed = testEmailSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+  try {
+    await sendTestEmail(parsed.data.to);
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof EmailNotConfiguredError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    console.error("Test email failed to send:", err);
+    res.status(502).json({ error: "Failed to send — check your SMTP settings and try again." });
+  }
 });
