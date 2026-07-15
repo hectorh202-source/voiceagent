@@ -41,6 +41,8 @@ FROM node:24-slim AS runtime           # npm ci --omit=dev, copy dist/ + client/
 ```
 `node:24` specifically because `node:sqlite` needs to work without the experimental flag (see [sqlite-storage.md](sqlite-storage.md)). No native build tools (`build-essential`, python, etc.) are needed in the image at all, since there are no compiled native dependencies anywhere in this project. The `client-builder` stage is entirely independent of the server's own build — it has its own `package.json`/lockfile (Vite, React, `@tanstack/react-query`, `react-router-dom`, `recharts`) that never gets installed into the runtime image; only its build output (`client/dist`, static HTML/JS/CSS) is copied into `runtime`, served by the Express server at `/app/*` (see [architecture-overview.md](architecture-overview.md)).
 
+The runtime stage's actual Node process runs as the unprivileged `node` user (uid 1000, already present in the base image), not root — [`docker-entrypoint.sh`](../docker-entrypoint.sh) is the container's `ENTRYPOINT`, running first as root only to `chown -R node:node /data` (needed since a redeploy from an older, root-owned volume would otherwise leave the new non-root process unable to write its own database), then `exec gosu node "$@"` to actually start `node dist/index.js` as `node` from then on. This runs on every container start, not just the first, so it self-heals a stale root-owned volume without any manual step on the VPS.
+
 Configured via two environment variables (set in `docker-compose.yml`, not baked into the image):
 ```
 PORT=3000
