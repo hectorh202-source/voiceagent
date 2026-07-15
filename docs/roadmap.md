@@ -29,11 +29,11 @@ This doesn't block `book_job` (it writes directly to Jobs and never touches capa
 
 **Action item:** check with whoever administers the sandbox tenant whether technician shifts/capacity can be configured there. Once it is, re-run a real test call to confirm `check_availability` returns real slots and `book_job` completes the full flow end-to-end (not just via manual tool tests).
 
-### Verify ElevenLabs' real post-call payload shape for call duration + Call Reason
+### ~~Verify ElevenLabs' real post-call payload shape for call duration + Call Reason~~ — done
 
-The React admin dashboard's Calls page (see [call-dashboard.md](call-dashboard.md#new-derived-data--call-duration-and-call-reason)) added two new fields extracted from the post-call webhook: `duration_secs` (from `metadata.call_duration_secs`) and `call_reason` (from `analysis.data_collection_results.call_reason.value`, only populated once a business configures a Data Collection field — see [elevenlabs-tools.md](elevenlabs-tools.md#call-reason-data-collection-setup)). Both extraction helpers (`webhooks/postCall.ts`'s `extractDurationSecs`/`extractCallReason`) were written from ElevenLabs' documented schema, not yet confirmed against a real payload — this project's established discipline (see the many "confirmed against a real call" notes elsewhere in these docs) is to verify real API shapes rather than trust documentation.
+A business's ElevenLabs agent was configured with a `call_reason` Data Collection field (String type, freeform — no enum values, since the app displays this as plain text everywhere with no fixed category list expected), then a real test call was placed and its stored `raw_payload_json` inspected directly on the VPS (decrypted via a one-off script, the same `docker compose exec app node` pattern used elsewhere for direct-DB diagnostics).
 
-**Action item:** once a business configures the `call_reason` Data Collection field, place one real test call, then inspect that call's stored `raw_payload_json` to confirm both fields' actual shape matches what's assumed. Adjust the two helpers if it differs.
+Both extraction helpers (`webhooks/postCall.ts`'s `extractDurationSecs`/`extractCallReason`) matched the real payload exactly, no code changes needed: `metadata.call_duration_secs` was a plain number (`115`) as assumed, and `analysis.data_collection_results.call_reason.value` was a plain string (`"slow drip from sink"`) as assumed. Confirmed the stored `duration_secs`/`call_reason` columns on that call's row matched the real payload byte-for-byte.
 
 ### Emergency Dispatch node — `create_lead` never wired up + transfer number shows "Unknown"
 
