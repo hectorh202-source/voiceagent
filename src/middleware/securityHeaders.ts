@@ -1,20 +1,15 @@
-import crypto from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
-import { BFCACHE_RELOAD_SCRIPT } from "../settings/views";
 
-// The only inline <script> anywhere in the app (the auth pages' bfcache-
-// reload script) — hashed here instead of relaxing script-src to
-// 'unsafe-inline', which would defeat most of the point of a CSP. Computed
-// from the same exported constant that's actually rendered into the page,
-// so this can never silently drift out of sync with the real script text.
-const inlineScriptHash = crypto.createHash("sha256").update(BFCACHE_RELOAD_SCRIPT, "utf8").digest("base64");
-
+// script-src is a clean 'self' with no exception — the auth pages' old
+// inline bfcache-reload <script> (the one thing that ever needed a CSP hash
+// here) moved into the React SPA as regular bundled JS when the pre-session
+// auth pages folded into the SPA (see client/src/main.tsx), so there is no
+// remaining inline <script> anywhere in the app.
 const CSP = [
   "default-src 'self'",
-  `script-src 'self' 'sha256-${inlineScriptHash}'`,
+  "script-src 'self'",
   // 'unsafe-inline' is needed here: the React client renders inline
-  // style={{}} attributes throughout, and the server-rendered auth pages
-  // have one inline <style> block. Nothing else in the app needs it.
+  // style={{}} attributes throughout. Nothing else in the app needs it.
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",

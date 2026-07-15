@@ -4,6 +4,13 @@ export interface SessionUser {
   isPlatformAdmin: boolean;
 }
 
+export type AuthState = "fresh" | "needs_migration" | "ready";
+
+export interface AuthStateResponse {
+  state: AuthState;
+  authenticated: boolean;
+}
+
 export interface Business {
   id: number;
   name: string;

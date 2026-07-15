@@ -1,6 +1,3 @@
-import type { NextFunction, Request, Response } from "express";
-import { renderLoginPage } from "../settings/views";
-
 // Hand-rolled per-IP sliding-window throttle for the login/migrate routes —
 // intentionally in-memory (not persisted like the per-account lockout in
 // db/users.ts), since only account-level lockout needs to survive a
@@ -22,12 +19,11 @@ export function recordFailedLoginAttempt(ip: string): void {
   list.push(Date.now());
 }
 
-export function blockIfIpRateLimited(req: Request, res: Response, next: NextFunction): void {
-  if (prune(req.ip ?? "unknown").length >= MAX_ATTEMPTS_PER_IP) {
-    res.status(429).send(renderLoginPage("Too many login attempts from this network. Try again in a few minutes."));
-    return;
-  }
-  next();
+// Pure check (no Express dependency) — used inline by api/authRouter.ts's
+// login/migrate handlers, which build their own JSON 429 response, the same
+// way isForgotPasswordRateLimited below already works.
+export function isLoginRateLimited(ip: string): boolean {
+  return prune(ip).length >= MAX_ATTEMPTS_PER_IP;
 }
 
 // A separate counter/map from the login one above — a burst of forgot-

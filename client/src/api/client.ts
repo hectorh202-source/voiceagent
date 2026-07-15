@@ -11,9 +11,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  if (res.status === 401) {
+  // /api/auth/* is the one namespace exempt from this — its own 401 (wrong
+  // email/password on POST /api/auth/login) is a legitimate answer the
+  // caller needs to show inline ("Invalid email or password"), not a sign
+  // the session died. Redirecting here would turn a login page's own error
+  // response into a redirect loop back to the login page.
+  if (res.status === 401 && !path.startsWith("/api/auth")) {
     const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `/settings/login?returnTo=${returnTo}`;
+    window.location.href = `/app/login?returnTo=${returnTo}`;
     // Never resolves — the redirect above takes over the page.
     return new Promise<T>(() => {});
   }

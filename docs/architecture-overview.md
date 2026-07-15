@@ -83,27 +83,29 @@ src/
   config/env.ts         # non-secret infra config only (PORT, DATABASE_PATH)
   api/                   # JSON API for the React SPA — session/businesses (router.ts),
                           # per-business calls/metrics/settings (businessRouter.ts),
-                          # requireApiSession (401-JSON counterpart of requireAdminSession)
+                          # pre-session auth (authRouter.ts — login/setup/migrate/
+                          # forgot+reset-password, no session required), requireApiSession
+                          # (401-JSON session check used by every other API route)
   db/                    # SQLite connection, schema, businesses.ts, call-log helpers
-  settings/              # encrypted settings store (global + per-business), admin auth,
-                          # session store, the global /settings app (login/setup/migrate/
-                          # business list — the per-business credentials form now lives
-                          # in client/ instead)
+  settings/              # encrypted settings store (global + per-business), the auth/
+                          # rate-limiting logic authRouter.ts calls into, plus thin
+                          # /settings/* redirects to their /app/* equivalents (transition
+                          # window only — every actual page now lives in client/)
   servicetitan/          # OAuth token caching + API client (customers, leads, jobs, capacity) —
                           # every function takes a businessId
   tools/                 # the Express routes ElevenLabs calls as webhook tools
   dashboard/              # public per-call page/audio route (views.ts, routes.ts), plus
                           # callDetails.ts/metrics.ts — pure data-assembly functions reused
                           # by both the (deleted) old HTML routes and the new /api routes
-  middleware/            # request logging, tool-secret auth, admin-session auth,
+  middleware/            # request logging, tool-secret auth, login rate limiting,
                           # resolveBusiness (resolves :businessId → a real business or 404s)
 ```
 
 Routers mounted in `index.ts`:
-- `/settings/*` — global: login/setup/migrate, the business list, and platform user management. Protected by admin login (see [settings-app.md](settings-app.md)).
-- `/api/*` — JSON API for the React SPA: `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Protected by `requireApiSession` (session-cookie auth, same as `/settings`, just JSON responses instead of redirects).
+- `/settings/*` — thin `302` redirects to the equivalent `/app/*` path (transition window only, so an already-sent password-reset email keeps working — see [settings-app.md](settings-app.md)).
+- `/api/*` — JSON API for the React SPA: `/api/auth/*` (login/setup/migrate/forgot+reset-password — no session required), `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Everything except `/api/auth/*` is protected by `requireApiSession` (session-cookie auth, JSON responses instead of redirects).
 - `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (the post-call webhook), and `/calls/:conversationId` + `/calls/:conversationId/audio` (the public call-detail page/audio stream — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
-- `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes, gated by `requireAppAccess` (session + admin/business-access checks before the shell is ever sent — see [settings-app.md](settings-app.md#per-business-access-control--platform-admins-vs-scoped-users)).
+- `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes, gated by `requireAppAccess` (lets the 5 pre-session auth paths — `login`/`setup`/`migrate`/`forgot-password`/`reset-password` — through unauthenticated, then enforces session + admin/business-access checks on everything else before the shell is ever sent — see [settings-app.md](settings-app.md#per-business-access-control--platform-admins-vs-scoped-users)).
 
 ## Deployment topology
 

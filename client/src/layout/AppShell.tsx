@@ -1,6 +1,8 @@
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { useAuthedUser } from "../auth/AuthGate";
+import { api } from "../api/client";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return isActive ? "nav-link active" : "nav-link";
@@ -9,6 +11,17 @@ function navClass({ isActive }: { isActive: boolean }) {
 export function AppShell() {
   const { businessId } = useParams();
   const user = useAuthedUser();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  async function handleLogout() {
+    await api.post("/api/auth/logout");
+    // Clears the now-stale ["session"]/["businesses"] cache so a subsequent
+    // same-tab login doesn't briefly flash the previous user's data before
+    // AuthGate's own query refetches.
+    queryClient.clear();
+    navigate("/login");
+  }
 
   return (
     <div className="app-shell">
@@ -49,9 +62,9 @@ export function AppShell() {
             </NavLink>
           )}
           <div>{user.email}</div>
-          <form method="post" action="/settings/logout">
-            <button type="submit">Log out</button>
-          </form>
+          <button type="button" onClick={handleLogout}>
+            Log out
+          </button>
         </div>
       </aside>
       <div className="main">

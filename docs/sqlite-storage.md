@@ -130,7 +130,7 @@ Every key above lives in `business_settings`, keyed by `(business_id, key)` — 
 internal.sessionSecret
 ```
 
-`admin.passwordHash`/`admin.passwordSalt` used to live in `settings` too, back when there was a single shared admin password. They only exist now on an install that hasn't yet gone through the one-time `/settings/migrate` upgrade to per-user accounts (see [settings-app.md](settings-app.md#upgrading-an-existing-deployment)) — migrating deletes both keys.
+`admin.passwordHash`/`admin.passwordSalt` used to live in `settings` too, back when there was a single shared admin password. They only exist now on an install that hasn't yet gone through the one-time `/app/migrate` upgrade to per-user accounts (see [settings-app.md](settings-app.md#upgrading-an-existing-deployment)) — migrating deletes both keys.
 
 Why two tables instead of one with a sentinel "global" business ID: `internal.sessionSecret` and the legacy admin password genuinely aren't associated with any business — inventing a fake business ID (e.g. `0`) to hold them would mean every business-scoped function needs a special case for "unless it's the sentinel ID," exactly the kind of implicit special-casing this codebase has deliberately avoided elsewhere (see the combined-getter bug below). Two separate, narrowly-scoped tables is simpler than one table with an escape hatch.
 
@@ -275,15 +275,15 @@ ElevenLabs sends request with header X-Tool-Secret
     since the lookup is scoped to the businessId resolved from this request's own URL
 ```
 
-**A logged-in admin loading `/settings`**:
+**A logged-in admin loading `/app`**:
 ```
 browser sends cookie
   → express-session reads the cookie, looks up the session ID in SqliteSessionStore.get()
   → SqliteSessionStore: SELECT from sessions table, decode JSON
   → if found and not expired, req.session.userId is available
-  → requireAdminSession re-checks that user id still exists in the users
-    table on every request (a deleted user's live session is rejected
-    immediately) → page renders
+  → requireAppAccess (src/index.ts) re-resolves that user id via getUserById()
+    on every request (a deleted user's live session is rejected immediately)
+    → shell renders
 ```
 
 ## Inspecting the database directly

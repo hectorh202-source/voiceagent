@@ -57,7 +57,7 @@ app.use(
 );
 
 app.get("/", (_req, res) => {
-  res.redirect("/settings");
+  res.redirect("/app");
 });
 
 app.use("/settings", verifyOrigin, noStore, settingsRouter);
@@ -93,6 +93,15 @@ const clientDistPath = path.join(__dirname, "../client/dist");
 // shell a browser's back-button needs to be blocked from resurrecting.
 app.use("/app", express.static(clientDistPath, { index: false }));
 
+// The 5 pre-session auth pages — reachable with no session at all, since
+// requiring one would be a chicken-and-egg problem for the page that
+// creates one. Checked before the session check below, not instead of it:
+// an *already*-authenticated visitor hitting one of these still bounces
+// forward to /app, generalizing what the old GET /login route did (see
+// api/authRouter.ts's GET /state, which the pages themselves also check
+// client-side as a second layer).
+const PUBLIC_AUTH_PATHS = new Set(["login", "setup", "migrate", "forgot-password", "reset-password"]);
+
 // A single, structural gate for the whole SPA shell — every /app/* HTML
 // request passes through here before the file is ever sent, so a page added
 // later inherits the right check automatically just by living at
@@ -102,30 +111,43 @@ app.use("/app", express.static(clientDistPath, { index: false }));
 // page would silently get none of this unless someone remembered to copy
 // the same block again).
 //
-// Three cases, checked in order of how much they can rule out:
-// 1. No valid session at all — redirect to the real login page. (Previously
+// Four cases, checked in order of how much they can rule out:
+// 1. A public auth path (login/setup/migrate/forgot-password/reset-password)
+//    — no session required; an already-logged-in visitor bounces to /app.
+// 2. No valid session at all — redirect to the real login page. (Previously
 //    nothing checked this; an anonymous visitor got a real 200 for any
 //    /app/* URL and was only bounced after the SPA's JS loaded and
 //    /api/session came back 401.)
-// 2. /app/admin — requires isPlatformAdmin, same as requirePlatformAdmin
+// 3. /app/admin — requires isPlatformAdmin, same as requirePlatformAdmin
 //    gates /settings.
-// 3. /app/:businessId/... — requires userHasBusinessAccess() for that
+// 4. /app/:businessId/... — requires userHasBusinessAccess() for that
 //    specific business, the same check the JSON API already enforces via
 //    requireBusinessAccess, just applied to the shell itself instead of
 //    only the data underneath it.
 function requireAppAccess(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  // req.params[0] is whatever "/app/*" matched — e.g. "admin", "1/calls",
+  // "1/admin" (a business's own admin console), "login", or "" for a bare
+  // /app request (FirstBusinessRedirect, needs nothing beyond "is there a
+  // session"). Parsed before the session check below so the public-path
+  // allowlist can skip that check entirely for these 5 paths.
+  const [first, second] = (req.params[0] ?? "").split("/").filter(Boolean);
+
   const user = req.session.userId ? getUserById(req.session.userId) : undefined;
-  if (!user) {
-    const returnTo = encodeURIComponent(req.originalUrl);
-    res.redirect(`/settings/login?returnTo=${returnTo}`);
+
+  if (PUBLIC_AUTH_PATHS.has(first)) {
+    if (user) {
+      res.redirect("/app");
+      return;
+    }
+    next();
     return;
   }
 
-  // req.params[0] is whatever "/app/*" matched — e.g. "admin", "1/calls",
-  // "1/admin" (a business's own admin console), or "" for a bare /app
-  // request (FirstBusinessRedirect, needs nothing beyond "is there a
-  // session").
-  const [first, second] = (req.params[0] ?? "").split("/").filter(Boolean);
+  if (!user) {
+    const returnTo = encodeURIComponent(req.originalUrl);
+    res.redirect(`/app/login?returnTo=${returnTo}`);
+    return;
+  }
 
   if (first === "admin") {
     if (!user.isPlatformAdmin) {
