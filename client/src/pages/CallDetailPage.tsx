@@ -108,6 +108,11 @@ const CALL_REASON_GROUPS: { label: string; options: string[] }[] = [
       "Outbound - Do Not Call",
     ],
   },
+  // Matches the "Other" catch-all in the ElevenLabs enum (for a call that
+  // doesn't fit any specific category) — without this, an AI-classified
+  // "Other" call has no matching option here, so the dropdown falls back to
+  // showing "Auto (AI) — Other" instead of a real selection.
+  { label: "Other", options: ["Other"] },
 ];
 
 function useCopy(): [(text: string) => void, string | null] {
