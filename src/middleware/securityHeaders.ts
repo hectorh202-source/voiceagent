@@ -16,9 +16,13 @@ const CSP = [
   "connect-src 'self'",
   // Without an explicit media-src, browsers fall back to default-src
   // ('self') for <audio>/<video>, silently blocking the Voices page's
-  // preview playback — every ElevenLabs voice preview is served from this
-  // host (confirmed across multiple real preview_url values).
-  "media-src 'self' https://storage.googleapis.com",
+  // preview playback. Confirmed against a real account (2026-07-15) that
+  // ElevenLabs serves previews from *two* different hosts depending on the
+  // voice — most from storage.googleapis.com, but some (seemingly
+  // region-routed) from api.<region>.elevenlabs.io (api.us.elevenlabs.io
+  // for this account) — allowing only the exact host we happened to see
+  // left those silently broken too. *.elevenlabs.io covers any region.
+  "media-src 'self' https://storage.googleapis.com https://*.elevenlabs.io",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
