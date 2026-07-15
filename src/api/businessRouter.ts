@@ -32,7 +32,7 @@ import {
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
-import { searchVoices, getVoice } from "../elevenlabs/voices";
+import { searchVoices, exploreVoices, addSharedVoice, getVoice } from "../elevenlabs/voices";
 import { getAgentVoiceConfig, updateAgentVoiceConfig, TTS_MODEL_IDS } from "../elevenlabs/agents";
 import { ElevenLabsNotConfiguredError } from "../elevenlabs/httpClient";
 import { describeError } from "../servicetitan/httpClient";
@@ -276,6 +276,22 @@ apiBusinessRouter.get("/settings/voices/search", async (req, res) => {
   }
 });
 
+// "Explore" tab — ElevenLabs' full shared-voice library, not just what
+// this account has already saved (see exploreVoices()'s own comment for
+// why /settings/voices/search above can't be reused for this).
+apiBusinessRouter.get("/settings/voices/explore", async (req, res) => {
+  const business = req.business!;
+  const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  try {
+    const result = await exploreVoices(business.id, search);
+    res.json(result);
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
 apiBusinessRouter.get("/settings/voice", async (req, res) => {
   const business = req.business!;
   try {
@@ -296,8 +312,12 @@ apiBusinessRouter.put("/settings/voice", async (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
+  const { addFromExplore, ...voiceConfig } = parsed.data;
   try {
-    await updateAgentVoiceConfig(business.id, parsed.data);
+    if (addFromExplore) {
+      await addSharedVoice(business.id, addFromExplore.publicOwnerId, voiceConfig.voiceId, addFromExplore.name);
+    }
+    await updateAgentVoiceConfig(business.id, voiceConfig);
     res.json({ success: true });
   } catch (error) {
     const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;

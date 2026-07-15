@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { AgentVoiceConfig, TtsModelId, VoiceSettingsResponse, VoicesSearchResponse, VoiceSummary } from "../api/types";
+import type { AgentVoiceConfig, TtsModelId, VoiceSettingsResponse, VoiceSummary } from "../api/types";
+import { VoiceSelectorModal } from "../components/VoiceSelectorModal";
+import { ChevronDownIcon } from "../components/icons";
 
 // Cost framed qualitatively, not as a precise number — ElevenLabs' exact
 // per-model pricing isn't part of their agent-config API and shifts over
@@ -20,15 +22,8 @@ const MODEL_INFO: Record<TtsModelId, { label: string; costHint: string }> = {
 export function VoiceSettingsPage() {
   const { businessId } = useParams();
   const queryClient = useQueryClient();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["voice-settings", businessId],
     queryFn: () => api.get<VoiceSettingsResponse>(`/api/businesses/${businessId}/settings/voice`),
     retry: false,
@@ -40,6 +35,7 @@ export function VoiceSettingsPage() {
   const [speed, setSpeed] = useState(1);
   const [similarityBoost, setSimilarityBoost] = useState(0.8);
   const [savedMessage, setSavedMessage] = useState("");
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -52,25 +48,6 @@ export function VoiceSettingsPage() {
     }
   }, [data]);
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ["voice-search", businessId, debouncedSearch],
-    queryFn: () =>
-      api.get<VoicesSearchResponse>(
-        `/api/businesses/${businessId}/settings/voices/search?search=${encodeURIComponent(debouncedSearch)}`,
-      ),
-    // No point searching a voice library ElevenLabs itself isn't reachable
-    // for — wait until the initial config load confirms it's configured.
-    enabled: !isError && !!data,
-    retry: false,
-  });
-
   const saveMutation = useMutation({
     mutationFn: () => {
       const voiceConfig: AgentVoiceConfig = {
@@ -79,6 +56,12 @@ export function VoiceSettingsPage() {
         stability,
         speed,
         similarityBoost,
+        // Only a shared-library (Explore) pick carries a publicOwnerId —
+        // the server adds it to this account's own voices before setting
+        // it on the agent, since ElevenLabs rejects an unowned voice_id.
+        addFromExplore: selectedVoice!.publicOwnerId
+          ? { publicOwnerId: selectedVoice!.publicOwnerId, name: selectedVoice!.name }
+          : undefined,
       };
       return api.put(`/api/businesses/${businessId}/settings/voice`, voiceConfig);
     },
@@ -87,30 +70,6 @@ export function VoiceSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["voice-settings", businessId] });
     },
   });
-
-  function togglePreview(voice: VoiceSummary) {
-    if (!voice.previewUrl) return;
-    if (playingVoiceId === voice.voiceId) {
-      audioRef.current?.pause();
-      setPlayingVoiceId(null);
-      return;
-    }
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.src = voice.previewUrl;
-    // Only mark it "playing" once play() actually resolves — it returns a
-    // promise that can reject (autoplay policy, a bad/expired preview URL),
-    // and setting state optimistically beforehand left the button showing
-    // "Stop" with nothing audible actually happening, and swallowed any
-    // real failure with no visible error at all.
-    audio
-      .play()
-      .then(() => setPlayingVoiceId(voice.voiceId))
-      .catch((err) => {
-        console.error("Voice preview playback failed:", err);
-        setPlayingVoiceId(null);
-      });
-  }
 
   if (isLoading) return <div>Loading…</div>;
 
@@ -132,79 +91,43 @@ export function VoiceSettingsPage() {
       <h1>Voices</h1>
 
       <div className="card">
-        <h2>Current voice</h2>
-        {selectedVoice ? (
-          <div className="form-row">
-            <strong>{selectedVoice.name}</strong>
-            {selectedVoice.previewUrl && (
-              <button type="button" className="btn" onClick={() => togglePreview(selectedVoice)}>
-                {playingVoiceId === selectedVoice.voiceId ? "Stop" : "Preview"}
-              </button>
-            )}
+        <div className="form-row">
+          <label>Voice</label>
+          <button type="button" className="voice-current-row" onClick={() => setIsPickerOpen(true)}>
+            <span>{selectedVoice?.name ?? "Unknown voice"}</span>
+            <ChevronDownIcon width={16} height={16} style={{ transform: "rotate(-90deg)" }} />
+          </button>
+        </div>
+
+        <div className="form-row">
+          <label>TTS model family</label>
+          <div className="form-hint">Select the ElevenLabs model family used for text-to-speech generation.</div>
+          <div className="select-display-wrap">
+            <select className="select-display" value={modelId} onChange={(e) => setModelId(e.target.value as TtsModelId)}>
+              {Object.entries(MODEL_INFO).map(([id, info]) => (
+                <option key={id} value={id}>
+                  {info.label} — {info.costHint}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon width={14} height={14} />
           </div>
-        ) : (
-          <p className="form-hint">Unknown voice (it may have been removed from the account).</p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Change voice</h2>
-        <div className="form-row">
-          <label>Search voices</label>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, accent, gender…" />
         </div>
-        {isSearching && <div className="muted">Searching…</div>}
-        <table className="data-table">
-          <tbody>
-            {searchResults?.voices.map((voice) => (
-              <tr key={voice.voiceId}>
-                <td>
-                  <input
-                    type="radio"
-                    name="voice"
-                    checked={selectedVoice?.voiceId === voice.voiceId}
-                    onChange={() => setSelectedVoice(voice)}
-                  />
-                </td>
-                <td>{voice.name}</td>
-                <td className="muted">{voice.category}</td>
-                <td>
-                  {voice.previewUrl && (
-                    <button type="button" className="btn" onClick={() => togglePreview(voice)}>
-                      {playingVoiceId === voice.voiceId ? "Stop" : "Preview"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {searchResults?.hasMore && <p className="form-hint">More results available — refine your search to narrow them down.</p>}
-      </div>
 
-      <div className="card">
-        <h2>Model</h2>
-        <div className="form-row">
-          <label>TTS model</label>
-          <select value={modelId} onChange={(e) => setModelId(e.target.value as TtsModelId)}>
-            {Object.entries(MODEL_INFO).map(([id, info]) => (
-              <option key={id} value={id}>
-                {info.label} — {info.costHint}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Voice settings</h2>
         <div className="form-row">
           <label>Stability ({stability.toFixed(2)})</label>
           <input type="range" min={0} max={1} step={0.05} value={stability} onChange={(e) => setStability(Number(e.target.value))} />
           <div className="form-hint">Lower is more expressive/variable, higher is more consistent.</div>
         </div>
+
         <div className="form-row">
-          <label>Similarity boost ({similarityBoost.toFixed(2)})</label>
+          <label>Speed ({speed.toFixed(2)})</label>
+          <input type="range" min={0.7} max={1.2} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
+          <div className="form-hint">Slower to faster speech.</div>
+        </div>
+
+        <div className="form-row">
+          <label>Similarity ({similarityBoost.toFixed(2)})</label>
           <input
             type="range"
             min={0}
@@ -214,10 +137,6 @@ export function VoiceSettingsPage() {
             onChange={(e) => setSimilarityBoost(Number(e.target.value))}
           />
           <div className="form-hint">How closely the voice matches the original recording.</div>
-        </div>
-        <div className="form-row">
-          <label>Speed ({speed.toFixed(2)})</label>
-          <input type="range" min={0.7} max={1.2} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
         </div>
       </div>
 
@@ -235,7 +154,17 @@ export function VoiceSettingsPage() {
         </span>
       )}
 
-      <audio ref={audioRef} onEnded={() => setPlayingVoiceId(null)} style={{ display: "none" }} />
+      {isPickerOpen && (
+        <VoiceSelectorModal
+          businessId={businessId}
+          selectedVoiceId={selectedVoice?.voiceId ?? ""}
+          onSelect={(voice) => {
+            setSelectedVoice(voice);
+            setIsPickerOpen(false);
+          }}
+          onClose={() => setIsPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

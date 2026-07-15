@@ -161,6 +161,10 @@ export interface AgentVoiceConfig {
   stability: number;
   speed: number;
   similarityBoost: number;
+  // Only sent when voiceId came from the Explore tab — see schemas.ts's
+  // voiceConfigSchema for why this is required before ElevenLabs will
+  // accept the voiceId at all.
+  addFromExplore?: { publicOwnerId: string; name: string };
 }
 
 export interface VoiceSummary {
@@ -169,6 +173,8 @@ export interface VoiceSummary {
   category: string;
   previewUrl: string | null;
   labels: Record<string, string>;
+  // Set only for an Explore (shared-library) result, null for My Voices.
+  publicOwnerId: string | null;
 }
 
 export interface VoiceSettingsResponse {

@@ -120,4 +120,15 @@ export const voiceConfigSchema = z.object({
   stability: z.number().min(0).max(1),
   speed: z.number(),
   similarityBoost: z.number().min(0).max(1),
+  // Present only when voiceId came from the Explore tab (ElevenLabs' full
+  // shared-voice library) rather than this account's own saved voices —
+  // confirmed setting voiceId directly without adding it first fails with
+  // a 400 voice_not_found, so the server adds it to the account before
+  // setting it on the agent. Omitted entirely for a My Voices selection.
+  addFromExplore: z
+    .object({
+      publicOwnerId: z.string().min(1),
+      name: z.string().min(1),
+    })
+    .optional(),
 });
