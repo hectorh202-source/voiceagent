@@ -20,6 +20,7 @@ export interface ElevenLabsCallRecord {
   internal_notes: string | null;
   failed_transfer: number;
   no_booking_created: number;
+  auto_status: string;
 }
 
 // transcript_json/summary/raw_payload_json/internal_notes carry customer PII
@@ -148,8 +149,8 @@ export function setCallAudioPath(businessId: number, conversationId: string, aud
   setAudioPathStmt.run({ conversationId, businessId, audioPath, emptyPayload: encryptField("{}") });
 }
 
-const setCallFlagsStmt = db.prepare(
-  `UPDATE elevenlabs_calls SET failed_transfer = @failedTransfer, no_booking_created = @noBookingCreated
+const setCallDerivedFieldsStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET failed_transfer = @failedTransfer, no_booking_created = @noBookingCreated, auto_status = @autoStatus
    WHERE conversation_id = @conversationId AND business_id = @businessId`,
 );
 
@@ -157,12 +158,19 @@ const setCallFlagsStmt = db.prepare(
 // (and redelivered on a webhook retry, same as duration_secs/call_reason) —
 // see dashboard/callDetails.ts's computeCallFlags for what's actually being
 // computed and why this moved from read time to write time.
-export function setCallFlags(businessId: number, conversationId: string, failedTransfer: boolean, noBookingCreated: boolean): void {
-  setCallFlagsStmt.run({
+export function setCallDerivedFields(
+  businessId: number,
+  conversationId: string,
+  failedTransfer: boolean,
+  noBookingCreated: boolean,
+  autoStatus: string,
+): void {
+  setCallDerivedFieldsStmt.run({
     conversationId,
     businessId,
     failedTransfer: failedTransfer ? 1 : 0,
     noBookingCreated: noBookingCreated ? 1 : 0,
+    autoStatus,
   });
 }
 
@@ -178,9 +186,35 @@ export function getCallRecord(businessId: number, conversationId: string): Eleve
   return record ? decryptCallRecord(record) : undefined;
 }
 
+export interface CallCursor {
+  receivedAt: string;
+  conversationId: string;
+}
+
 export interface CallDateRange {
   from?: string; // "YYYY-MM-DD"
   to?: string; // "YYYY-MM-DD"
+  // Keyset (cursor) pagination — only rows strictly before this (receivedAt,
+  // conversationId) pair, in the same DESC order this query returns rows in.
+  // Pass the last row of the previous page back here to fetch the next one.
+  // The conversationId tie-break matters because received_at is only
+  // second-granularity (datetime('now')) — two calls landing in the same
+  // second would otherwise risk a skipped or duplicated row right at a page
+  // boundary; comparing the composite pair keeps that boundary exact even
+  // then.
+  before?: CallCursor;
+  // failedTransfer/noBookingCreated/endedEarly are OR'd together, same
+  // semantics the old read-time matchesBadgeFilters() had: none checked
+  // means "show everything," any checked means "match ANY checked one."
+  failedTransfer?: boolean;
+  noBookingCreated?: boolean;
+  endedEarly?: boolean;
+  isRead?: boolean;
+  recoveryStatus?: "recovered" | "not_recovered" | null;
+  // Resolved status (a manual override always wins over the auto-derived
+  // one) — see dashboard/callDetails.ts's computeCallFlags/deriveStatus for
+  // where auto_status/status_override actually come from.
+  status?: "booked" | "not_booked" | "excused";
 }
 
 // received_at is stored as UTC with no timezone marker (see dashboard/views.ts's
@@ -188,6 +222,15 @@ export interface CallDateRange {
 // the business's configured local day — a call right at a day boundary could
 // land in the adjacent day's filter results. Acceptable for a coarse filter;
 // revisit only if that mismatch becomes a real complaint.
+//
+// Every filter below is a plain SQL predicate evaluated before the LIMIT —
+// deliberately, since filtering rows out in JS *after* fetching a limited
+// page is exactly what breaks correct keyset pagination (a page could come
+// back looking empty even though matching rows exist further down the
+// table). That's only possible now because failed_transfer/no_booking_created/
+// auto_status are precomputed columns rather than needing a transcript parse
+// or a call_log query per row at read time — see db/migrateCallFlagsColumns.ts
+// and db/migrateAutoStatusColumn.ts.
 export function listCallRecords(businessId: number, limit = 50, range: CallDateRange = {}): ElevenLabsCallRecord[] {
   const conditions = ["business_id = ?"];
   const params: (string | number)[] = [businessId];
@@ -200,10 +243,40 @@ export function listCallRecords(businessId: number, limit = 50, range: CallDateR
     conditions.push("received_at <= ?");
     params.push(`${range.to} 23:59:59`);
   }
+  if (range.before) {
+    conditions.push("(received_at < ? OR (received_at = ? AND conversation_id < ?))");
+    params.push(range.before.receivedAt, range.before.receivedAt, range.before.conversationId);
+  }
+
+  const badgeConditions: string[] = [];
+  if (range.failedTransfer) badgeConditions.push("failed_transfer = 1");
+  if (range.noBookingCreated) badgeConditions.push("no_booking_created = 1");
+  if (range.endedEarly) badgeConditions.push("termination_reason = 'Call ended by remote party'");
+  if (badgeConditions.length > 0) conditions.push(`(${badgeConditions.join(" OR ")})`);
+
+  if (range.isRead !== undefined) {
+    conditions.push("is_read = ?");
+    params.push(range.isRead ? 1 : 0);
+  }
+  if (range.recoveryStatus !== undefined) {
+    if (range.recoveryStatus === null) {
+      conditions.push("recovery_status IS NULL");
+    } else {
+      conditions.push("recovery_status = ?");
+      params.push(range.recoveryStatus);
+    }
+  }
+  if (range.status) {
+    conditions.push("COALESCE(status_override, auto_status) = ?");
+    params.push(range.status);
+  }
+
   params.push(limit);
 
   const records = db
-    .prepare(`SELECT * FROM elevenlabs_calls WHERE ${conditions.join(" AND ")} ORDER BY received_at DESC LIMIT ?`)
+    .prepare(
+      `SELECT * FROM elevenlabs_calls WHERE ${conditions.join(" AND ")} ORDER BY received_at DESC, conversation_id DESC LIMIT ?`,
+    )
     .all(...params) as unknown as ElevenLabsCallRecord[];
   return records.map(decryptCallRecord);
 }

@@ -12,6 +12,7 @@ import { migrateInternalNotesColumn } from "./migrateInternalNotesColumn";
 import { migrateCallLogConversationIdColumn } from "./migrateCallLogConversationIdColumn";
 import { migratePiiEncryption } from "./migratePiiEncryption";
 import { migrateCallFlagsColumns } from "./migrateCallFlagsColumns";
+import { migrateAutoStatusColumn } from "./migrateAutoStatusColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -30,3 +31,4 @@ migrateInternalNotesColumn(db);
 migrateCallLogConversationIdColumn(db);
 migratePiiEncryption(db);
 migrateCallFlagsColumns(db);
+migrateAutoStatusColumn(db);

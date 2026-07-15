@@ -12,14 +12,14 @@ Verified: a scratch-data round-trip test covering all three real scenarios (fail
 
 Ran into (and fixed) a real circular-import bug along the way: the migration originally imported `computeCallFlags()` from `dashboard/callDetails.ts`, which imports `db/callLog.ts` for the `call_log` lookup — and `db/callLog.ts` imports the `db` singleton from `db/index.ts`, the very module whose own initialization runs this migration. Fixed by extracting the pure transcript-parsing half into dependency-free `src/lib/callFlags.ts`, which the migration imports instead; the migration does its own raw `call_log` lookup against the `db` connection it's handed rather than importing `db/callLog.ts` at all.
 
-### Real pagination for the flagged calls list
+### ~~Real pagination for the flagged calls list~~ — done
 
-Currently capped at the 50 most recent calls, no pagination. Two of the three pieces originally scoped for this are now done; one remains:
+All three originally-scoped pieces are done:
 1. ~~An index on `elevenlabs_calls(business_id, received_at)`~~ — done (`idx_elevenlabs_calls_business_received`, added directly in `schema.ts` while fixing Call History's performance — see [call-dashboard.md](call-dashboard.md#call-history--every-other-call-from-the-same-caller)). Every `WHERE business_id = ? ORDER BY received_at DESC LIMIT ?` query (Calls list, Call Metrics, Call History) now seeks instead of scanning the whole table first.
 2. ~~The write-time flag precompute~~ — done, see above.
-3. Keyset (cursor) pagination rather than `LIMIT/OFFSET` — remember the `received_at` of the last row shown and query "give me the next N older than that," so every page costs the same regardless of how deep you've paged. Plain `OFFSET` still has to skip past every preceding row even with an index.
+3. ~~Keyset (cursor) pagination~~ — done. See [call-dashboard.md](call-dashboard.md#pagination--keyset-cursor-not-limitoffset) for the full design. `GET /calls` returns 50 rows plus an opaque `nextCursor`; the client uses TanStack Query's `useInfiniteQuery` with a "Load more" button, resetting to page 1 automatically whenever a filter changes. Getting this actually correct required pushing every filter (including the resolved `status`, via a new `auto_status` column) into a real SQL `WHERE` predicate — filtering rows out in JS after the `LIMIT`, the old design, can make a page look empty even though matching rows exist further down the table.
 
-Not urgent at current call volumes — see the "when does this actually matter" discussion below.
+Verified with a scratch-data round trip against a DB copy (auto_status backfill correctness, cursor walking a 6-row set including a same-timestamp tie-break with zero duplicates/skips, and every filter — isRead, recoveryStatus, status — composing correctly with pagination), an idempotency check, and a live browser check seeding 55 real rows: first page loads exactly 50, "Load more" fetches the remaining 5 with no duplicates, changing the status filter correctly resets to page 1, and Export CSV fetches every remaining page before building the file rather than only exporting whatever had been paged into view.
 
 ### ServiceTitan sandbox has no Adaptive Capacity configured — job-mode `check_availability` always returns empty slots
 

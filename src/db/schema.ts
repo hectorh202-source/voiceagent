@@ -45,7 +45,8 @@ export function bootstrapSchema(db: DatabaseSync): void {
       call_reason_override TEXT,
       internal_notes TEXT,
       failed_transfer INTEGER NOT NULL DEFAULT 0,
-      no_booking_created INTEGER NOT NULL DEFAULT 0
+      no_booking_created INTEGER NOT NULL DEFAULT 0,
+      auto_status TEXT NOT NULL DEFAULT 'excused'
     );
 
     -- business_id/received_at exist on every install (present since this

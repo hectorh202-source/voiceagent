@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CallListFilters, CallListRow, RecoveryStatus } from "../api/types";
 import { CallsTable } from "../components/CallsTable";
@@ -56,12 +56,29 @@ export function CallsListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  // Keyset (cursor) pagination — each page's nextCursor comes from the
+  // server (api/businessRouter.ts), which pushes every filter into the SQL
+  // query itself rather than filtering fetched rows in JS. That's what makes
+  // this correct: a page can only look "short" because it truly reached the
+  // end of matching rows, never because matching rows existed but got
+  // filtered out after the fact. The queryKey including searchParams means
+  // changing any filter starts a fresh page 1, same as before pagination
+  // existed — TanStack Query resets accumulated pages automatically when the
+  // key changes.
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["calls", businessId, searchParams.toString()],
-    queryFn: () =>
-      api.get<{ calls: CallListRow[] }>(`/api/businesses/${businessId}/calls?${searchParams.toString()}`),
+    queryFn: ({ pageParam }: { pageParam: string | null }) => {
+      const params = new URLSearchParams(searchParams);
+      if (pageParam) params.set("cursor", pageParam);
+      return api.get<{ calls: CallListRow[]; nextCursor: string | null }>(
+        `/api/businesses/${businessId}/calls?${params.toString()}`,
+      );
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
   const patchMutation = useMutation({
@@ -72,7 +89,7 @@ export function CallsListPage() {
     },
   });
 
-  const rows = data?.calls ?? [];
+  const rows = useMemo(() => data?.pages.flatMap((page) => page.calls) ?? [], [data]);
 
   function updateFilters(next: CallListFilters) {
     setSearchParams(paramsFromFilters(next));
@@ -99,14 +116,32 @@ export function CallsListPage() {
     setSelected(new Set());
   }
 
-  function exportCsv() {
-    const blob = new Blob([toCsv(rows)], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `calls-${businessId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Export CSV must reflect every matching call, not just whatever's been
+  // paged into view via "Load more" so far — fetch any remaining pages
+  // first. Using each fetchNextPage() call's own returned result (rather
+  // than the `data`/`hasNextPage` closed over from render) since those won't
+  // reflect a page fetched earlier in this same loop until React re-renders.
+  async function exportCsv() {
+    setIsExporting(true);
+    try {
+      let pages = data?.pages ?? [];
+      let more = hasNextPage;
+      while (more) {
+        const result = await fetchNextPage();
+        pages = result.data?.pages ?? pages;
+        more = result.hasNextPage ?? false;
+      }
+      const allRows = pages.flatMap((page) => page.calls);
+      const blob = new Blob([toCsv(allRows)], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `calls-${businessId}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -114,8 +149,8 @@ export function CallsListPage() {
       <div className="topbar" style={{ padding: 0, border: "none", marginBottom: 16 }}>
         <h1>Calls</h1>
         <div className="topbar-actions">
-          <button className="btn" onClick={exportCsv}>
-            Export CSV
+          <button className="btn" onClick={exportCsv} disabled={isExporting}>
+            {isExporting ? "Exporting…" : "Export CSV"}
           </button>
         </div>
       </div>
@@ -136,13 +171,22 @@ export function CallsListPage() {
             No calls match the current filters.
           </div>
         ) : (
-          <CallsTable
-            businessId={businessId!}
-            rows={rows}
-            selected={selected}
-            onToggleSelect={toggleSelect}
-            onToggleSelectAll={toggleSelectAll}
-          />
+          <>
+            <CallsTable
+              businessId={businessId!}
+              rows={rows}
+              selected={selected}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+            />
+            {hasNextPage && (
+              <div style={{ padding: 16, textAlign: "center" }}>
+                <button className="btn" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                  {isFetchingNextPage ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

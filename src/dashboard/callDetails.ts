@@ -319,53 +319,39 @@ export function isEndedEarly(record: Pick<ElevenLabsCallRecord, "termination_rea
 
 // Computed once at write time — webhooks/postCall.ts calls this right after
 // a transcript is stored, persisting the result into elevenlabs_calls'
-// failed_transfer/no_booking_created columns (see
-// db/migrateCallFlagsColumns.ts) — rather than on every row of every Calls-
-// list page load, which is how this worked before. The Calls list
-// (api/businessRouter.ts) just reads those two columns directly now. The
-// transcript-parsing half of this lives in lib/callFlags.ts (kept dependency-
-// free so migrateCallFlagsColumns.ts can reuse it without a circular import
-// back through db/callLog.ts) — this wrapper adds the call_log lookup that
-// decides noBookingCreated, using whichever business's call_log rows the
-// detail page already reads.
+// failed_transfer/no_booking_created/auto_status columns (see
+// db/migrateCallFlagsColumns.ts, db/migrateAutoStatusColumn.ts) — rather than
+// on every row of every Calls-list page load, which is how this worked
+// before. The Calls list (api/businessRouter.ts, db/callRecords.ts's
+// listCallRecords) reads those columns directly now, including as real SQL
+// WHERE predicates — the thing that actually makes keyset pagination
+// correct: filtering rows out *after* a SQL LIMIT means a page can come back
+// empty even though more matching rows exist further down the table. The
+// transcript-parsing half of this lives in lib/callFlags.ts (kept
+// dependency-free so migrateCallFlagsColumns.ts can reuse it without a
+// circular import back through db/callLog.ts) — this wrapper adds the
+// call_log lookup that decides noBookingCreated/autoStatus, reusing
+// deriveStatus below so the two never disagree about what "booked" means.
 export function computeCallFlags(
   businessId: number,
   record: Pick<ElevenLabsCallRecord, "conversation_id" | "transcript_json">,
-): { failedTransfer: boolean; noBookingCreated: boolean } {
+): { failedTransfer: boolean; noBookingCreated: boolean; autoStatus: CallStatus } {
   const { failedTransfer, hadRealActivity } = computeCallFlagsFromTranscript(record.transcript_json);
+
+  // Same "lead takes precedence, job lookup only if no lead" pattern used at
+  // read time (api/businessRouter.ts's parseCallRow) — a given call only
+  // ever produces one or the other (see db/callLog.ts).
+  const leadLog = findCreateLeadLogByConversationId(businessId, record.conversation_id);
+  const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, record.conversation_id);
 
   // Neither a Lead nor a Job exists for this call — checked against both,
   // since a job-booking-mode call that successfully booked a Job legitimately
   // has no Lead at all (that's the whole point of that mode), so checking
   // only the lead log would falsely flag every successful booking.
-  const noBookingCreated =
-    hadRealActivity &&
-    !findCreateLeadLogByConversationId(businessId, record.conversation_id) &&
-    !findBookJobLogByConversationId(businessId, record.conversation_id);
+  const noBookingCreated = hadRealActivity && !leadLog && !jobLog;
+  const autoStatus = deriveStatus(leadLog, jobLog);
 
-  return { failedTransfer, noBookingCreated };
-}
-
-export interface CallListFilters {
-  failedTransfer: boolean;
-  noBookingCreated: boolean;
-  endedEarly: boolean;
-  from?: string;
-  to?: string;
-}
-
-// Checking no badge checkboxes means "show everything" — only once at least
-// one is checked does this start excluding rows, matching at ANY checked
-// flag (not all) since these are meant as "show me problem calls of these
-// kinds", not a stricter combined-condition search.
-export function matchesBadgeFilters(flags: CallFlags, filters: CallListFilters): boolean {
-  const anyBadgeFilterActive = filters.failedTransfer || filters.noBookingCreated || filters.endedEarly;
-  if (!anyBadgeFilterActive) return true;
-  return (
-    (filters.failedTransfer && flags.failedTransfer) ||
-    (filters.noBookingCreated && flags.noBookingCreated) ||
-    (filters.endedEarly && flags.endedEarly)
-  );
+  return { failedTransfer, noBookingCreated, autoStatus };
 }
 
 export type CallStatus = "booked" | "not_booked" | "excused";

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getBusinessSetting } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
-import { upsertCallTranscription, setCallAudioPath, setCallFlags } from "../db/callRecords";
+import { upsertCallTranscription, setCallAudioPath, setCallDerivedFields } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
@@ -223,11 +223,11 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
     // Computed once here (and recomputed on a webhook redelivery, same as
     // duration_secs/call_reason above) rather than on every row of every
     // Calls-list page load — see dashboard/callDetails.ts's computeCallFlags.
-    const { failedTransfer, noBookingCreated } = computeCallFlags(business.id, {
+    const { failedTransfer, noBookingCreated, autoStatus } = computeCallFlags(business.id, {
       conversation_id: data.conversation_id,
       transcript_json: transcriptJson,
     });
-    setCallFlags(business.id, data.conversation_id, failedTransfer, noBookingCreated);
+    setCallDerivedFields(business.id, data.conversation_id, failedTransfer, noBookingCreated, autoStatus);
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);

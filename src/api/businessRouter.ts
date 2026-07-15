@@ -10,19 +10,16 @@ import {
   getCallRecord,
   updateCallStatus,
 } from "../db/callRecords";
-import type { CallDateRange } from "../db/callRecords";
+import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import {
   isEndedEarly,
   buildCallDetailViewModel,
   buildCallHistory,
-  deriveStatus,
   deriveCallHandler,
-  matchesBadgeFilters,
   buildServiceTitanUrls,
 } from "../dashboard/callDetails";
-import type { CallFlags } from "../dashboard/callDetails";
-import type { CallListFilters } from "../dashboard/callDetails";
+import type { CallFlags, CallStatus } from "../dashboard/callDetails";
 import { computeMetrics } from "../dashboard/metrics";
 import { renameBusiness } from "../db/businesses";
 import type { Business } from "../db/businesses";
@@ -83,7 +80,11 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
   }
 
   const { leadUrl, jobUrl } = buildServiceTitanUrls(businessId, leadId, jobId);
-  const autoStatus = deriveStatus(leadLog, jobLog);
+  // Precomputed at write time now too (see dashboard/callDetails.ts's
+  // computeCallFlags) — this used to call deriveStatus(leadLog, jobLog)
+  // directly here, but that's exactly the read-time cost that made SQL-level
+  // status filtering (and therefore correct pagination) impossible.
+  const autoStatus = record.auto_status as CallStatus;
   const statusOverride = (record.status_override as "booked" | "not_booked" | "excused" | null) ?? null;
   const autoCallReason = record.call_reason;
   const callReasonOverride = record.call_reason_override;
@@ -112,35 +113,70 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
   };
 }
 
+// One page of the Calls list — deliberately small enough that keyset
+// pagination (below) is the normal path, not an edge case only reached at
+// unrealistic call volumes.
+const CALLS_PAGE_SIZE = 50;
+
+// Opaque to the client — just base64(receivedAt + "|" + conversationId), the
+// exact composite key listCallRecords' `before` cursor needs (see
+// db/callRecords.ts's CallDateRange for why both fields matter). Base64
+// rather than a raw "|"-joined string only so it reads as one opaque token
+// in the URL rather than something that looks hand-editable.
+function encodeCursor(cursor: CallCursor): string {
+  return Buffer.from(`${cursor.receivedAt}|${cursor.conversationId}`, "utf8").toString("base64url");
+}
+
+function decodeCursor(raw: string): CallCursor | undefined {
+  try {
+    const [receivedAt, conversationId] = Buffer.from(raw, "base64url").toString("utf8").split("|");
+    if (!receivedAt || !conversationId) return undefined;
+    return { receivedAt, conversationId };
+  } catch {
+    return undefined;
+  }
+}
+
 apiBusinessRouter.get("/calls", (req, res) => {
   const business = req.business!;
   const query = req.query as Record<string, string | undefined>;
-  const filters: CallListFilters = {
+
+  // Every filter here is a real SQL WHERE predicate now (db/callRecords.ts's
+  // listCallRecords), evaluated before the LIMIT — the thing that actually
+  // makes the cursor below correct. Filtering rows out in JS after fetching
+  // a limited page (the old approach) could make a page look empty even
+  // though matching rows exist further down the table.
+  const range: CallDateRange = {
+    from: query.from || undefined,
+    to: query.to || undefined,
+    before: query.cursor ? decodeCursor(query.cursor) : undefined,
     failedTransfer: query.failedTransfer === "1",
     noBookingCreated: query.noBookingCreated === "1",
     endedEarly: query.endedEarly === "1",
-    from: query.from || undefined,
-    to: query.to || undefined,
+    isRead: query.isRead !== undefined ? query.isRead === "1" : undefined,
+    recoveryStatus:
+      query.recoveryStatus === undefined
+        ? undefined
+        : query.recoveryStatus === "null"
+          ? null
+          : (query.recoveryStatus as "recovered" | "not_recovered"),
+    status: query.status as "booked" | "not_booked" | "excused" | undefined,
   };
 
-  const records = listCallRecords(business.id, 500, { from: filters.from, to: filters.to });
-  let rows = records
-    .map((record) => ({ record, row: parseCallRow(business, record) }))
-    .filter(({ row }) => matchesBadgeFilters(row.flags, filters));
+  const records = listCallRecords(business.id, CALLS_PAGE_SIZE, range);
+  const rows = records.map((record) => parseCallRow(business, record));
 
-  if (query.isRead !== undefined) {
-    const wantRead = query.isRead === "1";
-    rows = rows.filter(({ row }) => row.isRead === wantRead);
-  }
-  if (query.recoveryStatus !== undefined) {
-    const want = query.recoveryStatus === "null" ? null : query.recoveryStatus;
-    rows = rows.filter(({ row }) => row.recoveryStatus === want);
-  }
-  if (query.status !== undefined) {
-    rows = rows.filter(({ row }) => row.status === query.status);
-  }
+  // A full page might mean there's more; a short page means we've reached
+  // the end of what matches — same "did we get a full page back" check any
+  // keyset-paginated API uses, since COUNT(*) up front would cost as much as
+  // the scan this pagination exists to avoid.
+  const lastRecord = records[records.length - 1];
+  const nextCursor =
+    records.length === CALLS_PAGE_SIZE && lastRecord
+      ? encodeCursor({ receivedAt: lastRecord.received_at, conversationId: lastRecord.conversation_id })
+      : null;
 
-  res.json({ calls: rows.map(({ row }) => row) });
+  res.json({ calls: rows, nextCursor });
 });
 
 apiBusinessRouter.patch("/calls", (req, res) => {
