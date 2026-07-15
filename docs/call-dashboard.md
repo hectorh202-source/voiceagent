@@ -218,6 +218,8 @@ The cursor itself is a `(receivedAt, conversationId)` pair, not just `receivedAt
 
 ## Deferred
 
-- Pagination on the calls list, if the current flat `LIMIT 500` stops being enough (see [roadmap.md](roadmap.md)).
-- Real-time/automatic Lead→Job conversion tracking (the ST link always points at the Lead we create, never a Job).
 - Confirming the real shape of `metadata.call_duration_secs`/`analysis.data_collection_results` against an actual ElevenLabs payload (see above).
+
+## Won't do
+
+- **Real-time/automatic Lead→Job conversion tracking** — the ServiceTitan link on a call's detail page always points at the Lead this app creates, never at the Job it becomes once staff convert it in ServiceTitan. Investigated against ServiceTitan's actual CRM v2/JPM v2 OpenAPI specs: a Lead's `status` does become `"Converted"`, but no field anywhere links a Job back to the Lead it came from for a Lead created this app's way (the one Job filter that references an origin, `bookingId`, is for ServiceTitan's own internal Booking-widget flow, not applicable here) — and no webhook exists for a Lead status change either, so even conversion detection alone would mean polling, not real-time. See [roadmap.md](roadmap.md#other-deferred-items) for the full writeup. Confirmed with the user (2026-07-15) not worth building a customerId-heuristic guess in place of a real link.
