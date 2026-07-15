@@ -221,6 +221,26 @@ function flash(message: string, type: "error" | "success"): string {
   return `<div class="auth-flash auth-flash-${type}">${icon}<span>${escapeHtml(message)}</span></div>`;
 }
 
+// Exported (rather than inlined directly in page() below) so
+// middleware/securityHeaders.ts can hash this exact string at startup and
+// allow-list it in the CSP script-src via 'sha256-<hash>' instead of the
+// much weaker 'unsafe-inline' — keeps the hash from ever silently drifting
+// out of sync with the actual script text. The leading/trailing newlines
+// are part of the constant deliberately: they're what the browser's script
+// text node actually contains once embedded below, and the hash must cover
+// the exact same bytes.
+export const BFCACHE_RELOAD_SCRIPT = `
+// Belt-and-suspenders alongside this router's Cache-Control: no-store
+// header (see middleware/noStore.ts) — some browsers can still restore a
+// page from the back/forward cache despite that header. If this page gets
+// resurrected that way after a login/logout, force a real reload so it
+// re-renders fresh from the server (current auth state, empty form fields)
+// instead of silently showing whatever was on screen for a previous user.
+window.addEventListener('pageshow', function (event) {
+  if (event.persisted) window.location.reload();
+});
+`;
+
 // Shared shell: brand panel on the left (hidden below 860px, see authStyles)
 // plus the actual page content on the right. Every pre-session page
 // (setup/migrate/login/forgot/reset) goes through this so the whole flow
@@ -244,17 +264,7 @@ function page(title: string, bodyHtml: string): string {
     </div>
   </main>
 </div>
-<script>
-// Belt-and-suspenders alongside this router's Cache-Control: no-store
-// header (see middleware/noStore.ts) — some browsers can still restore a
-// page from the back/forward cache despite that header. If this page gets
-// resurrected that way after a login/logout, force a real reload so it
-// re-renders fresh from the server (current auth state, empty form fields)
-// instead of silently showing whatever was on screen for a previous user.
-window.addEventListener('pageshow', function (event) {
-  if (event.persisted) window.location.reload();
-});
-</script>
+<script>${BFCACHE_RELOAD_SCRIPT}</script>
 </body>
 </html>`;
 }
