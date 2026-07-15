@@ -5,6 +5,7 @@ import { env } from "./config/env";
 import "./db/index";
 import { requestLogger } from "./middleware/requestLogger";
 import { securityHeaders } from "./middleware/securityHeaders";
+import { verifyOrigin } from "./middleware/verifyOrigin";
 import { noStore } from "./middleware/noStore";
 import { settingsRouter } from "./settings/routes";
 import { resolveBusiness } from "./middleware/resolveBusiness";
@@ -59,8 +60,8 @@ app.get("/", (_req, res) => {
   res.redirect("/settings");
 });
 
-app.use("/settings", noStore, settingsRouter);
-app.use("/api", noStore, apiRouter);
+app.use("/settings", verifyOrigin, noStore, settingsRouter);
+app.use("/api", verifyOrigin, noStore, apiRouter);
 
 // Every business-scoped concern (ElevenLabs tool webhooks, the post-call
 // webhook, and the public per-call dashboard) lives under /b/:businessId —
