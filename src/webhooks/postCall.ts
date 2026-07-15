@@ -47,6 +47,14 @@ type PostCallPayload = PostCallTranscriptionPayload | PostCallAudioPayload;
 
 const recordingsDir = path.join(path.dirname(env.DATABASE_PATH), "recordings");
 
+// ElevenLabs conversation IDs are alphanumeric with underscores/hyphens
+// (e.g. "conv_01h..."). Enforced before conversation_id is used to build a
+// filesystem path below — the webhook payload is HMAC-signed, but nothing
+// stops the string itself from containing "../" or similar if that ever
+// changed, and this is the one place in the app where an external value
+// reaches the filesystem at all.
+const CONVERSATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 // ElevenLabs' payload is expected to include metadata.call_duration_secs
 // directly; the transcript-timestamp fallback only matters if that field is
 // ever absent (unverified until a real payload confirms the exact shape —
@@ -216,6 +224,11 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
     }
   } else if (payload.type === "post_call_audio") {
     const { data } = payload;
+    if (!CONVERSATION_ID_PATTERN.test(data.conversation_id)) {
+      console.warn("Rejected post_call_audio webhook with malformed conversation_id:", data.conversation_id);
+      res.status(400).json({ error: "Invalid conversation_id" });
+      return;
+    }
     if (!fs.existsSync(recordingsDir)) {
       fs.mkdirSync(recordingsDir, { recursive: true });
     }
