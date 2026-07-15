@@ -32,6 +32,11 @@ import {
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
+import { searchVoices, getVoice } from "../elevenlabs/voices";
+import { getAgentVoiceConfig, updateAgentVoiceConfig, TTS_MODEL_IDS } from "../elevenlabs/agents";
+import { ElevenLabsNotConfiguredError } from "../elevenlabs/httpClient";
+import { describeError } from "../servicetitan/httpClient";
+import { voiceConfigSchema } from "./schemas";
 
 export const apiBusinessRouter = Router({ mergeParams: true });
 
@@ -248,6 +253,57 @@ apiBusinessRouter.put("/settings/business-info", (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// Voice/model/TTS settings are operational, not credentials — any
+// business-access user can view/change them, same as Business Info, even
+// though the underlying ElevenLabs API key itself is only ever entered via
+// the platform-admin-only General settings below. Always reads/writes
+// live against ElevenLabs rather than storing our own copy of the chosen
+// voice/model, so this page can never drift from what the agent actually
+// has configured (e.g. if someone changes it directly in ElevenLabs' own
+// dashboard).
+apiBusinessRouter.get("/settings/voices/search", async (req, res) => {
+  const business = req.business!;
+  const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  try {
+    const result = await searchVoices(business.id, search);
+    res.json(result);
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.get("/settings/voice", async (req, res) => {
+  const business = req.business!;
+  try {
+    const voiceConfig = await getAgentVoiceConfig(business.id);
+    const currentVoice = voiceConfig ? await getVoice(business.id, voiceConfig.voiceId) : null;
+    res.json({ voiceConfig, currentVoice, availableModels: TTS_MODEL_IDS });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.put("/settings/voice", async (req, res) => {
+  const business = req.business!;
+  const parsed = voiceConfigSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    await updateAgentVoiceConfig(business.id, parsed.data);
+    res.json({ success: true });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
 });
 
 // Credentials and secrets, not operational metadata like Business Info —

@@ -8,6 +8,7 @@ import { CallsListPage } from "./pages/CallsListPage";
 import { CallDetailPage } from "./pages/CallDetailPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { BusinessInfoSettingsPage } from "./pages/BusinessInfoSettingsPage";
+import { VoiceSettingsPage } from "./pages/VoiceSettingsPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SetupPage } from "./pages/auth/SetupPage";
@@ -45,6 +46,7 @@ function App() {
                     <Route path="calls/:conversationId" element={<CallDetailPage />} />
                     <Route path="metrics" element={<MetricsPage />} />
                     <Route path="settings/business-info" element={<BusinessInfoSettingsPage />} />
+                    <Route path="settings/voices" element={<VoiceSettingsPage />} />
                     <Route path="admin" element={<AdminSettingsPage />} />
                   </Route>
                 </Routes>

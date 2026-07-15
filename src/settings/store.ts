@@ -144,6 +144,21 @@ export function getRawElevenLabsSettings(businessId: number) {
   };
 }
 
+export interface ElevenLabsConfig {
+  apiKey: string;
+  agentId: string;
+}
+
+// Strict, both-fields-required view used only where a real ElevenLabs API
+// call is actually being made (see elevenlabs/httpClient.ts) — mirrors
+// getServiceTitanConfig's reasoning above.
+export function getElevenLabsConfig(businessId: number): ElevenLabsConfig | null {
+  const apiKey = getBusinessSetting(businessId, "elevenlabs.apiKey");
+  const agentId = getBusinessSetting(businessId, "elevenlabs.agentId");
+  if (!apiKey || !agentId) return null;
+  return { apiKey, agentId };
+}
+
 export function getRawServiceTitanSettings(businessId: number) {
   return {
     environment:

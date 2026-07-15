@@ -146,6 +146,42 @@ export interface BusinessInfoSettings {
   serviceCategories: ServiceCategory[];
 }
 
+// Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly.
+export type TtsModelId =
+  | "eleven_turbo_v2"
+  | "eleven_turbo_v2_5"
+  | "eleven_flash_v2"
+  | "eleven_flash_v2_5"
+  | "eleven_multilingual_v2"
+  | "eleven_v3_conversational";
+
+export interface AgentVoiceConfig {
+  modelId: TtsModelId;
+  voiceId: string;
+  stability: number;
+  speed: number;
+  similarityBoost: number;
+}
+
+export interface VoiceSummary {
+  voiceId: string;
+  name: string;
+  category: string;
+  previewUrl: string | null;
+  labels: Record<string, string>;
+}
+
+export interface VoiceSettingsResponse {
+  voiceConfig: AgentVoiceConfig | null;
+  currentVoice: VoiceSummary | null;
+  availableModels: TtsModelId[];
+}
+
+export interface VoicesSearchResponse {
+  voices: VoiceSummary[];
+  hasMore: boolean;
+}
+
 export interface GeneralSettings {
   elevenLabs: { apiKeySet: boolean; agentId: string };
   serviceTitan: {

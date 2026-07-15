@@ -109,3 +109,15 @@ export const generalSettingsSchema = z.object({
   toolWebhookSecret: z.string().optional(),
   postCallWebhookSecret: z.string().optional(),
 });
+
+// Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly — kept as a literal
+// tuple here (rather than importing it) since schemas.ts is shared by every
+// API route and shouldn't pull in the ElevenLabs client module just for an
+// enum; the two lists must be kept in sync if ElevenLabs adds a new model.
+export const voiceConfigSchema = z.object({
+  modelId: z.enum(["eleven_turbo_v2", "eleven_turbo_v2_5", "eleven_flash_v2", "eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3_conversational"]),
+  voiceId: z.string().min(1),
+  stability: z.number().min(0).max(1),
+  speed: z.number(),
+  similarityBoost: z.number().min(0).max(1),
+});
