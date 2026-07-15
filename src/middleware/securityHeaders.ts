@@ -14,6 +14,11 @@ const CSP = [
   "img-src 'self' data:",
   "font-src 'self'",
   "connect-src 'self'",
+  // Without an explicit media-src, browsers fall back to default-src
+  // ('self') for <audio>/<video>, silently blocking the Voices page's
+  // preview playback — every ElevenLabs voice preview is served from this
+  // host (confirmed across multiple real preview_url values).
+  "media-src 'self' https://storage.googleapis.com",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
