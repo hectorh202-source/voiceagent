@@ -1,4 +1,5 @@
 import { db } from "./index";
+import { encryptField, encryptNullable, decryptField, decryptNullable } from "../lib/encryption";
 
 export interface ElevenLabsCallRecord {
   conversation_id: string;
@@ -17,6 +18,21 @@ export interface ElevenLabsCallRecord {
   status_override: string | null;
   call_reason_override: string | null;
   internal_notes: string | null;
+}
+
+// transcript_json/summary/raw_payload_json/internal_notes carry customer PII
+// (names, addresses, full conversation content) and are encrypted at rest —
+// every row read out of elevenlabs_calls must go through this before it
+// reaches a caller. raw_payload_json is NOT NULL in the schema, so it's
+// always present and always encrypted; the others are nullable.
+function decryptCallRecord(record: ElevenLabsCallRecord): ElevenLabsCallRecord {
+  return {
+    ...record,
+    transcript_json: decryptNullable(record.transcript_json),
+    summary: decryptNullable(record.summary),
+    raw_payload_json: decryptField(record.raw_payload_json),
+    internal_notes: decryptNullable(record.internal_notes),
+  };
 }
 
 interface CallTranscriptionEntry {
@@ -56,10 +72,10 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
     conversationId: entry.conversationId,
     businessId: entry.businessId,
     agentId: entry.agentId ?? null,
-    transcriptJson: entry.transcriptJson ?? null,
-    summary: entry.summary ?? null,
+    transcriptJson: encryptNullable(entry.transcriptJson ?? null),
+    summary: encryptNullable(entry.summary ?? null),
     terminationReason: entry.terminationReason ?? null,
-    rawPayloadJson: entry.rawPayloadJson,
+    rawPayloadJson: encryptField(entry.rawPayloadJson),
     durationSecs: entry.durationSecs ?? null,
     callReason: entry.callReason ?? null,
   });
@@ -108,7 +124,7 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
       setCallReasonOverrideStmt.run({ conversationId, businessId, callReasonOverride: patch.callReasonOverride });
     }
     if (patch.internalNotes !== undefined) {
-      setInternalNotesStmt.run({ conversationId, businessId, internalNotes: patch.internalNotes });
+      setInternalNotesStmt.run({ conversationId, businessId, internalNotes: encryptNullable(patch.internalNotes) });
     }
   }
 }
@@ -118,12 +134,16 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
 // whichever half already landed.
 const setAudioPathStmt = db.prepare(`
   INSERT INTO elevenlabs_calls (conversation_id, business_id, raw_payload_json, audio_path)
-  VALUES (@conversationId, @businessId, '{}', @audioPath)
+  VALUES (@conversationId, @businessId, @emptyPayload, @audioPath)
   ON CONFLICT(conversation_id) DO UPDATE SET audio_path = excluded.audio_path
 `);
 
 export function setCallAudioPath(businessId: number, conversationId: string, audioPath: string): void {
-  setAudioPathStmt.run({ conversationId, businessId, audioPath });
+  // raw_payload_json is NOT NULL and always encrypted (see decryptCallRecord
+  // above) — this placeholder must be too, or a later read of a row that was
+  // only ever touched by this INSERT (audio webhook arriving before the
+  // transcription webhook) would fail to decrypt.
+  setAudioPathStmt.run({ conversationId, businessId, audioPath, emptyPayload: encryptField("{}") });
 }
 
 // Scoped by business_id as well as conversation_id — this is the one lookup
@@ -132,9 +152,10 @@ export function setCallAudioPath(businessId: number, conversationId: string, aud
 // control. A conversationId belonging to another business must never match
 // here just because the ID happens to be correct.
 export function getCallRecord(businessId: number, conversationId: string): ElevenLabsCallRecord | undefined {
-  return db
+  const record = db
     .prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`)
     .get(conversationId, businessId) as ElevenLabsCallRecord | undefined;
+  return record ? decryptCallRecord(record) : undefined;
 }
 
 export interface CallDateRange {
@@ -161,7 +182,8 @@ export function listCallRecords(businessId: number, limit = 50, range: CallDateR
   }
   params.push(limit);
 
-  return db
+  const records = db
     .prepare(`SELECT * FROM elevenlabs_calls WHERE ${conditions.join(" AND ")} ORDER BY received_at DESC LIMIT ?`)
     .all(...params) as unknown as ElevenLabsCallRecord[];
+  return records.map(decryptCallRecord);
 }

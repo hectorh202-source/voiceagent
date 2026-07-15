@@ -52,9 +52,9 @@ CREATE TABLE call_log (
   business_id INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   tool_name TEXT NOT NULL,       -- e.g. "lookup_customer", "create_lead"
-  phone TEXT,                    -- caller's number, when known
-  request_json TEXT NOT NULL,    -- the tool call's input, as JSON
-  response_json TEXT,            -- the tool call's output, as JSON
+  phone TEXT,                    -- caller's number, when known -- encrypted, see below
+  request_json TEXT NOT NULL,    -- the tool call's input, as JSON -- encrypted
+  response_json TEXT,            -- the tool call's output, as JSON -- encrypted
   success INTEGER NOT NULL,      -- 0 or 1
   error_message TEXT
 );
@@ -64,11 +64,12 @@ CREATE TABLE elevenlabs_calls (
   business_id INTEGER NOT NULL DEFAULT 1,
   agent_id TEXT,
   received_at TEXT NOT NULL DEFAULT (datetime('now')),
-  transcript_json TEXT,
-  summary TEXT,
+  transcript_json TEXT,          -- encrypted, see below
+  summary TEXT,                  -- encrypted
   termination_reason TEXT,
-  raw_payload_json TEXT NOT NULL,
-  audio_path TEXT
+  raw_payload_json TEXT NOT NULL, -- encrypted
+  audio_path TEXT,
+  internal_notes TEXT            -- encrypted (staff-written, added later — see call-dashboard.md)
 );
 
 CREATE TABLE sessions (
@@ -149,6 +150,16 @@ setBusinessSetting(businessId: number, key: string, value: string): void
 This keeps adding a new credential a one-line change (no migrations), and — more importantly — it's what let us fix a real bug: earlier, the settings page read groups of related fields through a single "give me all of these or nothing" getter (e.g. one function for all of ElevenLabs' fields). If you saved just one field in a group, the getter would return `null` for the *whole group*, which blanked already-saved fields on the page and could even overwrite a real secret with an empty string on the next save. The fix was to read/write **every field independently** — see `getRawElevenLabsSettings(businessId)` / `getRawServiceTitanSettings(businessId)` / `getRawOperationalSettings(businessId)` in `store.ts`, each of which calls `getBusinessSetting()` once per field rather than gating on all of them at once.
 
 The one place a group *is* still gated is `getServiceTitanConfig(businessId)`, used only by the actual ServiceTitan API client (`servicetitan/httpClient.ts`). That's intentional: you genuinely cannot make a ServiceTitan API call with only half the credentials, so that function returns `null` unless client ID, secret, app key, *and* tenant ID are all present — but that strict check is now isolated to the one place that legitimately needs it, instead of leaking into how the settings page displays things.
+
+## Call/tool data is encrypted at rest too
+
+`call_log.phone`/`request_json`/`response_json` and `elevenlabs_calls.transcript_json`/`summary`/`raw_payload_json`/`internal_notes` all carry real customer PII — names, phone numbers, addresses, and full call transcripts — collected via ElevenLabs tool calls and post-call webhooks. These are encrypted at rest the same way `settings`/`business_settings` already were: AES-256-GCM, same key, same format. The shared implementation moved into [`lib/encryption.ts`](../src/lib/encryption.ts) (`encryptField`/`decryptField`/`encryptNullable`/`decryptNullable`), which `settings/store.ts` now imports instead of keeping its own copy.
+
+Unlike credentials, these columns are read-heavy across a handful of call sites (`db/callRecords.ts`'s `getCallRecord`/`listCallRecords`/`upsertCallTranscription`/`updateCallStatus`, `db/callLog.ts`'s `logToolCall`/`findCreateLeadLogByConversationId`/`findBookJobLogByConversationId`) rather than the settings page's simple get/set pattern — each of those functions encrypts on the way in and decrypts on the way out, so every other layer (the dashboard, the API, the tool handlers) keeps working with plain JS strings/objects and never has to know encryption is happening underneath.
+
+This was safe to add without breaking search or filtering because nothing in this app ever queries *into* these columns at the SQL level — every read filters only on `business_id`, `received_at`, or `conversation_id` (plain, unencrypted columns), then parses the fetched row's JSON in JS. The one past use of `json_extract()` on `request_json` was a one-time migration backfill (`db/migrateCallLogConversationIdColumn.ts`), already run before this change landed.
+
+**Migrating existing plaintext rows**: [`db/migratePiiEncryption.ts`](../src/db/migratePiiEncryption.ts) runs once (guarded by an `internal.piiEncryptionMigrated` marker in the `settings` table, checked via raw SQL rather than `settings/store.ts` to avoid a circular import), encrypting every existing row's plaintext in place inside one transaction. Verified before shipping: a full round-trip test against a copy of real data (encrypt → decrypt → compare to the original plaintext, byte for byte) across both tables, an idempotency check (calling the migration twice changes nothing the second time), and a final diff of every real row's decrypted live value against a pre-migration backup — zero mismatches.
 
 ## Encryption: how a value actually gets protected
 

@@ -1,4 +1,5 @@
 import { db } from "./index";
+import { encryptField, encryptNullable, decryptField, decryptNullable } from "../lib/encryption";
 
 interface CallLogEntry {
   businessId: number;
@@ -33,19 +34,25 @@ export function logToolCall(entry: CallLogEntry): void {
   insertStmt.run({
     businessId: entry.businessId,
     toolName: entry.toolName,
-    phone: entry.phone ?? null,
+    phone: encryptNullable(entry.phone ?? null),
     conversationId: extractConversationId(entry.request),
-    requestJson: JSON.stringify(entry.request),
-    responseJson: entry.response !== undefined ? JSON.stringify(entry.response) : null,
+    requestJson: encryptField(JSON.stringify(entry.request)),
+    responseJson: entry.response !== undefined ? encryptField(JSON.stringify(entry.response)) : null,
     success: entry.success ? 1 : 0,
     errorMessage: entry.errorMessage ?? null,
   });
 }
 
 export function getRecentCallLogs(businessId: number, limit = 50) {
-  return db
+  const rows = db
     .prepare(`SELECT * FROM call_log WHERE business_id = ? ORDER BY id DESC LIMIT ?`)
-    .all(businessId, limit);
+    .all(businessId, limit) as { phone: string | null; request_json: string; response_json: string | null }[];
+  return rows.map((row) => ({
+    ...row,
+    phone: decryptNullable(row.phone),
+    request_json: decryptField(row.request_json),
+    response_json: decryptNullable(row.response_json),
+  }));
 }
 
 export interface CreateLeadLogRow {
@@ -54,6 +61,15 @@ export interface CreateLeadLogRow {
   created_at: string;
   success: number;
   phone: string | null;
+}
+
+function decryptLeadLogRow(row: CreateLeadLogRow): CreateLeadLogRow {
+  return {
+    ...row,
+    request_json: decryptField(row.request_json),
+    response_json: decryptNullable(row.response_json),
+    phone: decryptNullable(row.phone),
+  };
 }
 
 // Correlates a call_log create_lead row with an elevenlabs_calls record —
@@ -66,13 +82,14 @@ export function findCreateLeadLogByConversationId(
   businessId: number,
   conversationId: string,
 ): CreateLeadLogRow | undefined {
-  return db
+  const row = db
     .prepare(
       `SELECT request_json, response_json, created_at, success, phone FROM call_log
        WHERE business_id = ? AND tool_name = 'create_lead' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )
     .get(businessId, conversationId) as CreateLeadLogRow | undefined;
+  return row ? decryptLeadLogRow(row) : undefined;
 }
 
 // Parallel to findCreateLeadLogByConversationId, for job-booking-mode
@@ -83,11 +100,12 @@ export function findBookJobLogByConversationId(
   businessId: number,
   conversationId: string,
 ): CreateLeadLogRow | undefined {
-  return db
+  const row = db
     .prepare(
       `SELECT request_json, response_json, created_at, success, phone FROM call_log
        WHERE business_id = ? AND tool_name = 'book_job' AND conversation_id = ?
        ORDER BY id DESC LIMIT 1`,
     )
     .get(businessId, conversationId) as CreateLeadLogRow | undefined;
+  return row ? decryptLeadLogRow(row) : undefined;
 }

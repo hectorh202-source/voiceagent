@@ -1,26 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "../db/index";
-import { encryptionKey } from "./encryptionKey";
-
-const ALGO = "aes-256-gcm";
-
-function encrypt(plaintext: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGO, encryptionKey, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return Buffer.concat([iv, authTag, ciphertext]).toString("base64");
-}
-
-function decrypt(stored: string): string {
-  const raw = Buffer.from(stored, "base64");
-  const iv = raw.subarray(0, 12);
-  const authTag = raw.subarray(12, 28);
-  const ciphertext = raw.subarray(28);
-  const decipher = crypto.createDecipheriv(ALGO, encryptionKey, iv);
-  decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
-}
+import { encryptField as encrypt, decryptField as decrypt } from "../lib/encryption";
 
 const getStmt = db.prepare(`SELECT value FROM settings WHERE key = ?`);
 const setStmt = db.prepare(`

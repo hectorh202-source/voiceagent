@@ -10,6 +10,7 @@ import { migrateStatusOverrideColumn } from "./migrateStatusOverrideColumn";
 import { migrateCallReasonOverrideColumn } from "./migrateCallReasonOverrideColumn";
 import { migrateInternalNotesColumn } from "./migrateInternalNotesColumn";
 import { migrateCallLogConversationIdColumn } from "./migrateCallLogConversationIdColumn";
+import { migratePiiEncryption } from "./migratePiiEncryption";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -26,3 +27,4 @@ migrateStatusOverrideColumn(db);
 migrateCallReasonOverrideColumn(db);
 migrateInternalNotesColumn(db);
 migrateCallLogConversationIdColumn(db);
+migratePiiEncryption(db);
