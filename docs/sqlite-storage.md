@@ -172,19 +172,36 @@ A fresh random IV per value means encrypting the same string twice produces diff
 
 ### The encryption key itself
 
-[`settings/encryptionKey.ts`](../src/settings/encryptionKey.ts) is almost the whole story:
+[`settings/encryptionKey.ts`](../src/settings/encryptionKey.ts) loads the key from one of two places:
 
 ```ts
+if (env.ENCRYPTION_KEY) {
+  // preferred: a 64-char hex string (32 bytes) injected as an environment
+  // variable at deploy time — never written into the data/ volume that
+  // gets backed up alongside app.db
+  return Buffer.from(env.ENCRYPTION_KEY, "hex");
+}
+// fallback for an unmigrated deployment, with a loud console.warn():
 const keyPath = "<same directory as the DB>/.encryption.key";
 // on first run: generate 32 random bytes, write them to that file (mode 0600 = owner read/write only)
 // on every run after: just read the existing file
 ```
 
-This key is **never typed by a user and never committed to git** (`.gitignore` excludes the whole `data/` directory). It lives entirely as a local file, generated once. Practically, this means:
+The `ENCRYPTION_KEY` env var is a deliberate, documented exception to this project's usual "no credentials in env files" rule (see `.env.example`) — it's the deployment's own master key, not a business credential, and it structurally can't live inside the encrypted store it protects. Set via `docker-compose.yml`'s `- ENCRYPTION_KEY=${ENCRYPTION_KEY:-}`, sourced from a gitignored `.env` file next to `docker-compose.yml` on the VPS — never committed, never placed in the `data/` volume.
 
-- If you delete `data/.encryption.key` but keep `data/app.db`, every encrypted value becomes permanently unreadable garbage (the auth tag check will fail on decrypt) — there is no recovery without the original key.
-- If you copy `app.db` to a different machine without also copying `.encryption.key`, same problem.
-- Backups need to include **both files together**, not just the `.db` file.
+The old file-based key (`data/.encryption.key`, co-located with `app.db` in the same Docker volume) still works as a fallback for any deployment that hasn't migrated yet, but it's a real security gap: a backup or volume snapshot of `data/` hands over both the encrypted credentials *and* the key to decrypt them together. Migrating is a one-time, zero-data-loss move of the **existing** key value (never generate a new one — a new key can't decrypt anything already encrypted with the old one):
+
+1. Print the existing key's hex value: `docker compose exec app node -e "console.log(require('fs').readFileSync('/data/.encryption.key').toString('hex'))"`
+2. Add `ENCRYPTION_KEY=<that exact value>` to a `.env` file next to `docker-compose.yml` on the VPS (gitignored, VPS-only — never committed).
+3. Redeploy: `git pull && docker compose up -d --build`.
+4. Verify existing ServiceTitan/ElevenLabs/SMTP settings still display correctly in the app — this proves the same key is in use. If anything looks broken or throws decryption errors, do **not** delete the old key file — the app is still falling back to it, or something is misconfigured.
+5. Once confirmed working, delete `data/.encryption.key` from the volume (`docker compose exec app rm /data/.encryption.key`) to complete the fix — from then on there's no key sitting in the backed-up volume at all.
+
+Practically, this means:
+
+- If you lose the key (whichever source it comes from) but keep `data/app.db`, every encrypted value becomes permanently unreadable garbage (the auth tag check will fail on decrypt) — there is no recovery without the original key.
+- If you copy `app.db` to a different machine without also carrying over the same key (env var or file), same problem.
+- Once migrated to `ENCRYPTION_KEY`, back up the `.env` file (or wherever the key is recorded) separately from `data/app.db` — that separation is the entire point of the migration.
 
 ## User passwords: hashed, not encrypted
 
@@ -281,6 +298,6 @@ docker compose exec app node -e "..."
 
 ## Security notes / limitations
 
-- Encryption protects settings **at rest** (e.g. if someone got a copy of `app.db` without the key file). It does not protect against someone with an active shell on the server while the app is running — the key is loaded into the running process's memory, and anyone who can query the app's own `/settings` API (with valid admin session or tool secret) sees the plaintext by design, since the app itself needs to use these values.
+- Encryption protects settings **at rest** (e.g. if someone got a copy of `app.db` without the key). It does not protect against someone with an active shell on the server while the app is running — the key is loaded into the running process's memory, and anyone who can query the app's own `/settings` API (with valid admin session or tool secret) sees the plaintext by design, since the app itself needs to use these values.
 - There's no key rotation mechanism — changing the encryption key would make all previously-stored values unreadable. Rotating would require decrypting everything with the old key and re-encrypting with a new one, which isn't implemented.
-- This is one file, one process — there's no replication or backup automation. Back up `data/app.db` **and** `data/.encryption.key` together if you care about not losing settings.
+- This is one file, one process — there's no replication or backup automation. On an `ENCRYPTION_KEY`-migrated deployment, back up `data/app.db` and the `.env` file holding the key **separately** — the whole point of the migration is that a leak of one alone isn't enough to decrypt anything. On an unmigrated deployment still using the fallback file, back up `data/app.db` **and** `data/.encryption.key` together (they're both in the same volume regardless).

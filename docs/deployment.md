@@ -64,12 +64,15 @@ That's the whole reverse proxy config. Caddy automatically requests and renews a
 
 ```yaml
 volumes:
-  app-data:      # /data inside the app container — the SQLite DB + its encryption key
+  app-data:      # /data inside the app container — the SQLite DB (and, on an unmigrated
+                 # deployment, the fallback encryption key file — see below)
   caddy-data:    # Caddy's internal storage — includes the TLS certificate + private key
   caddy-config:  # Caddy's autosave config state
 ```
 
-All three are named Docker volumes, meaning they persist independently of the containers themselves. Rebuilding or recreating the containers (`docker compose up -d --build`) does **not** touch these — you'd only lose them by explicitly running `docker compose down -v` (the `-v` is what removes volumes; without it, `down`/`up` cycles are always safe). This is called out because losing `app-data` means losing every saved credential and the encryption key needed to ever decrypt them again — see [sqlite-storage.md](sqlite-storage.md#the-encryption-key-itself).
+All three are named Docker volumes, meaning they persist independently of the containers themselves. Rebuilding or recreating the containers (`docker compose up -d --build`) does **not** touch these — you'd only lose them by explicitly running `docker compose down -v` (the `-v` is what removes volumes; without it, `down`/`up` cycles are always safe). This is called out because losing `app-data` means losing every saved credential — and, on an unmigrated deployment, the encryption key needed to ever decrypt them again too, since it lived in that same volume.
+
+The recommended setup keeps the encryption key **out** of `app-data` entirely: set `ENCRYPTION_KEY` in a gitignored `.env` file next to `docker-compose.yml` on the VPS (already wired up in the `app` service's `environment:` block via `${ENCRYPTION_KEY:-}`), so a leak or backup of the `app-data` volume alone no longer exposes the key that decrypts it. See [sqlite-storage.md](sqlite-storage.md#the-encryption-key-itself) for the one-time migration steps (moving the *existing* key, not generating a new one) and what's still true for a deployment that hasn't migrated yet.
 
 ## DNS and domain setup
 

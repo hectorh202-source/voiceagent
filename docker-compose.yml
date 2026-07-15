@@ -5,6 +5,11 @@ services:
     environment:
       - PORT=3000
       - DATABASE_PATH=/data/app.db
+      # Optional but strongly recommended — see .env.example and
+      # docs/sqlite-storage.md#the-encryption-key-itself. Sourced from a
+      # .env file next to this docker-compose.yml (gitignored, VPS-only),
+      # which Docker Compose reads automatically for ${...} substitution.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - app-data:/data
     expose:
