@@ -95,11 +95,21 @@ export function VoiceSettingsPage() {
       setPlayingVoiceId(null);
       return;
     }
-    if (audioRef.current) {
-      audioRef.current.src = voice.previewUrl;
-      audioRef.current.play();
-      setPlayingVoiceId(voice.voiceId);
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.src = voice.previewUrl;
+    // Only mark it "playing" once play() actually resolves — it returns a
+    // promise that can reject (autoplay policy, a bad/expired preview URL),
+    // and setting state optimistically beforehand left the button showing
+    // "Stop" with nothing audible actually happening, and swallowed any
+    // real failure with no visible error at all.
+    audio
+      .play()
+      .then(() => setPlayingVoiceId(voice.voiceId))
+      .catch((err) => {
+        console.error("Voice preview playback failed:", err);
+        setPlayingVoiceId(null);
+      });
   }
 
   if (isLoading) return <div>Loading…</div>;
