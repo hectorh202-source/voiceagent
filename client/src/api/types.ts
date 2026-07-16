@@ -212,6 +212,7 @@ export interface GeneralSettings {
     postCallWebhookSecretSet: boolean;
     timezone: string;
     dashboardBaseUrl: string;
+    twilioPhoneNumber: string;
   };
 }
 

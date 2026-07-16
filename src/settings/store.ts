@@ -256,6 +256,12 @@ export function getRawOperationalSettings(businessId: number) {
     postCallWebhookSecretSet: !!getBusinessSetting(businessId, "operational.postCallWebhookSecret"),
     timezone: getBusinessSetting(businessId, "operational.timezone") ?? "America/New_York",
     dashboardBaseUrl: getBusinessSetting(businessId, "operational.dashboardBaseUrl") ?? "",
+    // This business's own assigned number under the single master Twilio
+    // account (see settings/store.ts's getTwilioConfig) — used only by
+    // twilio/pollCalls.ts to match an in-progress Twilio call back to this
+    // business, since the master account has no other per-business number
+    // mapping stored anywhere.
+    twilioPhoneNumber: getBusinessSetting(businessId, "operational.twilioPhoneNumber") ?? "",
   };
 }
 

@@ -26,6 +26,7 @@ export function GeneralSettingsPage() {
   const [dashboardBaseUrl, setDashboardBaseUrl] = useState("");
   const [toolWebhookSecret, setToolWebhookSecret] = useState("");
   const [postCallWebhookSecret, setPostCallWebhookSecret] = useState("");
+  const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export function GeneralSettingsPage() {
     setBookingMode(data.serviceTitan.bookingMode);
     setTimezone(data.operational.timezone);
     setDashboardBaseUrl(data.operational.dashboardBaseUrl);
+    setTwilioPhoneNumber(data.operational.twilioPhoneNumber);
   }, [data]);
 
   // A stray click on one of these silently breaks the integration rather
@@ -89,6 +91,7 @@ export function GeneralSettingsPage() {
         dashboardBaseUrl,
         toolWebhookSecret: toolWebhookSecret || undefined,
         postCallWebhookSecret: postCallWebhookSecret || undefined,
+        twilioPhoneNumber: twilioPhoneNumber || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -200,14 +203,16 @@ export function GeneralSettingsPage() {
           <input type="password" value={postCallWebhookSecret} onChange={(e) => setPostCallWebhookSecret(e.target.value)} />
         </div>
         <div className="form-row">
-          <label>Twilio Status Callback URL</label>
+          <label>Twilio phone number</label>
+          <input
+            value={twilioPhoneNumber}
+            onChange={(e) => setTwilioPhoneNumber(e.target.value)}
+            placeholder="+19125551234"
+          />
           <div className="form-hint">
-            Records the human portion of a transferred call. Set this business's assigned Twilio number's{" "}
-            <strong>Status Callback URL</strong> (Twilio Console → Phone Numbers → this number → Voice Configuration)
-            to the URL below. The master Twilio Account SID/Auth Token this uses are configured once, platform-wide,
-            under the global Admin Settings page.
-            <br />
-            <code>{`${window.location.origin}/b/${businessId}/webhooks/twilio/call-status`}</code>
+            This business's assigned number under the master Twilio account (configured platform-wide under Admin
+            Settings). Used to record the human portion of a transferred call — matches this number against calls
+            currently in progress so recording can start while the call is still live.
           </div>
         </div>
       </div>

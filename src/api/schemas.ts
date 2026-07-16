@@ -108,6 +108,7 @@ export const generalSettingsSchema = z.object({
   dashboardBaseUrl: z.string().optional(),
   toolWebhookSecret: z.string().optional(),
   postCallWebhookSecret: z.string().optional(),
+  twilioPhoneNumber: z.string().optional(),
 });
 
 // The master Twilio account this platform manages — global, not per-business

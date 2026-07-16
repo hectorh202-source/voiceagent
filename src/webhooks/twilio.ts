@@ -21,13 +21,17 @@ function fullRequestUrl(req: Request): string {
   return `${req.protocol}://${req.get("host")}${req.originalUrl}`;
 }
 
-// The phone number's own "Status Callback URL" in Twilio Console (a manual,
-// one-time setup step per business — see docs) fires this for every status
-// the underlying Call passes through, including "in-progress", which is the
-// earliest point recording can actually be started. It keeps firing on the
-// same Call SID through the rest of the call (ringing → in-progress →
-// completed), so claimRecordingRequest's idempotency guard is what keeps
-// this from calling the Twilio API more than once per call.
+// Confirmed via a real test call that this is NOT where recording actually
+// gets started anymore: a phone number's own "Status Callback URL" (set in
+// Twilio Console, what fires this handler) only ever sends CallStatus=
+// "completed" — event selection (which would let it fire earlier, e.g. on
+// "answered") is only available on Call resources created via the API/
+// TwiML, not on this per-number config. By the time this fires the call is
+// already over, too late to start a recording. See twilio/pollCalls.ts for
+// the actual mechanism now in use. This handler is kept only for visibility
+// (the log line below) and as a no-op safety net; claimRecordingRequest's
+// idempotency guard means even if some Twilio account setting ever does
+// deliver an early event here, it can't double-trigger against the poller.
 export async function handleTwilioCallStatus(req: Request, res: Response): Promise<void> {
   const { business } = req;
   if (!business) {

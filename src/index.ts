@@ -17,6 +17,7 @@ import { SqliteSessionStore } from "./settings/sessionStore";
 import { getOrCreateSessionSecret } from "./settings/store";
 import { getUserById } from "./db/users";
 import { userHasBusinessAccess } from "./db/userBusinesses";
+import { pollAndStartRecordings } from "./twilio/pollCalls";
 
 const app = express();
 
@@ -187,3 +188,12 @@ app.listen(env.PORT, () => {
   console.log(`Voice agent platform listening on port ${env.PORT}`);
   console.log(`Visit /settings on this server's domain (or http://localhost:${env.PORT}/settings if running locally) to configure credentials.`);
 });
+
+// See twilio/pollCalls.ts for why this exists — Twilio's own phone-number
+// status callback can't tell us a call is in progress early enough to start
+// recording it, so this checks directly on a timer instead. Isolated from
+// the live call-answering path entirely; a failure here only affects
+// whether a recording gets captured, never the call itself.
+setInterval(() => {
+  pollAndStartRecordings().catch((error) => console.error("Twilio recording poll failed:", error));
+}, 10_000);
