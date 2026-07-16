@@ -48,6 +48,13 @@ export async function handleTwilioCallStatus(req: Request, res: Response): Promi
 
   const callSid = typeof req.body.CallSid === "string" ? req.body.CallSid : undefined;
   const callStatus = req.body.CallStatus;
+  // Logged unconditionally (not just on error) while this is still being
+  // verified against a real number's Status Callback — the phone-number-
+  // level Status Callback's actual event set (which statuses it fires, and
+  // how many times) isn't documented as clearly as a Call resource's own
+  // per-call StatusCallbackEvent parameter, so this is the fastest way to
+  // confirm what's actually arriving rather than guessing again.
+  console.log(`Twilio call-status webhook: CallSid=${callSid} CallStatus=${callStatus}`);
   if (!callSid || callStatus !== "in-progress" || !CALL_SID_PATTERN.test(callSid)) {
     res.status(200).end();
     return;
