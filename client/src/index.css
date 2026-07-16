@@ -454,10 +454,28 @@ a.badge:hover {
   color: var(--text);
 }
 
+/* Wraps the header + layout together (see CallDetailPage.tsx) so that,
+   inside the bounded-height modal, the header can stay put while
+   .call-detail-layout's own two columns each scroll independently below
+   it. flex/min-height:0 here are load-bearing: without min-height:0 a
+   flex child refuses to shrink below its content size, which is exactly
+   what would otherwise prevent the columns beneath it from scrolling at
+   all. Outside the modal (a direct/bookmarked page load, no bounded
+   height available), this is a no-op — it just behaves like a plain
+   block, and the whole page scrolls together same as before. */
+.call-detail-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .call-detail-layout {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 0;
+  flex: 1;
+  min-height: 0;
 }
 
 .call-detail-sidebar {
@@ -465,12 +483,14 @@ a.badge:hover {
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   padding: 16px 20px;
+  overflow-y: auto;
 }
 
 .call-detail-main {
   flex: 1;
   min-width: 0;
   padding: 16px 24px;
+  overflow-y: auto;
 }
 
 .badge-row {
@@ -881,14 +901,15 @@ a.badge:hover {
 
 /* The call detail modal (client/src/pages/CallDetailPage.tsx) needs the
    sidebar + transcript layout it already has as a full page, not the
-   voice picker's compact list — much larger, and scrolls internally
-   (overflow-y here, rather than .modal-body's, since this content has no
-   separate header/body split of its own). */
+   voice picker's compact list — much larger. Not overflow-y here — the
+   sidebar and main panel each scroll independently instead (see
+   .call-detail-root/.call-detail-layout below), so the header stays put
+   while either column scrolls on its own. */
 .modal-large {
   width: 1100px;
   max-width: calc(100vw - 48px);
   height: calc(100vh - 48px);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .modal-header {

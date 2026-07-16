@@ -195,7 +195,7 @@ export function CallDetailPage() {
   const publicCallUrl = `${window.location.origin}/b/${businessId}/calls/${conversationId}`;
 
   return wrapIfModal(
-    <div style={isModal ? undefined : { margin: "-24px" }}>
+    <div className="call-detail-root" style={isModal ? undefined : { margin: "-24px" }}>
       <div className="call-detail-header">
         <div className="title">
           <PhoneIcon />
