@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { AgentVoiceConfig, TtsModelId, VoiceSettingsResponse, VoiceSummary } from "../api/types";
 import { VoiceSelectorModal } from "../components/VoiceSelectorModal";
-import { ChevronDownIcon } from "../components/icons";
+import { ChevronDownIcon, PlayIcon, PauseIcon } from "../components/icons";
 
 // Cost framed qualitatively, not as a precise number — ElevenLabs' exact
 // per-model pricing isn't part of their agent-config API and shifts over
@@ -36,6 +36,9 @@ export function VoiceSettingsPage() {
   const [similarityBoost, setSimilarityBoost] = useState(0.8);
   const [savedMessage, setSavedMessage] = useState("");
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const [isPlayingTest, setIsPlayingTest] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -47,6 +50,12 @@ export function VoiceSettingsPage() {
       setSimilarityBoost(data.voiceConfig.similarityBoost);
     }
   }, [data]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -70,6 +79,52 @@ export function VoiceSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["voice-settings", businessId] });
     },
   });
+
+  // Unlike everything else on this page, this is real ElevenLabs speech
+  // synthesis — costs actual credits per click — so it's a raw fetch
+  // (binary audio/mpeg response, not JSON) rather than the shared `api`
+  // helper, and only ever fires on an explicit button press, never
+  // automatically as the sliders move.
+  const testAudioMutation = useMutation({
+    mutationFn: async () => {
+      const voiceConfig: AgentVoiceConfig = { modelId, voiceId: selectedVoice!.voiceId, stability, speed, similarityBoost };
+      const res = await fetch(`/api/businesses/${businessId}/settings/voice/test-audio`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(voiceConfig),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Request failed: ${res.status}`);
+      }
+      return res.blob();
+    },
+    onSuccess: (blob) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      objectUrlRef.current = url;
+      audio.src = url;
+      audio
+        .play()
+        .then(() => setIsPlayingTest(true))
+        .catch((err) => {
+          console.error("Test audio playback failed:", err);
+          setIsPlayingTest(false);
+        });
+    },
+  });
+
+  function toggleTestAudio() {
+    if (isPlayingTest) {
+      audioRef.current?.pause();
+      setIsPlayingTest(false);
+      return;
+    }
+    testAudioMutation.mutate();
+  }
 
   if (isLoading) return <div>Loading…</div>;
 
@@ -138,6 +193,18 @@ export function VoiceSettingsPage() {
           />
           <div className="form-hint">How closely the voice matches the original recording.</div>
         </div>
+
+        <div className="form-row">
+          <button type="button" className="btn" onClick={toggleTestAudio} disabled={testAudioMutation.isPending || !selectedVoice}>
+            {isPlayingTest ? <PauseIcon width={14} height={14} /> : <PlayIcon width={14} height={14} />}
+            {testAudioMutation.isPending ? "Generating…" : isPlayingTest ? "Stop" : "Test these settings"}
+          </button>
+          <div className="form-hint">
+            Generates a short sample line with the voice/model/settings above — unlike the picker's preview clips, this reflects your
+            current stability/speed/similarity, not the voice's defaults. Uses real ElevenLabs credits per click.
+          </div>
+          {testAudioMutation.isError && <div className="form-hint">{(testAudioMutation.error as Error).message}</div>}
+        </div>
       </div>
 
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !selectedVoice}>
@@ -165,6 +232,12 @@ export function VoiceSettingsPage() {
           onClose={() => setIsPickerOpen(false)}
         />
       )}
+
+      <audio
+        ref={audioRef}
+        onEnded={() => setIsPlayingTest(false)}
+        style={{ display: "none" }}
+      />
     </div>
   );
 }

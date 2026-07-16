@@ -19,13 +19,14 @@ export async function elRequest<T>(
   config: ElevenLabsConfig,
   method: Method,
   path: string,
-  options: { params?: Record<string, unknown>; data?: unknown } = {},
+  options: { params?: Record<string, unknown>; data?: unknown; responseType?: "json" | "arraybuffer" } = {},
 ): Promise<T> {
   const response = await axios.request<T>({
     method,
     url: `${API_BASE_URL}${path}`,
     params: options.params,
     data: options.data,
+    responseType: options.responseType,
     headers: { "xi-api-key": config.apiKey },
   });
   return response.data;

@@ -22,7 +22,13 @@ const CSP = [
   // region-routed) from api.<region>.elevenlabs.io (api.us.elevenlabs.io
   // for this account) — allowing only the exact host we happened to see
   // left those silently broken too. *.elevenlabs.io covers any region.
-  "media-src 'self' https://storage.googleapis.com https://*.elevenlabs.io",
+  // blob: is separately required for the "test these settings" button's
+  // generated audio (an object URL, not a real host) — confirmed via a
+  // real repro that 'self' does NOT implicitly cover the blob: scheme:
+  // a locally-rendered, independently-decodable WAV blob still failed to
+  // load through <audio> with 'self' alone, and started working the
+  // moment blob: was added.
+  "media-src 'self' blob: https://storage.googleapis.com https://*.elevenlabs.io",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",

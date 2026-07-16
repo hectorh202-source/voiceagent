@@ -64,3 +64,28 @@ export async function updateAgentVoiceConfig(businessId: number, voiceConfig: Ag
     },
   });
 }
+
+// A fixed, short receptionist-style line — kept brief since, unlike every
+// other ElevenLabs call this app makes, this one is real paid speech
+// synthesis (confirmed against a real account: a 50-word line cost ~72KB
+// of audio), not free metadata. Lets someone actually hear the effect of
+// stability/speed/similarity while they're still adjusting the sliders,
+// which a voice's static preview clip (always its default settings) can't
+// show at all.
+const TEST_AUDIO_TEXT = "Hi, thanks for calling! How can I help you today?";
+
+export async function generateTestAudio(businessId: number, voiceConfig: AgentVoiceConfig): Promise<Buffer> {
+  const config = requireElevenLabsConfig(businessId);
+  return elRequest<Buffer>(config, "POST", `/v1/text-to-speech/${voiceConfig.voiceId}`, {
+    data: {
+      text: TEST_AUDIO_TEXT,
+      model_id: voiceConfig.modelId,
+      voice_settings: {
+        stability: voiceConfig.stability,
+        similarity_boost: voiceConfig.similarityBoost,
+        speed: voiceConfig.speed,
+      },
+    },
+    responseType: "arraybuffer",
+  });
+}
