@@ -506,9 +506,32 @@ export function CallDetailPage() {
           {data.hasAudio && data.audioUrl && (
             <div className="card">
               <div className="card-header">
-                <h2>Recording</h2>
+                <h2>{data.hasHumanRecording ? "Recording — AI Portion" : "Recording"}</h2>
               </div>
               <audio controls src={data.audioUrl} style={{ width: "100%" }} />
+            </div>
+          )}
+
+          {data.hasHumanRecording && data.humanRecordingUrl && (
+            <div className="card">
+              <div className="card-header">
+                <h2>Recording — Human Portion</h2>
+              </div>
+              {/* One continuous Twilio Call recording spanning the whole
+                  call, not a separately-cut file — seeking to the transfer's
+                  timestamp on load is what makes this play back as "just the
+                  human portion" (see dashboard/callDetails.ts's
+                  humanRecordingOffsetSecs). */}
+              <audio
+                controls
+                src={data.humanRecordingUrl}
+                style={{ width: "100%" }}
+                onLoadedMetadata={(e) => {
+                  if (data.humanRecordingOffsetSecs) {
+                    e.currentTarget.currentTime = data.humanRecordingOffsetSecs;
+                  }
+                }}
+              />
             </div>
           )}
 

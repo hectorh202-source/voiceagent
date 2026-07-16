@@ -108,6 +108,8 @@ export const generalSettingsSchema = z.object({
   dashboardBaseUrl: z.string().optional(),
   toolWebhookSecret: z.string().optional(),
   postCallWebhookSecret: z.string().optional(),
+  twilioAccountSid: z.string().optional(),
+  twilioAuthToken: z.string().optional(),
 });
 
 // Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly — kept as a literal

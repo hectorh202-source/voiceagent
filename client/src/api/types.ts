@@ -105,6 +105,8 @@ export interface CallDetail {
   transcript: { role: string; message: string; timeLabel: string }[];
   terminationReason: string | null;
   hasAudio: boolean;
+  hasHumanRecording: boolean;
+  humanRecordingOffsetSecs: number | null;
   status: CallStatus;
   autoStatus: CallStatus;
   statusOverride: CallStatus | null;
@@ -116,6 +118,7 @@ export interface CallDetail {
   recoveryStatus: RecoveryStatus;
   internalNotes: string | null;
   audioUrl: string | null;
+  humanRecordingUrl: string | null;
   callHistory: CallHistoryRow[];
 }
 
@@ -209,6 +212,10 @@ export interface GeneralSettings {
     postCallWebhookSecretSet: boolean;
     timezone: string;
     dashboardBaseUrl: string;
+  };
+  twilio: {
+    accountSidSet: boolean;
+    authTokenSet: boolean;
   };
 }
 

@@ -32,7 +32,17 @@ interface PostCallTranscriptionPayload {
       // by the field's identifier; we look up "call_reason" specifically.
       data_collection_results?: Record<string, { value?: string | number | boolean | null }>;
     };
-    metadata?: { termination_reason?: string; call_duration_secs?: number };
+    metadata?: {
+      termination_reason?: string;
+      call_duration_secs?: number;
+      // Confirmed via a real payload: the underlying Twilio Call SID for
+      // this conversation's inbound leg — present whenever the call came in
+      // over ElevenLabs' native telephony (Twilio) integration. This is
+      // what lets the human-portion recording (see twilio/recordings.ts,
+      // webhooks/twilio.ts) be joined back to the right call, regardless of
+      // whether the Twilio recording pipeline or this webhook lands first.
+      phone_call?: { call_sid?: string };
+    };
   };
 }
 
@@ -74,6 +84,11 @@ function extractCallReason(data: PostCallTranscriptionPayload["data"]): string |
   const entry = data.analysis?.data_collection_results?.call_reason;
   if (entry === undefined || entry.value === undefined || entry.value === null) return null;
   return typeof entry.value === "string" ? entry.value : String(entry.value);
+}
+
+function extractTwilioCallSid(data: PostCallTranscriptionPayload["data"]): string | null {
+  const sid = data.metadata?.phone_call?.call_sid;
+  return typeof sid === "string" && sid.length > 0 ? sid : null;
 }
 
 // Once the real AI call summary is available, swap it in for the short
@@ -218,6 +233,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       rawPayloadJson: JSON.stringify(payload),
       durationSecs: extractDurationSecs(data),
       callReason: extractCallReason(data),
+      twilioCallSid: extractTwilioCallSid(data),
     });
 
     // Computed once here (and recomputed on a webhook redelivery, same as

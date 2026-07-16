@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import fs from "node:fs";
 import { buildCallDetailViewModel } from "./callDetails";
 import { renderCallDetailPage, renderCallNotFoundPage } from "./views";
 import { getCallRecord } from "../db/callRecords";
+import { getTwilioRecording } from "../db/twilioRecordings";
 import { limitCallPageRequests, limitCallAudioRequests } from "../middleware/dashboardRateLimiter";
 
 export const dashboardRouter = Router();
@@ -41,25 +42,14 @@ dashboardRouter.get("/calls/:conversationId", limitCallPageRequests, (req, res) 
   res.send(renderCallDetailPage(viewModel));
 });
 
-dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req, res) => {
-  const { business } = req;
-  const { conversationId } = req.params;
-  if (!business) {
-    res.status(404).end();
-    return;
-  }
-  const record = getCallRecord(business.id, conversationId);
-  if (!record?.audio_path || !fs.existsSync(record.audio_path)) {
-    res.status(404).end();
-    return;
-  }
-
-  // Browsers stream <audio> via HTTP Range requests (fetching the file in
-  // chunks rather than all at once) — serving the full file with a plain 200
-  // regardless of the Range header caused playback to stop after only the
-  // first chunk the browser requested. Must respond 206 with the exact
-  // requested byte range for playback to work past the first few seconds.
-  const fileSize = fs.statSync(record.audio_path).size;
+// Shared by both audio routes below. Browsers stream <audio> via HTTP Range
+// requests (fetching the file in chunks rather than all at once) — serving
+// the full file with a plain 200 regardless of the Range header caused
+// playback to stop after only the first chunk the browser requested. Must
+// respond 206 with the exact requested byte range for playback to work past
+// the first few seconds.
+function streamAudioFile(req: Request, res: Response, filePath: string): void {
+  const fileSize = fs.statSync(filePath).size;
   const range = req.headers.range;
 
   if (!range) {
@@ -68,7 +58,7 @@ dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req
       "Content-Length": fileSize,
       "Accept-Ranges": "bytes",
     });
-    fs.createReadStream(record.audio_path).pipe(res);
+    fs.createReadStream(filePath).pipe(res);
     return;
   }
 
@@ -91,5 +81,41 @@ dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req
     "Accept-Ranges": "bytes",
     "Content-Length": end - start + 1,
   });
-  fs.createReadStream(record.audio_path, { start, end }).pipe(res);
+  fs.createReadStream(filePath, { start, end }).pipe(res);
+}
+
+dashboardRouter.get("/calls/:conversationId/audio", limitCallAudioRequests, (req, res) => {
+  const { business } = req;
+  const { conversationId } = req.params;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+  const record = getCallRecord(business.id, conversationId);
+  if (!record?.audio_path || !fs.existsSync(record.audio_path)) {
+    res.status(404).end();
+    return;
+  }
+  streamAudioFile(req, res, record.audio_path);
+});
+
+// The human-portion recording — a Twilio Call-level recording spanning the
+// whole call, joined via elevenlabs_calls.twilio_call_sid (see
+// dashboard/callDetails.ts's hasHumanRecording). The client seeks past the
+// AI portion using humanRecordingOffsetSecs rather than this route ever
+// serving a pre-trimmed file.
+dashboardRouter.get("/calls/:conversationId/human-audio", limitCallAudioRequests, (req, res) => {
+  const { business } = req;
+  const { conversationId } = req.params;
+  if (!business) {
+    res.status(404).end();
+    return;
+  }
+  const record = getCallRecord(business.id, conversationId);
+  const recording = record?.twilio_call_sid ? getTwilioRecording(business.id, record.twilio_call_sid) : undefined;
+  if (!recording?.recording_path || recording.status !== "completed" || !fs.existsSync(recording.recording_path)) {
+    res.status(404).end();
+    return;
+  }
+  streamAudioFile(req, res, recording.recording_path);
 });

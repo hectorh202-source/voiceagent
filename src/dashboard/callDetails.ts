@@ -1,5 +1,6 @@
 import { getCallRecord, listCallRecords } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
+import { getTwilioRecording } from "../db/twilioRecordings";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import type { CreateLeadLogRow } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
@@ -62,6 +63,8 @@ export interface CallDetailViewModel {
   transcript: { role: string; message: string; timeLabel: string }[];
   terminationReason: string | null;
   hasAudio: boolean;
+  hasHumanRecording: boolean;
+  humanRecordingOffsetSecs: number | null;
   status: CallStatus;
   autoStatus: CallStatus;
   statusOverride: CallStatus | null;
@@ -90,6 +93,11 @@ function findTransferInfo(turns: TranscriptTurn[]): {
   forwardedNumber: string | null;
   transferDestination: string | null;
   transferFailed: boolean;
+  // The transfer turn's own time_in_call_secs — the point in the full-call
+  // recording (see buildCallDetailViewModel's hasHumanRecording below) where
+  // the human portion actually starts, used to seek the second player past
+  // the AI portion rather than storing a separately-cut audio file.
+  transferTimeSecs: number | null;
 } {
   for (const turn of turns) {
     for (const call of turn.tool_calls ?? []) {
@@ -104,10 +112,16 @@ function findTransferInfo(turns: TranscriptTurn[]): {
       const transferFailed = turns.some((t) =>
         (t.tool_results ?? []).some((r) => r.tool_name === "transfer_to_number" && r.is_error),
       );
-      return { isTransferred: true, forwardedNumber, transferDestination: forwardedNumber, transferFailed };
+      return {
+        isTransferred: true,
+        forwardedNumber,
+        transferDestination: forwardedNumber,
+        transferFailed,
+        transferTimeSecs: turn.time_in_call_secs ?? null,
+      };
     }
   }
-  return { isTransferred: false, forwardedNumber: null, transferDestination: null, transferFailed: false };
+  return { isTransferred: false, forwardedNumber: null, transferDestination: null, transferFailed: false, transferTimeSecs: null };
 }
 
 export function buildCallDetailViewModel(business: Business, conversationId: string): CallDetailViewModel | null {
@@ -160,6 +174,16 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   }
 
   const { leadUrl, jobUrl } = buildServiceTitanUrls(business.id, leadId, jobId);
+
+  // The human-portion recording is looked up via twilio_call_sid rather than
+  // stored directly on this row — see db/twilioRecordings.ts's comment for
+  // why the join happens at read time instead.
+  let hasHumanRecording = false;
+  if (callRecord.twilio_call_sid) {
+    const recording = getTwilioRecording(business.id, callRecord.twilio_call_sid);
+    hasHumanRecording = recording?.status === "completed" && !!recording.recording_path;
+  }
+
   const autoStatus = deriveStatus(leadLog, jobLog);
   const statusOverride = (callRecord.status_override as CallStatus | null) ?? null;
   const status = statusOverride ?? autoStatus;
@@ -173,6 +197,7 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     forwardedNumber: null as string | null,
     transferDestination: null as string | null,
     transferFailed: false,
+    transferTimeSecs: null as number | null,
   };
   if (callRecord.transcript_json) {
     try {
@@ -209,6 +234,8 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     transcript,
     terminationReason: callRecord.termination_reason,
     hasAudio: !!callRecord.audio_path,
+    hasHumanRecording,
+    humanRecordingOffsetSecs: transferInfo.transferTimeSecs,
     status,
     autoStatus,
     statusOverride,

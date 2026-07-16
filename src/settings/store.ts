@@ -159,6 +159,31 @@ export function getElevenLabsConfig(businessId: number): ElevenLabsConfig | null
   return { apiKey, agentId };
 }
 
+export interface TwilioConfig {
+  accountSid: string;
+  authToken: string;
+}
+
+// Strict, both-fields-required view used only where a real Twilio API call
+// is actually being made (see twilio/httpClient.ts) — mirrors
+// getElevenLabsConfig's reasoning above. Each business supplies its own
+// Twilio credentials (confirmed via the Twilio Console: the Conference an
+// ElevenLabs transfer bridges into belongs to the business's own Twilio
+// account, not a shared one), so this is business-scoped rather than global.
+export function getTwilioConfig(businessId: number): TwilioConfig | null {
+  const accountSid = getBusinessSetting(businessId, "twilio.accountSid");
+  const authToken = getBusinessSetting(businessId, "twilio.authToken");
+  if (!accountSid || !authToken) return null;
+  return { accountSid, authToken };
+}
+
+export function getRawTwilioSettings(businessId: number) {
+  return {
+    accountSidSet: !!getBusinessSetting(businessId, "twilio.accountSid"),
+    authTokenSet: !!getBusinessSetting(businessId, "twilio.authToken"),
+  };
+}
+
 export function getRawServiceTitanSettings(businessId: number) {
   return {
     environment:

@@ -46,7 +46,8 @@ export function bootstrapSchema(db: DatabaseSync): void {
       internal_notes TEXT,
       failed_transfer INTEGER NOT NULL DEFAULT 0,
       no_booking_created INTEGER NOT NULL DEFAULT 0,
-      auto_status TEXT NOT NULL DEFAULT 'excused'
+      auto_status TEXT NOT NULL DEFAULT 'excused',
+      twilio_call_sid TEXT
     );
 
     -- business_id/received_at exist on every install (present since this
@@ -103,5 +104,25 @@ export function bootstrapSchema(db: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+
+    -- Tracks the human-portion recording of a transferred call, keyed by the
+    -- Twilio Call SID rather than conversation_id — this row is created (by
+    -- the call-status webhook) before ElevenLabs' post-call webhook has
+    -- necessarily arrived, so conversation_id may not exist in
+    -- elevenlabs_calls yet at that point. elevenlabs_calls.twilio_call_sid
+    -- (set once the post-call transcription webhook lands) is what joins the
+    -- two at read time, regardless of which webhook happened to arrive
+    -- first. The (business_id, call_sid) primary key also doubles as the
+    -- idempotency guard against duplicate Status Callback deliveries — see
+    -- db/twilioRecordings.ts's claimRecordingRequest.
+    CREATE TABLE IF NOT EXISTS twilio_recordings (
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      call_sid TEXT NOT NULL,
+      recording_sid TEXT,
+      recording_path TEXT,
+      status TEXT NOT NULL DEFAULT 'requested',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (business_id, call_sid)
+    );
   `);
 }
