@@ -108,8 +108,15 @@ export const generalSettingsSchema = z.object({
   dashboardBaseUrl: z.string().optional(),
   toolWebhookSecret: z.string().optional(),
   postCallWebhookSecret: z.string().optional(),
-  twilioAccountSid: z.string().optional(),
-  twilioAuthToken: z.string().optional(),
+});
+
+// The master Twilio account this platform manages — global, not per-business
+// (see settings/store.ts's getTwilioConfig for why), so this is submitted
+// from AdminSettingsPage.tsx's global Admin Settings rather than each
+// business's own General Settings.
+export const twilioSettingsSchema = z.object({
+  accountSid: z.string().optional(),
+  authToken: z.string().optional(),
 });
 
 // Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly — kept as a literal

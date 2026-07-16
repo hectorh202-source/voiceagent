@@ -26,8 +26,6 @@ export function GeneralSettingsPage() {
   const [dashboardBaseUrl, setDashboardBaseUrl] = useState("");
   const [toolWebhookSecret, setToolWebhookSecret] = useState("");
   const [postCallWebhookSecret, setPostCallWebhookSecret] = useState("");
-  const [twilioAccountSid, setTwilioAccountSid] = useState("");
-  const [twilioAuthToken, setTwilioAuthToken] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -91,8 +89,6 @@ export function GeneralSettingsPage() {
         dashboardBaseUrl,
         toolWebhookSecret: toolWebhookSecret || undefined,
         postCallWebhookSecret: postCallWebhookSecret || undefined,
-        twilioAccountSid: twilioAccountSid || undefined,
-        twilioAuthToken: twilioAuthToken || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -102,8 +98,6 @@ export function GeneralSettingsPage() {
       setAppKey("");
       setToolWebhookSecret("");
       setPostCallWebhookSecret("");
-      setTwilioAccountSid("");
-      setTwilioAuthToken("");
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -205,28 +199,16 @@ export function GeneralSettingsPage() {
           </label>
           <input type="password" value={postCallWebhookSecret} onChange={(e) => setPostCallWebhookSecret(e.target.value)} />
         </div>
-      </div>
-
-      <div className="card">
-        <h2>Twilio</h2>
-        <p className="form-hint">
-          Used to record the human portion of a call after it's transferred (the AI's own recording ends once
-          ElevenLabs hands off to the Conference Twilio manages). Enter this business's own Twilio Account SID and
-          Auth Token — found on the Twilio Console dashboard.
-        </p>
         <div className="form-row">
-          <label>Account SID {data.twilio.accountSidSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={twilioAccountSid} onChange={(e) => setTwilioAccountSid(e.target.value)} autoComplete="off" />
-        </div>
-        <div className="form-row">
-          <label>Auth Token {data.twilio.authTokenSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={twilioAuthToken} onChange={(e) => setTwilioAuthToken(e.target.value)} autoComplete="off" />
-        </div>
-        <div className="form-hint">
-          Once saved, set this phone number's <strong>Status Callback URL</strong> (Twilio Console → Phone Numbers →
-          this number → Voice Configuration) to:
-          <br />
-          <code>{`${window.location.origin}/b/${businessId}/webhooks/twilio/call-status`}</code>
+          <label>Twilio Status Callback URL</label>
+          <div className="form-hint">
+            Records the human portion of a transferred call. Set this business's assigned Twilio number's{" "}
+            <strong>Status Callback URL</strong> (Twilio Console → Phone Numbers → this number → Voice Configuration)
+            to the URL below. The master Twilio Account SID/Auth Token this uses are configured once, platform-wide,
+            under the global Admin Settings page.
+            <br />
+            <code>{`${window.location.origin}/b/${businessId}/webhooks/twilio/call-status`}</code>
+          </div>
         </div>
       </div>
 

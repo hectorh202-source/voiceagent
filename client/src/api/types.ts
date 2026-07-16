@@ -213,10 +213,14 @@ export interface GeneralSettings {
     timezone: string;
     dashboardBaseUrl: string;
   };
-  twilio: {
-    accountSidSet: boolean;
-    authTokenSet: boolean;
-  };
+}
+
+// The single master Twilio account this platform manages — global (see
+// settings/store.ts's getTwilioConfig), managed from AdminSettingsPage.tsx's
+// global Admin Settings rather than any one business's General Settings.
+export interface TwilioSettings {
+  accountSidSet: boolean;
+  authTokenSet: boolean;
 }
 
 export interface CallListFilters {

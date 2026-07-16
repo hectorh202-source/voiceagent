@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AdminUser, Business, EmailSettings } from "../api/types";
+import type { AdminUser, Business, EmailSettings, TwilioSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
 
@@ -109,6 +109,62 @@ function EmailSettingsSection() {
         </button>
         {testMessage && <div className="muted" style={{ marginTop: 8 }}>{testMessage}</div>}
       </div>
+    </div>
+  );
+}
+
+// The single master Twilio account this platform manages — phone numbers get
+// assigned to individual businesses for forwarding, rather than each
+// business bringing its own Twilio account, so this lives here (global Admin
+// Settings) rather than on any one business's General Settings page. See
+// GeneralSettingsPage.tsx for the per-business Status Callback URL each
+// assigned number still needs, and webhooks/twilio.ts for what these
+// credentials are used for.
+function TwilioSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin-twilio-settings"],
+    queryFn: () => api.get<TwilioSettings>("/api/admin/twilio-settings"),
+  });
+
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [message, setMessage] = useState("");
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.put("/api/admin/twilio-settings", {
+        accountSid: accountSid || undefined,
+        authToken: authToken || undefined,
+      }),
+    onSuccess: () => {
+      setMessage("Settings saved.");
+      setAccountSid("");
+      setAuthToken("");
+      queryClient.invalidateQueries({ queryKey: ["admin-twilio-settings"] });
+    },
+  });
+
+  return (
+    <div className="card">
+      <h2>Twilio</h2>
+      <p className="form-hint">
+        The master Twilio account used to record the human portion of a call after it's transferred (the AI's own
+        recording ends once ElevenLabs hands off to the Conference Twilio manages). Found on the Twilio Console
+        dashboard.
+      </p>
+      <div className="form-row">
+        <label>Account SID {data?.accountSidSet && <span className="muted">(set — leave blank to keep)</span>}</label>
+        <input type="password" value={accountSid} onChange={(e) => setAccountSid(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="form-row">
+        <label>Auth Token {data?.authTokenSet && <span className="muted">(set — leave blank to keep)</span>}</label>
+        <input type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} autoComplete="off" />
+      </div>
+      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+        Save
+      </button>
+      {message && <span className="muted" style={{ marginLeft: 8 }}>{message}</span>}
     </div>
   );
 }
@@ -332,6 +388,8 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
       </div>
 
       <EmailSettingsSection />
+
+      <TwilioSettingsSection />
 
       <h2>Platform Admins</h2>
       {admins.map((u) => (

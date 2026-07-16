@@ -16,8 +16,8 @@ import { requireTwilioConfig, twRequest } from "./httpClient";
 // react to). The AI portion is trimmed out client-side via player seek
 // instead (see CallDetailPage.tsx), using the transfer's time_in_call_secs
 // from the transcript as the offset.
-export async function startCallRecording(businessId: number, callSid: string, recordingStatusCallbackUrl: string): Promise<void> {
-  const config = requireTwilioConfig(businessId);
+export async function startCallRecording(callSid: string, recordingStatusCallbackUrl: string): Promise<void> {
+  const config = requireTwilioConfig();
   const body = new URLSearchParams({
     RecordingStatusCallback: recordingStatusCallbackUrl,
     RecordingStatusCallbackEvent: "completed",
@@ -27,8 +27,8 @@ export async function startCallRecording(businessId: number, callSid: string, re
   });
 }
 
-export async function downloadRecording(businessId: number, recordingSid: string): Promise<Buffer> {
-  const config = requireTwilioConfig(businessId);
+export async function downloadRecording(recordingSid: string): Promise<Buffer> {
+  const config = requireTwilioConfig();
   const data = await twRequest<ArrayBuffer>(
     config,
     "GET",

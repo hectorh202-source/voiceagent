@@ -3,12 +3,15 @@ import { getTwilioConfig, type TwilioConfig } from "../settings/store";
 
 export class TwilioNotConfiguredError extends Error {
   constructor() {
-    super("Twilio is not configured for this business — add an Account SID and Auth Token under General settings.");
+    super("Twilio is not configured — add the master Account SID and Auth Token under Admin Settings.");
   }
 }
 
-export function requireTwilioConfig(businessId: number): TwilioConfig {
-  const config = getTwilioConfig(businessId);
+// Global, not per-business — there's a single master Twilio account this
+// platform manages, with individual phone numbers assigned to businesses for
+// forwarding (see settings/store.ts's getTwilioConfig).
+export function requireTwilioConfig(): TwilioConfig {
+  const config = getTwilioConfig();
   if (!config) throw new TwilioNotConfiguredError();
   return config;
 }

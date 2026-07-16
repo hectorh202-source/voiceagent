@@ -164,23 +164,24 @@ export interface TwilioConfig {
   authToken: string;
 }
 
-// Strict, both-fields-required view used only where a real Twilio API call
-// is actually being made (see twilio/httpClient.ts) — mirrors
-// getElevenLabsConfig's reasoning above. Each business supplies its own
-// Twilio credentials (confirmed via the Twilio Console: the Conference an
-// ElevenLabs transfer bridges into belongs to the business's own Twilio
-// account, not a shared one), so this is business-scoped rather than global.
-export function getTwilioConfig(businessId: number): TwilioConfig | null {
-  const accountSid = getBusinessSetting(businessId, "twilio.accountSid");
-  const authToken = getBusinessSetting(businessId, "twilio.authToken");
+// Global, not business-scoped — there's a single master Twilio account this
+// platform manages, with individual phone numbers assigned to businesses for
+// forwarding, rather than each business bringing its own Twilio account.
+// Lives in `settings` (encrypted, same as the SMTP credentials/session
+// secret) rather than `business_settings`. Strict/all-required, same
+// reasoning as getServiceTitanConfig/getSmtpConfig: a partial config should
+// behave exactly like no config rather than silently trying and failing.
+export function getTwilioConfig(): TwilioConfig | null {
+  const accountSid = getSetting("twilio.accountSid");
+  const authToken = getSetting("twilio.authToken");
   if (!accountSid || !authToken) return null;
   return { accountSid, authToken };
 }
 
-export function getRawTwilioSettings(businessId: number) {
+export function getRawTwilioSettings() {
   return {
-    accountSidSet: !!getBusinessSetting(businessId, "twilio.accountSid"),
-    authTokenSet: !!getBusinessSetting(businessId, "twilio.authToken"),
+    accountSidSet: !!getSetting("twilio.accountSid"),
+    authTokenSet: !!getSetting("twilio.authToken"),
   };
 }
 

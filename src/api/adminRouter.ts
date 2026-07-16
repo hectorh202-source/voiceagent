@@ -2,11 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireApiSession } from "./requireApiSession";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { emailSettingsSchema, testEmailSchema } from "./schemas";
+import { emailSettingsSchema, testEmailSchema, twilioSettingsSchema } from "./schemas";
 import { createBusiness, listBusinesses, getBusinessById } from "../db/businesses";
 import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
 import { getUserBusinessIds, setUserBusinesses, removeUserFromBusiness } from "../db/userBusinesses";
-import { getRawEmailSettings, setSetting, maybeSetSetting } from "../settings/store";
+import { getRawEmailSettings, getRawTwilioSettings, setSetting, maybeSetSetting } from "../settings/store";
 import { sendTestEmail, EmailNotConfiguredError } from "../settings/email";
 
 // The JSON counterpart of the global, server-rendered /settings business/user
@@ -184,4 +184,25 @@ adminRouter.post("/email-settings/test-email", async (req, res) => {
     console.error("Test email failed to send:", err);
     res.status(502).json({ error: "Failed to send — check your SMTP settings and try again." });
   }
+});
+
+// The single master Twilio account this platform manages — individual phone
+// numbers are assigned to businesses for forwarding, rather than each
+// business bringing its own Twilio account, so this is global (like
+// email-settings above) rather than living on any one business's General
+// Settings. See webhooks/twilio.ts for what these credentials are used for.
+adminRouter.get("/twilio-settings", (_req, res) => {
+  res.json(getRawTwilioSettings());
+});
+
+adminRouter.put("/twilio-settings", (req, res) => {
+  const parsed = twilioSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const body = parsed.data;
+  maybeSetSetting("twilio.accountSid", body.accountSid);
+  maybeSetSetting("twilio.authToken", body.authToken);
+  res.json({ success: true });
 });

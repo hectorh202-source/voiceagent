@@ -34,7 +34,7 @@ export async function handleTwilioCallStatus(req: Request, res: Response): Promi
     res.status(404).end();
     return;
   }
-  const config = getTwilioConfig(business.id);
+  const config = getTwilioConfig();
   if (!config) {
     res.status(404).end();
     return;
@@ -60,7 +60,7 @@ export async function handleTwilioCallStatus(req: Request, res: Response): Promi
 
   const recordingStatusCallbackUrl = `${req.protocol}://${req.get("host")}/b/${business.id}/webhooks/twilio/recording-status`;
   try {
-    await startCallRecording(business.id, callSid, recordingStatusCallbackUrl);
+    await startCallRecording(callSid, recordingStatusCallbackUrl);
   } catch (error) {
     console.error("Failed to start Twilio call recording:", error);
   }
@@ -77,7 +77,7 @@ export async function handleTwilioRecordingStatus(req: Request, res: Response): 
     res.status(404).end();
     return;
   }
-  const config = getTwilioConfig(business.id);
+  const config = getTwilioConfig();
   if (!config) {
     res.status(404).end();
     return;
@@ -98,7 +98,7 @@ export async function handleTwilioRecordingStatus(req: Request, res: Response): 
   }
 
   try {
-    const audio = await downloadRecording(business.id, recordingSid);
+    const audio = await downloadRecording(recordingSid);
     if (!fs.existsSync(recordingsDir)) {
       fs.mkdirSync(recordingsDir, { recursive: true });
     }

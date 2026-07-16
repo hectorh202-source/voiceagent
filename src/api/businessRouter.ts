@@ -27,7 +27,6 @@ import {
   getRawElevenLabsSettings,
   getRawServiceTitanSettings,
   getRawOperationalSettings,
-  getRawTwilioSettings,
   setBusinessSetting,
   maybeSetBusinessSetting,
   type ServiceTitanEnvironment,
@@ -366,7 +365,6 @@ apiBusinessRouter.get("/settings/general", requireApiPlatformAdmin, (req, res) =
     elevenLabs: getRawElevenLabsSettings(business.id),
     serviceTitan: getRawServiceTitanSettings(business.id),
     operational: getRawOperationalSettings(business.id),
-    twilio: getRawTwilioSettings(business.id),
   });
 });
 
@@ -399,8 +397,6 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.dashboardBaseUrl", body.dashboardBaseUrl?.replace(/\/+$/, ""));
   maybeSetBusinessSetting(business.id, "operational.toolWebhookSecret", body.toolWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.postCallWebhookSecret", body.postCallWebhookSecret);
-  maybeSetBusinessSetting(business.id, "twilio.accountSid", body.twilioAccountSid);
-  maybeSetBusinessSetting(business.id, "twilio.authToken", body.twilioAuthToken);
 
   res.json({ success: true });
 });
