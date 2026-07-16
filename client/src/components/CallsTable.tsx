@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { CallListRow } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
 import { formatDateTime, formatDuration, formatPhoneNumber } from "../lib/format";
@@ -17,6 +17,7 @@ export function CallsTable({
   onToggleSelectAll: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.conversationId));
 
   return (
@@ -41,7 +42,9 @@ export function CallsTable({
           <tr
             key={row.conversationId}
             className="clickable-row"
-            onClick={() => navigate(`/${businessId}/calls/${row.conversationId}`)}
+            onClick={() =>
+              navigate(`/${businessId}/calls/${row.conversationId}`, { state: { backgroundLocation: location } })
+            }
           >
             <td onClick={(e) => e.stopPropagation()}>
               <input

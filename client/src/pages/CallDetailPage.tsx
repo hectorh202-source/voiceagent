@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, type ReactNode } from "react";
+import { useParams, useNavigate, useLocation, type Location } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CallDetail, CallStatus, RecoveryStatus } from "../api/types";
@@ -129,8 +129,28 @@ function useCopy(): [(text: string) => void, string | null] {
 export function CallDetailPage() {
   const { businessId, conversationId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [copy, copied] = useCopy();
+
+  // Present only when reached via CallsTable.tsx's row click (see
+  // App.tsx's AuthenticatedRoutes) — a direct navigation/refresh/bookmark
+  // carries no such state, so this page renders as a normal full page in
+  // that case instead of a modal, rather than requiring the modal as the
+  // only way to reach a call.
+  const backgroundLocation = (location.state as { backgroundLocation?: Location } | null)?.backgroundLocation;
+  const isModal = !!backgroundLocation;
+
+  function closeModal() {
+    navigate(-1);
+  }
+
+  function goToCall(nextConversationId: string) {
+    navigate(`/${businessId}/calls/${nextConversationId}`, {
+      replace: true,
+      state: backgroundLocation ? { backgroundLocation } : undefined,
+    });
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["call", businessId, conversationId],
@@ -154,19 +174,34 @@ export function CallDetailPage() {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
 
-  if (isLoading) return <div className="centered-spinner">Loading…</div>;
-  if (!data) return <div className="centered-spinner">Call not found.</div>;
+  // As a modal, this whole page renders inside a fixed-position overlay
+  // (see App.tsx/CallsTable.tsx) instead of AppShell's padded .content
+  // area, so it doesn't need the -24px trick a normal full-page route uses
+  // to break out of that padding.
+  function wrapIfModal(content: ReactNode) {
+    if (!isModal) return content;
+    return (
+      <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal modal-large" onClick={(e) => e.stopPropagation()}>
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) return wrapIfModal(<div className="centered-spinner">Loading…</div>);
+  if (!data) return wrapIfModal(<div className="centered-spinner">Call not found.</div>);
 
   const publicCallUrl = `${window.location.origin}/b/${businessId}/calls/${conversationId}`;
 
-  return (
-    <div style={{ margin: "-24px" }}>
+  return wrapIfModal(
+    <div style={isModal ? undefined : { margin: "-24px" }}>
       <div className="call-detail-header">
         <div className="title">
           <PhoneIcon />
           Call Details
         </div>
-        <button className="icon-btn" onClick={() => navigate(`/${businessId}/calls`)} title="Close">
+        <button className="icon-btn" onClick={() => (isModal ? closeModal() : navigate(`/${businessId}/calls`))} title="Close">
           <CloseIcon />
         </button>
       </div>
@@ -388,7 +423,7 @@ export function CallDetailPage() {
                 key={call.conversationId}
                 className={`history-row ${call.conversationId === conversationId ? "current" : ""}`}
                 onClick={() => {
-                  if (call.conversationId !== conversationId) navigate(`/${businessId}/calls/${call.conversationId}`);
+                  if (call.conversationId !== conversationId) goToCall(call.conversationId);
                 }}
               >
                 <div className="history-row-top">
