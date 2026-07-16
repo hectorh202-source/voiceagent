@@ -10,7 +10,7 @@ Deeper write-ups on specific subsystems, for anyone picking up this project who 
 
 - **[SQLite storage system](sqlite-storage.md)** — the single local database: encrypted credential storage, per-user password hashing, call/tool logging, and persisted web sessions.
 - **[The `/settings` app](settings-app.md)** — global auth (multi-user login/brute-force protection) and the two per-business settings pages (Business Info, General) in the React admin dashboard (`client/`), talking to a JSON API instead of posting an HTML form.
-- **[Per-call record page & Calls dashboard](call-dashboard.md)** — the public, unauthenticated per-call page (`dashboard.laughslapper.com/b/:id/calls/:conversationId`: transcript, recording, summary, ServiceTitan link) plus the login-gated Calls/Call Metrics sections of the React admin dashboard (`/app/:businessId/calls`), including the Booked/Not Booked/Excused status, read/recovered tracking, and Call Reason tagging.
+- **[Per-call record page & Calls dashboard](call-dashboard.md)** — the public, unauthenticated per-call page (`dashboard.laughslapper.com/b/:id/calls/:conversationId`: transcript, recording, summary, ServiceTitan link) plus the login-gated Calls/Call Metrics sections of the React admin dashboard (`/app/:businessId/calls`), including the Booked/Not Booked/Excused status, read/recovered tracking, Call Reason tagging, and [human-portion call recording for transferred calls](call-dashboard.md#human-portion-recording-transferred-calls) (a single master Twilio account, a poller instead of a webhook, and a real outage worth reading about before touching Twilio Console again).
 
 ## Integrations (external systems this talks to)
 

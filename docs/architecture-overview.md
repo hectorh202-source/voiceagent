@@ -25,12 +25,12 @@ Four systems, three of which are entirely outside this codebase:
 
 | System | What it does | Who owns/configures it |
 |---|---|---|
-| **Twilio** | Owns the phone number, routes the call | Your Twilio account, but ElevenLabs configures its webhook automatically once you import the number |
+| **Twilio** | Owns the phone number, routes the call | A single master Twilio account this platform manages (not one per business — individual numbers are assigned to businesses for forwarding); ElevenLabs configures the call-answering webhook automatically once a number is imported into it |
 | **ElevenLabs Conversational AI** | Speech-to-text, the LLM conversation itself, text-to-speech, turn-taking, and the emergency call-transfer feature | ElevenLabs dashboard (agent config, system prompt, tools, phone numbers) — see [elevenlabs-tools.md](elevenlabs-tools.md) |
 | **This server** (this repo) | Exposes 3 webhook "tools" the agent calls mid-conversation; talks to ServiceTitan; stores credentials/logs — for potentially many businesses at once, each fully isolated | This codebase, deployed via Docker — see [deployment.md](deployment.md) |
 | **ServiceTitan** | The actual CRM: customer records, leads, technician capacity | Each business's own ServiceTitan tenant (sandbox or production) — see [servicetitan-integration.md](servicetitan-integration.md) |
 
-**The most important thing to understand**: this server never touches call audio, Twilio, or the conversation itself. It only receives clean JSON requests from ElevenLabs at specific moments the agent decides to use a "tool" — e.g. "let me look up this caller" or "let me file this as a lead." Everything about *how the call sounds and flows* lives in ElevenLabs' agent configuration, not in this code.
+**The most important thing to understand**: this server never controls *how a call sounds or flows* — that lives entirely in ElevenLabs' agent configuration. It only receives clean JSON requests from ElevenLabs at specific moments the agent decides to use a "tool" — e.g. "let me look up this caller" or "let me file this as a lead." **One exception**: this server does talk to Twilio directly, but only on the side, never to control call-answering — a background poller (`src/twilio/pollCalls.ts`) starts a Twilio Call recording for a transferred call already in progress, purely to capture the human portion of the conversation after the AI drops off. See [call-dashboard.md](call-dashboard.md#human-portion-recording-transferred-calls).
 
 **This is a multi-business platform, not a single-tenant app**: every business gets its own ElevenLabs agent, ServiceTitan tenant, and set of credentials, all identified by a `businessId` in the URL path (`/b/:businessId/...`). One shared login pool (platform users, see [settings-app.md](settings-app.md)) can manage every business from a single dashboard — there's no per-business login.
 
@@ -93,6 +93,9 @@ src/
                           # window only — every actual page now lives in client/)
   servicetitan/          # OAuth token caching + API client (customers, leads, jobs, capacity) —
                           # every function takes a businessId
+  twilio/                # single-master-account Twilio client, call recording start/download,
+                          # webhook signature verification, and pollCalls.ts's in-progress poller
+                          # — see call-dashboard.md#human-portion-recording-transferred-calls
   tools/                 # the Express routes ElevenLabs calls as webhook tools
   dashboard/              # public per-call page/audio route (views.ts, routes.ts), plus
                           # callDetails.ts/metrics.ts — pure data-assembly functions reused
@@ -104,7 +107,7 @@ src/
 Routers mounted in `index.ts`:
 - `/settings/*` — thin `302` redirects to the equivalent `/app/*` path (transition window only, so an already-sent password-reset email keeps working — see [settings-app.md](settings-app.md)).
 - `/api/*` — JSON API for the React SPA: `/api/auth/*` (login/setup/migrate/forgot+reset-password — no session required), `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Everything except `/api/auth/*` is protected by `requireApiSession` (session-cookie auth, JSON responses instead of redirects).
-- `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (the post-call webhook), and `/calls/:conversationId` + `/calls/:conversationId/audio` (the public call-detail page/audio stream — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
+- `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (ElevenLabs' post-call webhook, plus Twilio's call-status and recording-status webhooks — see [call-dashboard.md](call-dashboard.md#human-portion-recording-transferred-calls)), and `/calls/:conversationId` + `/calls/:conversationId/audio` + `/calls/:conversationId/human-audio` (the public call-detail page and its two audio streams — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
 - `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes, gated by `requireAppAccess` (lets the 5 pre-session auth paths — `login`/`setup`/`migrate`/`forgot-password`/`reset-password` — through unauthenticated, then enforces session + admin/business-access checks on everything else before the shell is ever sent — see [settings-app.md](settings-app.md#per-business-access-control--platform-admins-vs-scoped-users)).
 
 ## Deployment topology
