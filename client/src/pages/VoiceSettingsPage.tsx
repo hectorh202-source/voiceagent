@@ -19,6 +19,16 @@ const MODEL_INFO: Record<TtsModelId, { label: string; costHint: string }> = {
   eleven_v3_conversational: { label: "v3 Conversational", costHint: "Newest, most expressive, costs more per minute" },
 };
 
+// ElevenLabs' own documented defaults for an agent's conversation_config.tts
+// (confirmed against their real API reference) — matches the same fallback
+// values elevenlabs/agents.ts's getAgentVoiceConfig() already uses when a
+// field is absent. Doesn't touch the selected voice itself — there's no
+// sensible "default voice" to reset an already-configured agent to.
+const DEFAULT_MODEL_ID: TtsModelId = "eleven_flash_v2";
+const DEFAULT_STABILITY = 0.5;
+const DEFAULT_SPEED = 1;
+const DEFAULT_SIMILARITY_BOOST = 0.8;
+
 export function VoiceSettingsPage() {
   const { businessId } = useParams();
   const queryClient = useQueryClient();
@@ -126,6 +136,14 @@ export function VoiceSettingsPage() {
     testAudioMutation.mutate();
   }
 
+  function resetToDefaults() {
+    setModelId(DEFAULT_MODEL_ID);
+    setStability(DEFAULT_STABILITY);
+    setSpeed(DEFAULT_SPEED);
+    setSimilarityBoost(DEFAULT_SIMILARITY_BOOST);
+    setSavedMessage("");
+  }
+
   if (isLoading) return <div>Loading…</div>;
 
   if (isError || (data && !data.voiceConfig)) {
@@ -207,6 +225,9 @@ export function VoiceSettingsPage() {
         </div>
       </div>
 
+      <button type="button" className="btn" onClick={resetToDefaults} style={{ marginRight: 8 }}>
+        Reset to defaults
+      </button>
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !selectedVoice}>
         Save
       </button>
