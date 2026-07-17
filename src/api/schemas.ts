@@ -123,18 +123,21 @@ export const generalSettingsSchema = z.object({
 export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads"] as const;
 export const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "won", "lost"] as const;
 
-export const leadIntakeSchema = z
-  .object({
-    source: z.enum(["website_form", "website_chat"]),
-    name: z.string().min(1).optional(),
-    phone: z.string().min(1).optional(),
-    email: z.string().email().optional(),
-    message: z.string().optional(),
-    externalId: z.string().optional(),
-  })
-  .refine((b) => !!(b.name || b.phone || b.email), {
-    message: "At least one of name, phone, or email is required",
-  });
+// Deliberately no "at least one of name/phone/email required" check, and no
+// `.email()` format validation on email — a submission is never rejected
+// just because this app's field-matching came up empty or matched
+// something odd-shaped; the whole point of leadIntake.ts's fuzzy matching +
+// raw-dump fallback is that every real form submission gets stored no
+// matter how its fields are labeled, even if that means some fields land in
+// `message` instead of their own column.
+export const leadIntakeSchema = z.object({
+  source: z.enum(["website_form", "website_chat"]),
+  name: z.string().min(1).optional(),
+  phone: z.string().min(1).optional(),
+  email: z.string().min(1).optional(),
+  message: z.string().optional(),
+  externalId: z.string().optional(),
+});
 
 export const patchLeadsSchema = z.object({
   ids: z.array(z.number().int()).min(1),
