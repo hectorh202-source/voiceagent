@@ -38,6 +38,9 @@ export function AppShell() {
               <NavLink to={`/${businessId}/metrics`} className={navClass}>
                 Call Metrics
               </NavLink>
+              <NavLink to={`/${businessId}/leads`} className={navClass}>
+                Leads
+              </NavLink>
             </nav>
             <nav className="nav-group">
               <div className="nav-group-label">Voices</div>

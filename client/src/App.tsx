@@ -6,6 +6,8 @@ import { AppShell } from "./layout/AppShell";
 import { FirstBusinessRedirect } from "./pages/FirstBusinessRedirect";
 import { CallsListPage } from "./pages/CallsListPage";
 import { CallDetailPage } from "./pages/CallDetailPage";
+import { LeadsListPage } from "./pages/LeadsListPage";
+import { LeadDetailPage } from "./pages/LeadDetailPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { BusinessInfoSettingsPage } from "./pages/BusinessInfoSettingsPage";
 import { VoiceSettingsPage } from "./pages/VoiceSettingsPage";
@@ -43,6 +45,8 @@ function AuthenticatedRoutes() {
           <Route index element={<Navigate to="calls" replace />} />
           <Route path="calls" element={<CallsListPage />} />
           <Route path="calls/:conversationId" element={<CallDetailPage />} />
+          <Route path="leads" element={<LeadsListPage />} />
+          <Route path="leads/:leadId" element={<LeadDetailPage />} />
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="settings/business-info" element={<BusinessInfoSettingsPage />} />
           <Route path="settings/voices" element={<VoiceSettingsPage />} />

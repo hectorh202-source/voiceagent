@@ -86,7 +86,8 @@ src/
                           # pre-session auth (authRouter.ts — login/setup/migrate/
                           # forgot+reset-password, no session required), requireApiSession
                           # (401-JSON session check used by every other API route)
-  db/                    # SQLite connection, schema, businesses.ts, call-log helpers
+  db/                    # SQLite connection, schema, businesses.ts, call-log helpers,
+                          # inboundLeads.ts (Leads inbox — see leads-inbox.md)
   settings/              # encrypted settings store (global + per-business), the auth/
                           # rate-limiting logic authRouter.ts calls into, plus thin
                           # /settings/* redirects to their /app/* equivalents (transition
@@ -107,7 +108,7 @@ src/
 Routers mounted in `index.ts`:
 - `/settings/*` — thin `302` redirects to the equivalent `/app/*` path (transition window only, so an already-sent password-reset email keeps working — see [settings-app.md](settings-app.md)).
 - `/api/*` — JSON API for the React SPA: `/api/auth/*` (login/setup/migrate/forgot+reset-password — no session required), `/api/session`, `/api/businesses`, and `/api/businesses/:businessId/*` (calls, metrics, settings). Everything except `/api/auth/*` is protected by `requireApiSession` (session-cookie auth, JSON responses instead of redirects).
-- `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (ElevenLabs' post-call webhook, plus Twilio's call-status and recording-status webhooks — see [call-dashboard.md](call-dashboard.md#human-portion-recording-transferred-calls)), and `/calls/:conversationId` + `/calls/:conversationId/audio` + `/calls/:conversationId/human-audio` (the public call-detail page and its two audio streams — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
+- `/b/:businessId/*` — everything scoped to one business that ElevenLabs/webhooks talk to: `/tools/*` (ElevenLabs webhook tools, protected by a per-business shared-secret header), `/webhooks/*` (ElevenLabs' post-call webhook, Twilio's call-status/recording-status webhooks — see [call-dashboard.md](call-dashboard.md#human-portion-recording-transferred-calls) — and the generic Leads-inbox intake webhook, same shared-secret pattern, see [leads-inbox.md](leads-inbox.md)), and `/calls/:conversationId` + `/calls/:conversationId/audio` + `/calls/:conversationId/human-audio` (the public call-detail page and its two audio streams — unauthenticated by design, see [call-dashboard.md](call-dashboard.md)). `resolveBusiness` runs first for all of these and 404s immediately on an invalid/nonexistent business ID.
 - `/app/*` — the built React SPA, served as static files (`express.static`) with a catch-all fallback to `index.html` for client-side routes, gated by `requireAppAccess` (lets the 5 pre-session auth paths — `login`/`setup`/`migrate`/`forgot-password`/`reset-password` — through unauthenticated, then enforces session + admin/business-access checks on everything else before the shell is ever sent — see [settings-app.md](settings-app.md#per-business-access-control--platform-admins-vs-scoped-users)).
 
 ## Deployment topology

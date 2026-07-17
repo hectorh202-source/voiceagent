@@ -27,6 +27,7 @@ export function GeneralSettingsPage() {
   const [toolWebhookSecret, setToolWebhookSecret] = useState("");
   const [postCallWebhookSecret, setPostCallWebhookSecret] = useState("");
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("");
+  const [leadIntakeWebhookSecret, setLeadIntakeWebhookSecret] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -92,6 +93,7 @@ export function GeneralSettingsPage() {
         toolWebhookSecret: toolWebhookSecret || undefined,
         postCallWebhookSecret: postCallWebhookSecret || undefined,
         twilioPhoneNumber: twilioPhoneNumber || undefined,
+        leadIntakeWebhookSecret: leadIntakeWebhookSecret || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -101,6 +103,7 @@ export function GeneralSettingsPage() {
       setAppKey("");
       setToolWebhookSecret("");
       setPostCallWebhookSecret("");
+      setLeadIntakeWebhookSecret("");
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -109,6 +112,15 @@ export function GeneralSettingsPage() {
     mutationFn: () => api.post<{ secret: string }>(`/api/businesses/${businessId}/settings/general/generate-secret`),
     onSuccess: (res) => {
       setMessage(`New tool webhook secret: ${res.secret} — copy it into ElevenLabs now, it will be masked after you leave this page.`);
+      queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
+    },
+  });
+
+  const generateLeadIntakeSecretMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ secret: string }>(`/api/businesses/${businessId}/settings/general/generate-lead-intake-secret`),
+    onSuccess: (res) => {
+      setMessage(`New lead intake secret: ${res.secret} — copy it into whatever sends form/chat leads now, it will be masked after you leave this page.`);
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -213,6 +225,30 @@ export function GeneralSettingsPage() {
             This business's assigned number under the master Twilio account (configured platform-wide under Admin
             Settings). Used to record the human portion of a transferred call — matches this number against calls
             currently in progress so recording can start while the call is still live.
+          </div>
+        </div>
+        <div className="form-row">
+          <label>
+            Lead intake webhook secret{" "}
+            {data.operational.leadIntakeWebhookSecretSet && <span className="muted">(set — leave blank to keep)</span>}
+          </label>
+          <input
+            type="password"
+            value={leadIntakeWebhookSecret}
+            onChange={(e) => setLeadIntakeWebhookSecret(e.target.value)}
+          />
+          <div className="form-hint">
+            <button className="link-btn" onClick={() => generateLeadIntakeSecretMutation.mutate()}>
+              Generate a new secret
+            </button>
+          </div>
+          <div className="form-hint">
+            Have this business's website form or chat widget POST leads to:
+            <br />
+            <code>{`${window.location.origin}/b/${businessId}/webhooks/leads/inbound`}</code>
+            <br />
+            with header <code>X-Lead-Intake-Secret: &lt;the secret above&gt;</code> and JSON body{" "}
+            <code>{`{ source: "website_form" | "website_chat", name?, phone?, email?, message? }`}</code>.
           </div>
         </div>
       </div>

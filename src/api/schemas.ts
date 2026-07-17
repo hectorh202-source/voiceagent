@@ -109,6 +109,38 @@ export const generalSettingsSchema = z.object({
   toolWebhookSecret: z.string().optional(),
   postCallWebhookSecret: z.string().optional(),
   twilioPhoneNumber: z.string().optional(),
+  leadIntakeWebhookSecret: z.string().optional(),
+});
+
+// "Lead" already means a ServiceTitan CRM Lead elsewhere in this codebase
+// (servicetitan/leads.ts, tools/createLead.ts) — these are a distinct
+// concept, raw inbound inquiries from a business's own lead sources
+// (website forms/chat today, Facebook/Google ads leads later), tracked in
+// their own inbox and never auto-pushed to ServiceTitan. facebook_ads/
+// google_ads exist here so the DB/API already accommodate them once that
+// ingestion is built — leadIntakeSchema below deliberately only accepts the
+// two sources this generic webhook actually handles.
+export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads"] as const;
+export const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "won", "lost"] as const;
+
+export const leadIntakeSchema = z
+  .object({
+    source: z.enum(["website_form", "website_chat"]),
+    name: z.string().min(1).optional(),
+    phone: z.string().min(1).optional(),
+    email: z.string().email().optional(),
+    message: z.string().optional(),
+    externalId: z.string().optional(),
+  })
+  .refine((b) => !!(b.name || b.phone || b.email), {
+    message: "At least one of name, phone, or email is required",
+  });
+
+export const patchLeadsSchema = z.object({
+  ids: z.array(z.number().int()).min(1),
+  isRead: z.boolean().optional(),
+  status: z.enum(LEAD_STATUS_VALUES).optional(),
+  internalNotes: z.string().nullable().optional(),
 });
 
 // The master Twilio account this platform manages — global, not per-business

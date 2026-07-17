@@ -1,0 +1,74 @@
+# Leads inbox
+
+A unified inbox — `https://<your-domain>/app/:businessId/leads` — aggregating a business's raw inbound leads from every one of its own lead sources (website contact forms, website chat widgets, and eventually Facebook Lead Ads / Google Ads lead forms) into one place, with a manual triage pipeline (status stages, read/unread, internal notes).
+
+Scoped to one business at a time, same as every other section of this app — see [architecture-overview.md](architecture-overview.md) for the platform's multi-business model.
+
+## Not a ServiceTitan Lead
+
+**"Lead" already means a ServiceTitan CRM Lead everywhere else in this codebase** (`servicetitan/leads.ts`, `tools/createLead.ts` — the object the AI phone agent creates via `create_lead`). This is a deliberately distinct concept — a raw, unqualified inbound inquiry from an ad or a website form — and every identifier in the DB/API/client uses `inbound_leads`/`InboundLead*`, never bare "Lead," to keep the two unambiguous. (The nav label and page title are still just "Leads" — that's the user-facing term.)
+
+**Dashboard-only, by design**: a lead landing here never automatically creates a ServiceTitan Lead/Job. This is explicitly a triage inbox, not a booking pipeline — staff decide manually, later, whether a given inbound lead is worth pursuing in ServiceTitan at all.
+
+## Schema — `inbound_leads`
+
+```sql
+CREATE TABLE inbound_leads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_id INTEGER NOT NULL REFERENCES businesses(id),
+  source TEXT NOT NULL,
+  external_id TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  name TEXT,
+  phone TEXT,
+  email TEXT,
+  message TEXT,
+  raw_payload_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  internal_notes TEXT
+);
+```
+
+`source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
+
+`name`/`phone`/`email`/`message`/`internal_notes` are encrypted at rest (`encryptNullable`/`decryptNullable`, same as equivalent PII fields on `call_log`/`elevenlabs_calls`); `raw_payload_json` (`NOT NULL`, the full original webhook body) is encrypted via `encryptField`/`decryptField` — kept for audit, same reasoning as `elevenlabs_calls.raw_payload_json`, and never returned by the API (`GET /leads/:id` excludes it, same as `GET /calls/:conversationId` excluding its own `raw_payload_json`). All of this lives in `src/db/inboundLeads.ts`, structured 1:1 with `src/db/callRecords.ts`.
+
+**Dedup**: `external_id` plus a partial unique index (`(business_id, source, external_id) WHERE external_id IS NOT NULL`) guards against a source that redelivers the same submission — relevant for Facebook/Google webhooks (not built yet), irrelevant for today's website-form/chat submissions, which have no natural retry and no `external_id`, so every one of those is simply its own row. `insertInboundLead()` uses `ON CONFLICT ... DO NOTHING` when `external_id` is present, so a genuine re-delivery never creates a duplicate row or clobbers anything a human has already triaged.
+
+## The generic webhook — website forms + chat
+
+The only source with real ingestion built so far. A business's website contact form or chat widget — whatever tool that happens to be, since this deliberately doesn't integrate with any specific vendor — POSTs directly to:
+
+```
+POST /b/:businessId/webhooks/leads/inbound
+Header: X-Lead-Intake-Secret: <secret from that business's General Settings>
+Body:   { "source": "website_form" | "website_chat", "name"?, "phone"?, "email"?, "message"?, "externalId"? }
+```
+
+At least one of `name`/`phone`/`email` is required; everything else optional. Auth is a **plain shared secret** (not HMAC) via `src/middleware/verifyLeadIntakeSecret.ts` — byte-for-byte the same shape as the existing ElevenLabs tool webhooks' `verifyToolSecret.ts` (`crypto.timingSafeEqual` after a length check, `503` if unset, `401` if missing/wrong), chosen over a signing scheme because this endpoint is meant to be pasted into whatever simple form-builder or chat tool a business already uses, not a platform with its own HMAC contract like ElevenLabs or Twilio.
+
+The secret lives at `operational.leadIntakeWebhookSecret` (business-scoped, encrypted), configured/generated on that business's own General Settings page — same "leave blank to keep," "Generate a new secret" pattern as the existing tool/post-call webhook secrets there.
+
+## API — `src/api/businessRouter.ts`
+
+- `GET /leads` — keyset-paginated (same cursor pattern as `GET /calls`, just a `{receivedAt, id: number}` pair since lead ids are numeric), filterable by `source`/`status`/`isRead`/`from`/`to`.
+- `PATCH /leads` — `{ ids: number[], isRead?, status?, internalNotes? }`, bulk-updates via `updateInboundLead()`.
+- `GET /leads/:id` — detail view (never includes `raw_payload_json`).
+
+## Client
+
+`client/src/pages/LeadsListPage.tsx` mirrors `CallsListPage.tsx` exactly (URL-synced filters, `useInfiniteQuery` keyset pagination, bulk-select + bulk actions, an "Export CSV" button that drains every remaining page first) via its own small parallel components (`LeadsTable`/`LeadsFiltersPanel`/`LeadsBulkActionBar`) rather than generalizing the Calls-specific ones, which are hardcoded to Calls' exact fields with no generic prop surface. `client/src/pages/LeadDetailPage.tsx` mirrors `CallDetailPage.tsx`'s status-dropdown + three-state Internal Notes editor (no-note / editing / saved), as a simple full-page route — no modal-over-list, unlike Calls' detail page, since there's no established need for that complexity here yet.
+
+## Deferred — Facebook Lead Ads and Google Ads
+
+Both are real, separate integrations, not designed in detail here — the schema already accommodates either as a future `source` value with zero migration needed:
+
+- **Facebook Lead Ads** — needs a Facebook App + Page connection per business, a `leadgen` webhook subscription, and a long-lived Page access token stored per business, plus Facebook App Review before it can run for real businesses.
+- **Google Ads leads** — needs an OAuth client + per-business refresh token, then either a Lead Form Extension webhook (Google-side push, requires linking the form) or polling the Google Ads API for form submissions.
+
+Whenever either gets built, it writes to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`/`"google_ads"`), not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
+
+## Verified
+
+A scratch round-trip against the real dev DB (insert → confirmed encrypted at rest, differing from plaintext → list/get/patch all correct → cleaned up), and the full webhook auth/validation matrix via real HTTP requests against a running dev server: missing header → `401`, wrong secret → `401`, unset secret → `503`, valid request → `201` (and the row landed, confirmed via a direct DB read), missing name/phone/email → `400`, and a `source` outside `website_form`/`website_chat` (e.g. `facebook_ads`) correctly rejected by this endpoint → `400`.

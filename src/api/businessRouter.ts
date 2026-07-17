@@ -4,13 +4,15 @@ import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
 import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { patchCallsSchema, businessInfoSchema, generalSettingsSchema } from "./schemas";
+import { patchCallsSchema, businessInfoSchema, generalSettingsSchema, patchLeadsSchema } from "./schemas";
 import {
   listCallRecords,
   getCallRecord,
   updateCallStatus,
 } from "../db/callRecords";
 import type { CallDateRange, CallCursor } from "../db/callRecords";
+import { listInboundLeads, getInboundLeadById, updateInboundLead } from "../db/inboundLeads";
+import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import {
   isEndedEarly,
@@ -217,6 +219,101 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
   });
 });
 
+// One page of the Leads inbox — same page size/keyset-pagination reasoning
+// as CALLS_PAGE_SIZE above.
+const LEADS_PAGE_SIZE = 50;
+
+// Same opaque-cursor idea as encodeCursor/decodeCursor above, just for a
+// numeric id instead of a string conversationId — kept as its own small
+// pair rather than generalizing the existing one, since the two resources'
+// cursors have different id types.
+function encodeLeadCursor(cursor: InboundLeadCursor): string {
+  return Buffer.from(`${cursor.receivedAt}|${cursor.id}`, "utf8").toString("base64url");
+}
+
+function decodeLeadCursor(raw: string): InboundLeadCursor | undefined {
+  try {
+    const [receivedAt, idStr] = Buffer.from(raw, "base64url").toString("utf8").split("|");
+    const id = Number(idStr);
+    if (!receivedAt || !Number.isInteger(id)) return undefined;
+    return { receivedAt, id };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseLeadRow(record: ReturnType<typeof listInboundLeads>[number]) {
+  return {
+    id: record.id,
+    source: record.source,
+    receivedAt: record.received_at,
+    name: record.name,
+    phone: record.phone,
+    email: record.email,
+    message: record.message,
+    status: record.status,
+    isRead: !!record.is_read,
+  };
+}
+
+apiBusinessRouter.get("/leads", (req, res) => {
+  const business = req.business!;
+  const query = req.query as Record<string, string | undefined>;
+
+  const filters: InboundLeadFilters = {
+    from: query.from || undefined,
+    to: query.to || undefined,
+    before: query.cursor ? decodeLeadCursor(query.cursor) : undefined,
+    source: query.source || undefined,
+    status: query.status || undefined,
+    isRead: query.isRead !== undefined ? query.isRead === "1" : undefined,
+  };
+
+  const records = listInboundLeads(business.id, LEADS_PAGE_SIZE, filters);
+  const rows = records.map(parseLeadRow);
+
+  const lastRecord = records[records.length - 1];
+  const nextCursor =
+    records.length === LEADS_PAGE_SIZE && lastRecord
+      ? encodeLeadCursor({ receivedAt: lastRecord.received_at, id: lastRecord.id })
+      : null;
+
+  res.json({ leads: rows, nextCursor });
+});
+
+apiBusinessRouter.patch("/leads", (req, res) => {
+  const business = req.business!;
+  const parsed = patchLeadsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const { ids, isRead, status, internalNotes } = parsed.data;
+  updateInboundLead(business.id, ids, { isRead, status, internalNotes });
+  res.json({ success: true });
+});
+
+apiBusinessRouter.get("/leads/:id", (req, res) => {
+  const business = req.business!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  const record = getInboundLeadById(business.id, id);
+  if (!record) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  // raw_payload_json is deliberately never exposed here — internal/audit
+  // only, same as GET /calls/:conversationId never exposing its own
+  // raw_payload_json.
+  res.json({
+    ...parseLeadRow(record),
+    internalNotes: record.internal_notes,
+  });
+});
+
 apiBusinessRouter.get("/metrics", (req, res) => {
   const business = req.business!;
   const query = req.query as Record<string, string | undefined>;
@@ -398,6 +495,7 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.toolWebhookSecret", body.toolWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.postCallWebhookSecret", body.postCallWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.twilioPhoneNumber", body.twilioPhoneNumber);
+  maybeSetBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", body.leadIntakeWebhookSecret);
 
   res.json({ success: true });
 });
@@ -406,5 +504,12 @@ apiBusinessRouter.post("/settings/general/generate-secret", requireApiPlatformAd
   const business = req.business!;
   const secret = crypto.randomBytes(24).toString("hex");
   setBusinessSetting(business.id, "operational.toolWebhookSecret", secret);
+  res.json({ secret });
+});
+
+apiBusinessRouter.post("/settings/general/generate-lead-intake-secret", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const secret = crypto.randomBytes(24).toString("hex");
+  setBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", secret);
   res.json({ secret });
 });

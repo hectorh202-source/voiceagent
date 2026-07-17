@@ -262,6 +262,7 @@ export function getRawOperationalSettings(businessId: number) {
     // business, since the master account has no other per-business number
     // mapping stored anywhere.
     twilioPhoneNumber: getBusinessSetting(businessId, "operational.twilioPhoneNumber") ?? "",
+    leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
   };
 }
 

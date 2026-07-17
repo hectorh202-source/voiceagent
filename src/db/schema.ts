@@ -124,5 +124,40 @@ export function bootstrapSchema(db: DatabaseSync): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (business_id, call_sid)
     );
+
+    -- "Lead" already means a ServiceTitan CRM Lead elsewhere in this codebase
+    -- (servicetitan/leads.ts, tools/createLead.ts) — this is a deliberately
+    -- distinct concept, a raw inbound inquiry from a business's own lead
+    -- sources (website forms, website chat, and eventually Facebook/Google
+    -- ads leads), tracked here only, never auto-pushed to ServiceTitan.
+    -- source/status are unconstrained TEXT (validated at the Zod layer
+    -- only, same reasoning as call_reason/status_override elsewhere) so a
+    -- new source or status value never needs a migration.
+    CREATE TABLE IF NOT EXISTS inbound_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      source TEXT NOT NULL,
+      external_id TEXT,
+      received_at TEXT NOT NULL DEFAULT (datetime('now')),
+      name TEXT,
+      phone TEXT,
+      email TEXT,
+      message TEXT,
+      raw_payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new',
+      is_read INTEGER NOT NULL DEFAULT 0,
+      internal_notes TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_inbound_leads_business_received ON inbound_leads(business_id, received_at);
+
+    -- Dedup guard for sources that redeliver (Facebook/Google webhooks
+    -- retry on failure) — today's website-form/chat submissions have no
+    -- external_id and no natural retry, so every one of those is simply its
+    -- own row. A partial index costs nothing for the sources that don't use
+    -- it and means Facebook/Google ingestion, whenever it's built, never
+    -- needs a schema change to get idempotency.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_leads_source_external
+      ON inbound_leads(business_id, source, external_id) WHERE external_id IS NOT NULL;
   `);
 }

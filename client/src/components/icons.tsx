@@ -200,3 +200,12 @@ export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function MailIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 6-10 7L2 6" />
+    </Icon>
+  );
+}
