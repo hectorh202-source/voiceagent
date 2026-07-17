@@ -30,6 +30,7 @@ import {
   getRawElevenLabsSettings,
   getRawServiceTitanSettings,
   getRawOperationalSettings,
+  getRawGoogleAdsBusinessSettings,
   setBusinessSetting,
   maybeSetBusinessSetting,
   type ServiceTitanEnvironment,
@@ -473,6 +474,7 @@ apiBusinessRouter.get("/settings/general", requireApiPlatformAdmin, (req, res) =
     elevenLabs: getRawElevenLabsSettings(business.id),
     serviceTitan: getRawServiceTitanSettings(business.id),
     operational: getRawOperationalSettings(business.id),
+    googleAds: getRawGoogleAdsBusinessSettings(business.id),
   });
 });
 
@@ -507,6 +509,8 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.postCallWebhookSecret", body.postCallWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.twilioPhoneNumber", body.twilioPhoneNumber);
   maybeSetBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", body.leadIntakeWebhookSecret);
+  maybeSetBusinessSetting(business.id, "googleAds.customerId", body.googleAdsCustomerId);
+  maybeSetBusinessSetting(business.id, "googleAds.refreshToken", body.googleAdsRefreshToken);
 
   res.json({ success: true });
 });

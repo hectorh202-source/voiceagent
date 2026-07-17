@@ -44,15 +44,27 @@ export interface InboundLeadEntry {
   rawPayloadJson: string;
 }
 
-// external_id is only ever present for a source that redelivers (Facebook/
-// Google, not yet built) — DO NOTHING on conflict rather than DO UPDATE,
-// since a re-sent duplicate shouldn't create a second row or overwrite
-// anything a human may have already triaged. Must repeat the partial
-// index's WHERE clause in the conflict target for SQLite to match it.
+// external_id is only ever present for a source that redelivers/re-polls the
+// same item (Google Local Services Ads' polling ingestion is the first real
+// one). DO UPDATE the content columns on conflict, not DO NOTHING — a
+// polled source's content can legitimately change after the first sighting
+// (an LSA message thread receives new messages under the same lead
+// resource; a phone call's billed duration can settle after the call ends),
+// so silently ignoring every re-poll would drop real updates forever.
+// Mirrors db/callRecords.ts's upsertCallTranscription() exactly: content
+// columns update, staff-set triage columns (status/is_read/internal_notes)
+// are deliberately excluded from the SET clause so a re-poll can never
+// clobber a human's triage work. Must repeat the partial index's WHERE
+// clause in the conflict target for SQLite to match it.
 const insertWithExternalIdStmt = db.prepare(`
   INSERT INTO inbound_leads (business_id, source, external_id, name, phone, email, message, raw_payload_json)
   VALUES (@businessId, @source, @externalId, @name, @phone, @email, @message, @rawPayloadJson)
-  ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
+  ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+    name = excluded.name,
+    phone = excluded.phone,
+    email = excluded.email,
+    message = excluded.message,
+    raw_payload_json = excluded.raw_payload_json
 `);
 
 const insertWithoutExternalIdStmt = db.prepare(`

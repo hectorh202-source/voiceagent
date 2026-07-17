@@ -2,11 +2,17 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireApiSession } from "./requireApiSession";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { emailSettingsSchema, testEmailSchema, twilioSettingsSchema } from "./schemas";
+import { emailSettingsSchema, testEmailSchema, twilioSettingsSchema, googleAdsSettingsSchema } from "./schemas";
 import { createBusiness, listBusinesses, getBusinessById } from "../db/businesses";
 import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
 import { getUserBusinessIds, setUserBusinesses, removeUserFromBusiness } from "../db/userBusinesses";
-import { getRawEmailSettings, getRawTwilioSettings, setSetting, maybeSetSetting } from "../settings/store";
+import {
+  getRawEmailSettings,
+  getRawTwilioSettings,
+  getRawGoogleAdsSettings,
+  setSetting,
+  maybeSetSetting,
+} from "../settings/store";
 import { sendTestEmail, EmailNotConfiguredError } from "../settings/email";
 
 // The JSON counterpart of the global, server-rendered /settings business/user
@@ -204,5 +210,28 @@ adminRouter.put("/twilio-settings", (req, res) => {
   const body = parsed.data;
   maybeSetSetting("twilio.accountSid", body.accountSid);
   maybeSetSetting("twilio.authToken", body.authToken);
+  res.json({ success: true });
+});
+
+// The OAuth Client ID/Secret + Developer Token this platform's Google Ads
+// API access is registered under — global for the same reason Twilio's
+// master account is global (one shared piece of infrastructure), even
+// though each business's own refreshToken/customerId (below, on that
+// business's General Settings page) is genuinely per-business. See
+// docs/google-lsa-leads.md.
+adminRouter.get("/google-ads-settings", (_req, res) => {
+  res.json(getRawGoogleAdsSettings());
+});
+
+adminRouter.put("/google-ads-settings", (req, res) => {
+  const parsed = googleAdsSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const body = parsed.data;
+  maybeSetSetting("googleAds.developerToken", body.developerToken);
+  maybeSetSetting("googleAds.clientId", body.clientId);
+  maybeSetSetting("googleAds.clientSecret", body.clientSecret);
   res.json({ success: true });
 });

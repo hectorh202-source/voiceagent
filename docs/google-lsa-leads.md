@@ -1,0 +1,55 @@
+# Google Local Services Ads (LSA) leads
+
+Google Local Services Ads produces two kinds of inbound inquiries — `MESSAGE` (a text inquiry through the ad) and `PHONE_CALL` (a tracked, billed phone call) — for a business running LSA campaigns. This is the third lead source feeding the [Leads inbox](leads-inbox.md), after the generic website form/chat webhook. Unlike that webhook, Google's API is **poll-based, not push** — there's no true webhook for LSA leads, so this is (once built) a periodic poller, the same shape as [the Twilio recording poller](call-dashboard.md#why-polling-not-a-webhook--a-real-incident-and-what-was-actually-tried) rather than an inbound route.
+
+**Status as of this writing: Stage 1 (settings/schema plumbing) only.** The actual polling/ingestion code (`src/googleLsa/`) is intentionally not built yet — see Sequencing below.
+
+## Sequencing — why this is split into two stages
+
+Every other integration in this codebase (ServiceTitan, ElevenLabs, Twilio) could be verified against real data with nothing more than an already-configured account and a scratch script. Google's Local Services Ads API is different: it requires real, manual setup on Google's side — a Developer Token (needs Google's approval), an OAuth 2.0 Client ID/Secret, and a manually-obtained refresh token — before *any* real API call can be made at all, let alone before the real JSON shape of a lead can be seen. Writing field-mapping code against guessed shapes, the way some earlier integrations' first drafts did, isn't viable here — there's no account to test against until the user completes that setup.
+
+So this was split:
+- **Stage 1 (done)** — everything that doesn't depend on Google's real API responses: credential storage (global OAuth app identity + per-business refresh token/customer ID), the `google_lsa` lead source, the `inbound_leads` upsert semantics a polling source needs, and the settings UI to store real credentials once obtained.
+- **Stage 0 (the user's turn, not yet done)** — manually obtaining a Developer Token, OAuth Client ID/Secret, and a refresh token for TitanZ's Google Ads account, then running a standalone diagnostic script against the real API to resolve three unknowns (below) before Stage 2 gets written.
+- **Stage 2 (blocked on Stage 0)** — `src/googleLsa/{authClient,httpClient,leads,pollLeads}.ts`, field-mapped against Stage 0's real findings, wired into `src/index.ts`'s poll loop.
+
+### The three unknowns Stage 0 needs to resolve
+
+1. **Does a Developer Token issued against a standalone (non-MCC) account like TitanZ's actually authenticate against the production API?** Google's docs describe developer tokens as obtained from a manager account's API Center — unconfirmed whether a standalone account's API Center offers the same thing, or whether a `login-customer-id` header pointing at some other (manager) account is required regardless of whose leads are being queried.
+2. **The real JSON shape** of the `local_services_lead` and `local_services_lead_conversation` resources returned by a GAQL (Google Ads Query Language) search — field names/nesting, and specifically whether `contact_details` is actually populated (one unconfirmed developer-community report claims it comes back empty).
+3. **Mutability** — does the same `local_services_lead` resource change across repeated polls (an ongoing message thread getting new messages under the same lead ID, or billing fields settling after a call), or does new content always arrive as a new, distinct resource ID? This is what decided the `insertInboundLead()` upsert change below — built now, ahead of the answer, because "assume mutable, upgrade to a real upsert" is a safe default in either case, while discovering mutability *after* shipping a dedup-only insert would mean silently dropped follow-up messages.
+
+## Credential storage — a third shape
+
+Two credential shapes already exist in this codebase, and neither fits cleanly:
+- **Twilio** is pure-global — one master account shared by every business, no per-business identity at all (see [call-dashboard.md](call-dashboard.md#one-master-twilio-account-not-one-per-business), a design mistake corrected once already this project).
+- **ServiceTitan** is pure-per-business — every credential, including Client ID/Secret, is separate per tenant.
+
+Google's OAuth model is neither: one registered OAuth "app identity" (Client ID/Secret, plus the Developer Token that identifies this platform's use of the Google Ads API as a whole) can mint access tokens against many separate end-users' own Google Ads accounts. So the split here is:
+
+- **Global** (`settings` table, `googleAds.developerToken`/`clientId`/`clientSecret`) — this platform's own registered app identity. Configured once on the platform-wide Admin Settings page (`getGoogleAdsPlatformConfig()`/`getRawGoogleAdsSettings()` in `src/settings/store.ts`, `GET`/`PUT /google-ads-settings` in `src/api/adminRouter.ts`), same encrypted-`settings`-table pattern as Twilio's/SMTP's credentials.
+- **Per-business** (`business_settings` table, `googleAds.customerId`/`refreshToken`) — each business's own separate Google Ads account (its 10-digit Customer ID) and its own refresh token authorizing this platform's app identity to act against that account. Configured on that business's own General Settings page, same "leave blank to keep" pattern as its ElevenLabs API key.
+
+Both are combined behind one strict getter, `getGoogleLsaConfig(businessId)` in `src/settings/store.ts` — callers never need to know or care which table a given field actually lives in, matching how every other integration's config getter already works. Keyed `googleAds.*`, not `googleLsa.*`, in both tables — these are Google-Ads-account-level credentials, not LSA-product-specific, so a future non-LSA Google Ads integration for the same business could reuse the same stored refresh token/customer ID without a new settings section.
+
+If Stage 0 finds a `login-customer-id` header (pointing at some manager account) is required even for a standalone account, that gets added as a sibling field then — not guessed at now.
+
+**No in-app OAuth "Connect with Google" flow.** Matching how ServiceTitan/ElevenLabs credentials are handled everywhere else in this app, the refresh token is manually obtained (via Google's OAuth 2.0 Playground, during Stage 0) and pasted into the settings UI — not a self-service consent-screen flow. That could be built later if this expands beyond one or two businesses, but isn't needed to get TitanZ working first.
+
+## `inbound_leads` upsert semantics for a polling source
+
+Every lead source built before this one (the website form/chat webhook) is a one-shot submission — a given `external_id` is either new or a harmless exact redelivery, so the original `insertInboundLead()` used `ON CONFLICT ... DO NOTHING`. A polling source is different: the *same* `local_services_lead` resource can legitimately be seen again on a later poll with genuinely new content (a message thread's later reply, a call's billing data settling) — silently ignoring it on conflict would mean losing real content, not just no-op'ing a redundant delivery.
+
+`insertInboundLead()` was upgraded to `ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET` on the content columns only — `name`, `phone`, `email`, `message`, `raw_payload_json` — explicitly **excluding** the staff-set triage columns (`status`, `is_read`, `internal_notes`), mirroring `upsertCallTranscription()`'s exact reasoning ([call-dashboard.md](call-dashboard.md#new-staff-set-columns--readunread-recoveredNot-recovered-the-bookabilitycall-reason-overrides-and-internal-notes)): a redelivered/re-polled row should refresh its own content, but must never silently reset something a human already triaged. This is a safe, backward-compatible change regardless of what Stage 0 finds — no source that's actually live today ever supplies `external_id`, so nothing currently shipped changes behavior; it only starts mattering once a polling source (this one) exists.
+
+## Deferred design (to be written once Stage 0 reports back, not guessed now)
+
+- `src/googleLsa/authClient.ts` — refresh-token → access-token exchange, cached per business, mirroring `servicetitan/authClient.ts`'s expiry-minus-60s cache.
+- `src/googleLsa/httpClient.ts` — a thin GAQL search wrapper via plain `axios` (`POST https://googleads.googleapis.com/v{version}/customers/{customerId}/googleAds:search`), not the official `google-ads-api`/`google-ads-node` SDK (gRPC/protobuf, opinionated config) — consistent with how every other integration in this codebase (ElevenLabs/Twilio/ServiceTitan) is plain REST via axios, and Google documents a genuine REST surface for exactly this.
+- `src/googleLsa/leads.ts` — field-mapping from the real (once-confirmed) `local_services_lead`/`local_services_lead_conversation` shape into `insertInboundLead()`'s input shape, `source: "google_lsa"`, `externalId` = the lead's own resource name.
+- `src/googleLsa/pollLeads.ts` — mirrors `src/twilio/pollCalls.ts`'s `isPolling` boolean guard, but loops `listBusinesses()` (LSA accounts are genuinely separate per business, unlike Twilio's one shared account matched by phone number), wired into `src/index.ts` on a multi-minute interval (5 minutes as a starting point, pending confirmation against real API quota numbers during Stage 0).
+
+## Verification plan
+
+- **Stage 0**: the user's own diagnostic-script output (plain axios/curl, never committed to this repo), reviewed together before Stage 2 code gets written.
+- **Stage 2**, once built: a scratch script calling `src/googleLsa/leads.ts` directly against real TitanZ credentials to confirm real leads map correctly into `inbound_leads` (insert, confirm encrypted at rest, confirm the upsert behavior above on a second poll of the same lead), then end-to-end via `docker compose logs` after deployment, confirming real `MESSAGE`/`PHONE_CALL` leads appear correctly in the Leads inbox UI.

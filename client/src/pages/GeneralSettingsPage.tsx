@@ -28,6 +28,8 @@ export function GeneralSettingsPage() {
   const [postCallWebhookSecret, setPostCallWebhookSecret] = useState("");
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("");
   const [leadIntakeWebhookSecret, setLeadIntakeWebhookSecret] = useState("");
+  const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
+  const [googleAdsRefreshToken, setGoogleAdsRefreshToken] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export function GeneralSettingsPage() {
     setTimezone(data.operational.timezone);
     setDashboardBaseUrl(data.operational.dashboardBaseUrl);
     setTwilioPhoneNumber(data.operational.twilioPhoneNumber);
+    setGoogleAdsCustomerId(data.googleAds.customerId);
   }, [data]);
 
   // A stray click on one of these silently breaks the integration rather
@@ -94,6 +97,8 @@ export function GeneralSettingsPage() {
         postCallWebhookSecret: postCallWebhookSecret || undefined,
         twilioPhoneNumber: twilioPhoneNumber || undefined,
         leadIntakeWebhookSecret: leadIntakeWebhookSecret || undefined,
+        googleAdsCustomerId: googleAdsCustomerId || undefined,
+        googleAdsRefreshToken: googleAdsRefreshToken || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -104,6 +109,7 @@ export function GeneralSettingsPage() {
       setToolWebhookSecret("");
       setPostCallWebhookSecret("");
       setLeadIntakeWebhookSecret("");
+      setGoogleAdsRefreshToken("");
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -257,6 +263,41 @@ export function GeneralSettingsPage() {
             header field), put the secret in the URL instead:
             <br />
             <code>{`${window.location.origin}/b/${businessId}/webhooks/leads/inbound?secret=<the secret above>`}</code>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Google Ads (Local Services Ads)</h2>
+        <p className="form-hint">
+          This business's own Google Ads account, used to pull Local Services Ads leads (message and phone-call
+          inquiries) into the Leads inbox. The Developer Token/OAuth Client ID/Secret are configured once,
+          platform-wide, under the global Admin Settings page — only this business's own Customer ID and refresh
+          token go here.
+        </p>
+        <div className="form-row">
+          <label>Customer ID</label>
+          <input
+            value={googleAdsCustomerId}
+            onChange={(e) => setGoogleAdsCustomerId(e.target.value)}
+            placeholder="123-456-7890"
+          />
+          <div className="form-hint">The 10-digit Google Ads account ID for this business's Local Services Ads.</div>
+        </div>
+        <div className="form-row">
+          <label>
+            Refresh token{" "}
+            {data.googleAds.refreshTokenSet && <span className="muted">(set — leave blank to keep)</span>}
+          </label>
+          <input
+            type="password"
+            value={googleAdsRefreshToken}
+            onChange={(e) => setGoogleAdsRefreshToken(e.target.value)}
+            autoComplete="off"
+          />
+          <div className="form-hint">
+            Manually obtained per business for now (no in-app "Connect with Google" flow yet) — see
+            docs/google-lsa-leads.md for how this is generated.
           </div>
         </div>
       </div>

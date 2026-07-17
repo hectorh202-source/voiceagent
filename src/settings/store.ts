@@ -266,6 +266,64 @@ export function getRawOperationalSettings(businessId: number) {
   };
 }
 
+export interface GoogleAdsPlatformConfig {
+  developerToken: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+// Global — the OAuth "app identity" (Client ID/Secret) and Developer Token
+// the platform operator registers once with Google, not per-business. One
+// registered OAuth client can mint access tokens against many separate
+// businesses' own Google Ads accounts (each business grants its own consent
+// and gets its own refresh token — see getGoogleLsaConfig below), unlike
+// ServiceTitan where every credential including client id/secret is
+// genuinely separate per tenant. See docs/google-lsa-leads.md.
+export function getGoogleAdsPlatformConfig(): GoogleAdsPlatformConfig | null {
+  const developerToken = getSetting("googleAds.developerToken");
+  const clientId = getSetting("googleAds.clientId");
+  const clientSecret = getSetting("googleAds.clientSecret");
+  if (!developerToken || !clientId || !clientSecret) return null;
+  return { developerToken, clientId, clientSecret };
+}
+
+export function getRawGoogleAdsSettings() {
+  return {
+    developerTokenSet: !!getSetting("googleAds.developerToken"),
+    clientIdSet: !!getSetting("googleAds.clientId"),
+    clientSecretSet: !!getSetting("googleAds.clientSecret"),
+  };
+}
+
+export interface GoogleLsaConfig extends GoogleAdsPlatformConfig {
+  refreshToken: string;
+  customerId: string;
+}
+
+// Strict, all-required view used only where a real Google Ads API call is
+// actually being made (see googleLsa/httpClient.ts) — combines the global
+// platform config above with this business's own refreshToken/customerId,
+// so every caller (src/googleLsa/*) gets one flat config and never needs to
+// know two different settings tables are involved, mirroring
+// getServiceTitanConfig/getElevenLabsConfig's own reasoning.
+export function getGoogleLsaConfig(businessId: number): GoogleLsaConfig | null {
+  const platform = getGoogleAdsPlatformConfig();
+  if (!platform) return null;
+  const refreshToken = getBusinessSetting(businessId, "googleAds.refreshToken");
+  const customerId = getBusinessSetting(businessId, "googleAds.customerId");
+  if (!refreshToken || !customerId) return null;
+  return { ...platform, refreshToken, customerId };
+}
+
+// Per-business view for the settings UI — mirrors getRawElevenLabsSettings'
+// shape (a plain identifier plus a "set" flag for the actual secret).
+export function getRawGoogleAdsBusinessSettings(businessId: number) {
+  return {
+    customerId: getBusinessSetting(businessId, "googleAds.customerId") ?? "",
+    refreshTokenSet: !!getBusinessSetting(businessId, "googleAds.refreshToken"),
+  };
+}
+
 export function getAgentTimezone(businessId: number): string {
   return getBusinessSetting(businessId, "operational.timezone") ?? "America/New_York";
 }

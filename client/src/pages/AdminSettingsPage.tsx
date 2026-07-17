@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AdminUser, Business, EmailSettings, TwilioSettings } from "../api/types";
+import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
 
@@ -160,6 +160,72 @@ function TwilioSettingsSection() {
       <div className="form-row">
         <label>Auth Token {data?.authTokenSet && <span className="muted">(set — leave blank to keep)</span>}</label>
         <input type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} autoComplete="off" />
+      </div>
+      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+        Save
+      </button>
+      {message && <span className="muted" style={{ marginLeft: 8 }}>{message}</span>}
+    </div>
+  );
+}
+
+// The OAuth "app identity" (Client ID/Secret) + Developer Token this
+// platform's Google Ads API access is registered under — global for the
+// same reason the master Twilio account above is global (one shared piece
+// of infrastructure the platform operator registers once), even though
+// each business's own refreshToken/customerId is genuinely per-business
+// (see GeneralSettingsPage.tsx). See docs/google-lsa-leads.md.
+function GoogleAdsSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin-google-ads-settings"],
+    queryFn: () => api.get<GoogleAdsSettings>("/api/admin/google-ads-settings"),
+  });
+
+  const [developerToken, setDeveloperToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [message, setMessage] = useState("");
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.put("/api/admin/google-ads-settings", {
+        developerToken: developerToken || undefined,
+        clientId: clientId || undefined,
+        clientSecret: clientSecret || undefined,
+      }),
+    onSuccess: () => {
+      setMessage("Settings saved.");
+      setDeveloperToken("");
+      setClientId("");
+      setClientSecret("");
+      queryClient.invalidateQueries({ queryKey: ["admin-google-ads-settings"] });
+    },
+  });
+
+  return (
+    <div className="card">
+      <h2>Google Ads</h2>
+      <p className="form-hint">
+        Used to pull leads from Google Local Services Ads. The Developer Token comes from a Google Ads account's API
+        Center; the OAuth Client ID/Secret come from a Google Cloud project. Each business's own account (refresh
+        token + customer ID) is entered on that business's own General Settings page instead.
+      </p>
+      <div className="form-row">
+        <label>
+          Developer Token {data?.developerTokenSet && <span className="muted">(set — leave blank to keep)</span>}
+        </label>
+        <input type="password" value={developerToken} onChange={(e) => setDeveloperToken(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="form-row">
+        <label>OAuth Client ID {data?.clientIdSet && <span className="muted">(set — leave blank to keep)</span>}</label>
+        <input type="password" value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="form-row">
+        <label>
+          OAuth Client Secret {data?.clientSecretSet && <span className="muted">(set — leave blank to keep)</span>}
+        </label>
+        <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" />
       </div>
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
         Save
@@ -390,6 +456,8 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
       <EmailSettingsSection />
 
       <TwilioSettingsSection />
+
+      <GoogleAdsSettingsSection />
 
       <h2>Platform Admins</h2>
       {admins.map((u) => (

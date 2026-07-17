@@ -110,17 +110,38 @@ export const generalSettingsSchema = z.object({
   postCallWebhookSecret: z.string().optional(),
   twilioPhoneNumber: z.string().optional(),
   leadIntakeWebhookSecret: z.string().optional(),
+  googleAdsCustomerId: z.string().optional(),
+  googleAdsRefreshToken: z.string().optional(),
+});
+
+// The OAuth Client ID/Secret and Developer Token this platform's Google Ads
+// API access is registered under — global, not per-business (see
+// settings/store.ts's getGoogleLsaConfig for why: one registered OAuth "app
+// identity" can mint tokens against many separate businesses' own accounts,
+// so unlike ServiceTitan's per-business client id/secret, these are shared
+// infrastructure the platform operator registers once). Each business's own
+// refreshToken/customerId (googleAdsRefreshToken/googleAdsCustomerId above)
+// stay per-business, since each business's Google Ads account is genuinely
+// separate.
+export const googleAdsSettingsSchema = z.object({
+  developerToken: z.string().optional(),
+  clientId: z.string().optional(),
+  clientSecret: z.string().optional(),
 });
 
 // "Lead" already means a ServiceTitan CRM Lead elsewhere in this codebase
 // (servicetitan/leads.ts, tools/createLead.ts) — these are a distinct
-// concept, raw inbound inquiries from a business's own lead sources
-// (website forms/chat today, Facebook/Google ads leads later), tracked in
-// their own inbox and never auto-pushed to ServiceTitan. facebook_ads/
-// google_ads exist here so the DB/API already accommodate them once that
-// ingestion is built — leadIntakeSchema below deliberately only accepts the
-// two sources this generic webhook actually handles.
-export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads"] as const;
+// concept, raw inbound inquiries from a business's own lead sources, tracked
+// in their own inbox and never auto-pushed to ServiceTitan.
+// facebook_ads/google_ads (a Lead Form Extension submission — a different
+// Google product from Local Services Ads, still deferred, not yet built)
+// exist here so the DB/API already accommodate them once that ingestion is
+// built. google_lsa (Google Local Services Ads — MESSAGE/PHONE_CALL leads,
+// see docs/google-lsa-leads.md) is written directly via insertInboundLead()
+// by src/googleLsa/pollLeads.ts, not through the generic webhook —
+// leadIntakeSchema below deliberately only accepts the two sources that
+// webhook actually handles.
+export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads", "google_lsa"] as const;
 export const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "won", "lost"] as const;
 
 // Deliberately no "at least one of name/phone/email required" check, and no

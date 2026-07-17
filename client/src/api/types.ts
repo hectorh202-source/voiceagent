@@ -215,6 +215,20 @@ export interface GeneralSettings {
     twilioPhoneNumber: string;
     leadIntakeWebhookSecretSet: boolean;
   };
+  googleAds: {
+    customerId: string;
+    refreshTokenSet: boolean;
+  };
+}
+
+// The OAuth Client ID/Secret + Developer Token this platform's Google Ads
+// API access is registered under — global (see settings/store.ts's
+// getGoogleAdsPlatformConfig), managed from AdminSettingsPage.tsx's global
+// Admin Settings rather than any one business's General Settings.
+export interface GoogleAdsSettings {
+  developerTokenSet: boolean;
+  clientIdSet: boolean;
+  clientSecretSet: boolean;
 }
 
 // "Lead" already means a ServiceTitan CRM Lead elsewhere in this app (the

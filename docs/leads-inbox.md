@@ -30,7 +30,7 @@ CREATE TABLE inbound_leads (
 );
 ```
 
-`source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
+`source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads` | `google_lsa`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
 
 `name`/`phone`/`email`/`message`/`internal_notes` are encrypted at rest (`encryptNullable`/`decryptNullable`, same as equivalent PII fields on `call_log`/`elevenlabs_calls`); `raw_payload_json` (`NOT NULL`, the full original webhook body) is encrypted via `encryptField`/`decryptField` — kept for audit, same reasoning as `elevenlabs_calls.raw_payload_json`, and never returned by the API (`GET /leads/:id` excludes it, same as `GET /calls/:conversationId` excluding its own `raw_payload_json`). All of this lives in `src/db/inboundLeads.ts`, structured 1:1 with `src/db/callRecords.ts`.
 
@@ -82,14 +82,15 @@ The secret lives at `operational.leadIntakeWebhookSecret` (business-scoped, encr
 
 **Opens as a modal over the list, same as Calls** — `LeadsTable.tsx`'s row click passes `{ state: { backgroundLocation: location } }` (the standard react-router "modal route" pattern, identical to `CallsTable.tsx`), `LeadDetailPage.tsx` checks `location.state` for it and wraps its content in `.modal-overlay`/`.modal-large` when present, and `App.tsx`'s `AuthenticatedRoutes` renders `leads/:leadId` in both the background `<Routes>` tree and the overlay `<Routes>` tree, exactly matching `calls/:conversationId`'s setup. A direct navigation/refresh/bookmark to a lead's URL still carries no such state, so it falls back to rendering as a normal full page in that case — the modal is purely an enhancement for the navigate-from-the-list case, never the only way to reach a lead.
 
-## Deferred — Facebook Lead Ads and Google Ads
+## Deferred — Facebook Lead Ads, Google Local Services Ads, and Google Ads Lead Form Extension
 
-Both are real, separate integrations, not designed in detail here — the schema already accommodates either as a future `source` value with zero migration needed:
+Three real, separate integrations, not fully designed here — the schema already accommodates each as its own future `source` value with zero migration needed:
 
 - **Facebook Lead Ads** — needs a Facebook App + Page connection per business, a `leadgen` webhook subscription, and a long-lived Page access token stored per business, plus Facebook App Review before it can run for real businesses.
-- **Google Ads leads** — needs an OAuth client + per-business refresh token, then either a Lead Form Extension webhook (Google-side push, requires linking the form) or polling the Google Ads API for form submissions.
+- **Google Local Services Ads (`google_lsa`)** — in progress; settings/schema plumbing (credential storage, the `google_lsa` source value, the upsert semantics a polling source needs) is built, real polling/ingestion is not yet — see [google-lsa-leads.md](google-lsa-leads.md) for the full design and what's still blocking it.
+- **Google Ads Lead Form Extension (`google_ads`)** — a *different* Google product from LSA (a lead-gen form attached to a regular search/display ad, not the Local Services Ads product), still fully deferred and not designed in any detail. Would need an OAuth client + per-business refresh token (likely reusable from the LSA credentials above, since both are the same underlying Google Ads account), then either a Lead Form webhook (Google-side push, requires linking the form) or its own GAQL polling query against a different resource than `local_services_lead`.
 
-Whenever either gets built, it writes to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`/`"google_ads"`), not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
+Whenever any of these gets built, it writes to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`/`"google_lsa"`/`"google_ads"`), not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
 
 ## Verified
 
