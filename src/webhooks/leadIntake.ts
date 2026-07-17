@@ -32,5 +32,10 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     rawPayloadJson: JSON.stringify(req.body),
   });
 
-  res.status(201).json({ success: true });
+  // Deliberately 200, not the more conventional 201 for a created resource —
+  // confirmed Elementor Pro Forms' Webhook action only treats a literal 200
+  // as success and throws a "Webhook Error" for anything else (201, 204,
+  // etc.), and compatibility with third-party form tools is this endpoint's
+  // entire reason to exist.
+  res.status(200).json({ success: true });
 }
