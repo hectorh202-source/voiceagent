@@ -18,6 +18,7 @@ import { getOrCreateSessionSecret } from "./settings/store";
 import { getUserById } from "./db/users";
 import { userHasBusinessAccess } from "./db/userBusinesses";
 import { pollAndStartRecordings } from "./twilio/pollCalls";
+import { pollGoogleLsaLeads } from "./googleLsa/pollLeads";
 
 const app = express();
 
@@ -197,3 +198,11 @@ app.listen(env.PORT, () => {
 setInterval(() => {
   pollAndStartRecordings().catch((error) => console.error("Twilio recording poll failed:", error));
 }, 10_000);
+
+// See googleLsa/pollLeads.ts — Google's Local Services Ads API is poll-based
+// (no true webhook), so this checks every linked business's account on a
+// timer and writes any new/updated leads into the Leads inbox. No-ops for
+// any business that hasn't configured Google Ads credentials yet.
+setInterval(() => {
+  pollGoogleLsaLeads().catch((error) => console.error("Google LSA poll failed:", error));
+}, 5 * 60_000);
