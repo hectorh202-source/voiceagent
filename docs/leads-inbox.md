@@ -54,7 +54,16 @@ Auth is a **plain shared secret** (not HMAC) via `src/middleware/verifyLeadIntak
 
 **The secret can also ride in the URL as a `?secret=` query param instead of the header** — confirmed necessary, not just theoretical: **Elementor Pro Forms' "Webhook" action only accepts a plain URL, with no way to attach a custom header at all.** `verifyLeadIntakeSecret` checks the header first, falling back to `req.query.secret`. This is a deliberate tradeoff (a query string can end up in server access logs or browser history more easily than a header) accepted because the alternative is not supporting tools like Elementor at all — and a leaked lead-intake secret only lets someone submit fake rows into this one inbox, not a credential with any broader reach.
 
-**Elementor specifically** also keys each submitted field by its **label** by default, not a fixed ID (confirmed via Elementor's own docs/community examples, not this app's own testing) — so the exact JSON/form keys it sends depend entirely on how that business's form fields happen to be labeled, not something this app can assume. The practical path: wire up the webhook URL (with `?secret=`), submit one real test lead from the actual form, then inspect that row's `raw_payload_json` to see exactly what keys Elementor sent, and adjust the form's field labels (to `name`/`phone`/`email`/`message`) or extend the intake schema to match — the same "verify against a real payload, don't guess" approach this project uses for every other external integration.
+**Elementor specifically** also keys each submitted field by its **label**, not a fixed ID — confirmed against a real submission from a real Elementor form:
+```json
+{"First Name":"Test","Last Name":"User","Phone":"9415556254","Email":"test@test.com", "Message":"Test message", ...}
+```
+No `source` field at all (Elementor's Webhook action has no way to add one), `"Phone"`/`"Email"`/`"Message"` capitalized, and a split `"First Name"`/`"Last Name"` instead of one `name`. Renaming a business's own user-facing form field labels to match this endpoint's contract exactly (lowercase `"phone"`, `"email"`, etc.) isn't a reasonable ask, so `handleLeadIntake` (`src/webhooks/leadIntake.ts`) normalizes the incoming body before validating:
+- `source` defaults to `"website_form"` when absent (Elementor can never send one).
+- `name`/`phone`/`email`/`message` are matched **case-insensitively** against a small alias list (`FIELD_ALIASES`) — e.g. `"Phone"`, `"phone number"`, `"telephone"` all resolve to `phone`.
+- `"First Name"` + `"Last Name"` are combined into a single `name` when there's no direct `name`-like field.
+
+The alias list is deliberately small — only what's been confirmed from a real payload, not a guess at every label some future form might use. Extend `FIELD_ALIASES` if a new tool needs it, verified the same way this one was: submit a real test lead, read the validation-failure log line (`Lead intake validation failed. Raw body: ...`, left in permanently for exactly this reason) or the stored `raw_payload_json`, and add whatever alias is actually missing.
 
 The secret lives at `operational.leadIntakeWebhookSecret` (business-scoped, encrypted), configured/generated on that business's own General Settings page — same "leave blank to keep," "Generate a new secret" pattern as the existing tool/post-call webhook secrets there.
 
