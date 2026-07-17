@@ -238,6 +238,11 @@ export interface InboundLeadListRow {
 
 export interface InboundLeadDetail extends InboundLeadListRow {
   internalNotes: string | null;
+  // Every field this lead's source actually submitted, formatted as plain
+  // "Key: Value" lines — always present, regardless of whether this app's
+  // own field-matching (name/phone/email/message) mapped things cleanly.
+  // See docs/leads-inbox.md.
+  rawDump: string;
 }
 
 export interface LeadListFilters {

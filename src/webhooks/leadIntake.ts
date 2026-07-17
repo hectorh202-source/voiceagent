@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { leadIntakeSchema } from "../api/schemas";
 import { insertInboundLead } from "../db/inboundLeads";
+import { formatKeyValueDump } from "../lib/format";
 
 // Confirmed against a real Elementor Pro Forms submission: every client's
 // form is labeled differently, and there's no universal fixed field name to
@@ -82,10 +83,9 @@ function extractMessageOrDump(body: Record<string, unknown>, usedKeys: Set<strin
   const direct = extractField(body, "message", usedKeys);
   if (direct) return direct;
 
-  const leftover = Object.entries(body)
-    .filter(([key, value]) => !usedKeys.has(key) && !IGNORED_KEYS.has(key) && isNonEmptyString(value))
-    .map(([key, value]) => `${key}: ${value}`);
-  return leftover.length > 0 ? leftover.join("\n") : undefined;
+  const leftover = Object.fromEntries(Object.entries(body).filter(([key]) => !usedKeys.has(key) && !IGNORED_KEYS.has(key)));
+  const dump = formatKeyValueDump(leftover);
+  return dump || undefined;
 }
 
 // Generic intake for the two lead sources that don't need their own

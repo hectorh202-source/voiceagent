@@ -74,7 +74,7 @@ The secret lives at `operational.leadIntakeWebhookSecret` (business-scoped, encr
 
 - `GET /leads` — keyset-paginated (same cursor pattern as `GET /calls`, just a `{receivedAt, id: number}` pair since lead ids are numeric), filterable by `source`/`status`/`isRead`/`from`/`to`.
 - `PATCH /leads` — `{ ids: number[], isRead?, status?, internalNotes? }`, bulk-updates via `updateInboundLead()`.
-- `GET /leads/:id` — detail view (never includes `raw_payload_json`).
+- `GET /leads/:id` — detail view. Includes `rawDump`, a plain "Key: Value"-per-line rendering of the *entire* stored `raw_payload_json` (`src/lib/format.ts`'s `formatKeyValueDump()`) — a deliberate exception to how `GET /calls/:conversationId` handles its own `raw_payload_json` (never exposed there, internal/audit only). For Leads it's shown **always, for every lead, regardless of how cleanly name/phone/email/message matched** — since every client's form is labeled differently, staff need a way to see exactly what was actually submitted even when this app's field-matching got some or all of it wrong. Rendered in `LeadDetailPage.tsx` under "Raw Submission Data," always the last section on the page.
 
 ## Client
 

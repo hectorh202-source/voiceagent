@@ -13,6 +13,7 @@ import {
 import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { listInboundLeads, getInboundLeadById, updateInboundLead } from "../db/inboundLeads";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
+import { formatKeyValueDump } from "../lib/format";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
 import {
   isEndedEarly,
@@ -305,12 +306,22 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     res.status(404).json({ error: "Lead not found" });
     return;
   }
-  // raw_payload_json is deliberately never exposed here — internal/audit
-  // only, same as GET /calls/:conversationId never exposing its own
-  // raw_payload_json.
+  // Unlike GET /calls/:conversationId (which never exposes raw_payload_json
+  // — internal/audit only there), the Leads detail view deliberately shows
+  // this always: since a differently-labeled form's fields might not have
+  // mapped cleanly onto name/phone/email/message, staff need a way to see
+  // exactly what was actually submitted, for every lead, not just the ones
+  // this app's field-matching handled well.
+  let rawDump = "";
+  try {
+    rawDump = formatKeyValueDump(JSON.parse(record.raw_payload_json));
+  } catch {
+    rawDump = record.raw_payload_json;
+  }
   res.json({
     ...parseLeadRow(record),
     internalNotes: record.internal_notes,
+    rawDump,
   });
 });
 

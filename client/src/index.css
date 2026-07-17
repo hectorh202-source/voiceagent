@@ -608,6 +608,17 @@ a.badge:hover {
   word-break: break-word;
 }
 
+.raw-dump {
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--neutral-bg);
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .notes-actions {
   display: flex;
   justify-content: flex-end;

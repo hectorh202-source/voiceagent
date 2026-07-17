@@ -180,6 +180,15 @@ export function LeadDetailPage() {
         <button className="btn" onClick={() => patchMutation.mutate({ isRead: !data.isRead })}>
           {data.isRead ? "Mark as unread" : "Mark as read"}
         </button>
+
+        {/* Always shown, regardless of how well name/phone/email/message
+            got matched — every client's form is labeled differently, so
+            this is the one place staff can always see exactly what was
+            actually submitted, not just what this app managed to parse. */}
+        <div className="info-section" style={{ marginTop: 20 }}>
+          <div className="info-section-title">Raw Submission Data</div>
+          <div className="raw-dump">{data.rawDump || "(empty submission)"}</div>
+        </div>
       </div>
     </div>
   );
