@@ -243,12 +243,20 @@ export function GeneralSettingsPage() {
             </button>
           </div>
           <div className="form-hint">
-            Have this business's website form or chat widget POST leads to:
+            Have this business's website form or chat widget POST leads here. Body (JSON or form-urlencoded, both
+            work):{" "}
+            <code>{`{ source: "website_form" | "website_chat", name?, phone?, email?, message? }`}</code>
+            <br />
+            <strong>If the tool supports a custom header</strong> (most webhook/Zapier/Make integrations), POST to:
             <br />
             <code>{`${window.location.origin}/b/${businessId}/webhooks/leads/inbound`}</code>
             <br />
-            with header <code>X-Lead-Intake-Secret: &lt;the secret above&gt;</code> and JSON body{" "}
-            <code>{`{ source: "website_form" | "website_chat", name?, phone?, email?, message? }`}</code>.
+            with header <code>X-Lead-Intake-Secret: &lt;the secret above&gt;</code>.
+            <br />
+            <strong>If it only accepts a plain URL</strong> (e.g. Elementor Pro Forms' "Webhook" action, which has no
+            header field), put the secret in the URL instead:
+            <br />
+            <code>{`${window.location.origin}/b/${businessId}/webhooks/leads/inbound?secret=<the secret above>`}</code>
           </div>
         </div>
       </div>
