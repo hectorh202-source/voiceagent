@@ -185,7 +185,12 @@ function GoogleAdsSettingsSection() {
   const [developerToken, setDeveloperToken] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [loginCustomerId, setLoginCustomerId] = useState("");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (data) setLoginCustomerId(data.loginCustomerId);
+  }, [data]);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -193,6 +198,7 @@ function GoogleAdsSettingsSection() {
         developerToken: developerToken || undefined,
         clientId: clientId || undefined,
         clientSecret: clientSecret || undefined,
+        loginCustomerId: loginCustomerId || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -207,9 +213,12 @@ function GoogleAdsSettingsSection() {
     <div className="card">
       <h2>Google Ads</h2>
       <p className="form-hint">
-        Used to pull leads from Google Local Services Ads. The Developer Token comes from a Google Ads account's API
-        Center; the OAuth Client ID/Secret come from a Google Cloud project. Each business's own account (refresh
-        token + customer ID) is entered on that business's own General Settings page instead.
+        Used to pull leads from Google Local Services Ads. Google only issues a Developer Token to a Manager (MCC)
+        account, never a standalone one — so this platform manages one Manager account, and each business's own
+        Google Ads account gets linked to it as a client. The Developer Token and Manager account's Customer ID
+        (below) both come from that Manager account; the OAuth Client ID/Secret come from a Google Cloud project.
+        Each business's own account (refresh token + customer ID) is entered on that business's own General
+        Settings page instead.
       </p>
       <div className="form-row">
         <label>
@@ -226,6 +235,14 @@ function GoogleAdsSettingsSection() {
           OAuth Client Secret {data?.clientSecretSet && <span className="muted">(set — leave blank to keep)</span>}
         </label>
         <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="form-row">
+        <label>Manager account Customer ID</label>
+        <input value={loginCustomerId} onChange={(e) => setLoginCustomerId(e.target.value)} placeholder="123-456-7890" />
+        <div className="form-hint">
+          The 10-digit Customer ID of the Manager (MCC) account itself — sent as Google's required
+          "login-customer-id" alongside each business's own account ID.
+        </div>
       </div>
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
         Save

@@ -229,6 +229,10 @@ export interface GoogleAdsSettings {
   developerTokenSet: boolean;
   clientIdSet: boolean;
   clientSecretSet: boolean;
+  // The Manager (MCC) account's Customer ID the Developer Token above is
+  // issued under — not a secret, shown in plain text like a business's own
+  // googleAds.customerId.
+  loginCustomerId: string;
 }
 
 // "Lead" already means a ServiceTitan CRM Lead elsewhere in this app (the

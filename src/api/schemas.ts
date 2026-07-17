@@ -127,6 +127,7 @@ export const googleAdsSettingsSchema = z.object({
   developerToken: z.string().optional(),
   clientId: z.string().optional(),
   clientSecret: z.string().optional(),
+  loginCustomerId: z.string().optional(),
 });
 
 // "Lead" already means a ServiceTitan CRM Lead elsewhere in this codebase

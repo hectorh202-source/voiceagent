@@ -270,21 +270,33 @@ export interface GoogleAdsPlatformConfig {
   developerToken: string;
   clientId: string;
   clientSecret: string;
+  // The Customer ID of the Manager (MCC) account the Developer Token above
+  // is issued under — confirmed required (2026-07-17): Google's API Center
+  // only ever issues Developer Tokens to a Manager account, never a
+  // standalone one, so every real API call needs this sent as a
+  // `login-customer-id` header alongside the target business's own
+  // customerId in the URL (see GoogleLsaConfig below). One manager account
+  // serves every business on this platform (a Manager account can have many
+  // client accounts linked under it), so this is global, not per-business —
+  // the per-business piece is which client account (customerId) is being
+  // queried, not which manager account is asking. See docs/google-lsa-leads.md.
+  loginCustomerId: string;
 }
 
-// Global — the OAuth "app identity" (Client ID/Secret) and Developer Token
-// the platform operator registers once with Google, not per-business. One
-// registered OAuth client can mint access tokens against many separate
-// businesses' own Google Ads accounts (each business grants its own consent
-// and gets its own refresh token — see getGoogleLsaConfig below), unlike
-// ServiceTitan where every credential including client id/secret is
-// genuinely separate per tenant. See docs/google-lsa-leads.md.
+// Global — the OAuth "app identity" (Client ID/Secret), Developer Token, and
+// Manager account ID the platform operator registers once with Google, not
+// per-business. One registered OAuth client can mint access tokens against
+// many separate businesses' own Google Ads accounts (each business grants
+// its own consent and gets its own refresh token — see getGoogleLsaConfig
+// below), unlike ServiceTitan where every credential including client
+// id/secret is genuinely separate per tenant. See docs/google-lsa-leads.md.
 export function getGoogleAdsPlatformConfig(): GoogleAdsPlatformConfig | null {
   const developerToken = getSetting("googleAds.developerToken");
   const clientId = getSetting("googleAds.clientId");
   const clientSecret = getSetting("googleAds.clientSecret");
-  if (!developerToken || !clientId || !clientSecret) return null;
-  return { developerToken, clientId, clientSecret };
+  const loginCustomerId = getSetting("googleAds.loginCustomerId");
+  if (!developerToken || !clientId || !clientSecret || !loginCustomerId) return null;
+  return { developerToken, clientId, clientSecret, loginCustomerId };
 }
 
 export function getRawGoogleAdsSettings() {
@@ -292,6 +304,10 @@ export function getRawGoogleAdsSettings() {
     developerTokenSet: !!getSetting("googleAds.developerToken"),
     clientIdSet: !!getSetting("googleAds.clientId"),
     clientSecretSet: !!getSetting("googleAds.clientSecret"),
+    // Not a secret (an account number, same treatment as a business's own
+    // googleAds.customerId below) — shown in plain text rather than a
+    // password-masked "set" flag.
+    loginCustomerId: getSetting("googleAds.loginCustomerId") ?? "",
   };
 }
 

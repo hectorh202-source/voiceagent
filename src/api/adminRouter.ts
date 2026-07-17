@@ -233,5 +233,6 @@ adminRouter.put("/google-ads-settings", (req, res) => {
   maybeSetSetting("googleAds.developerToken", body.developerToken);
   maybeSetSetting("googleAds.clientId", body.clientId);
   maybeSetSetting("googleAds.clientSecret", body.clientSecret);
+  maybeSetSetting("googleAds.loginCustomerId", body.loginCustomerId);
   res.json({ success: true });
 });
