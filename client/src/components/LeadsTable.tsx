@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { InboundLeadListRow, LeadSource, LeadStatus } from "../api/types";
 import { formatDateTime, formatPhoneNumber } from "../lib/format";
 
@@ -39,6 +39,7 @@ export function LeadsTable({
   onToggleSelectAll: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
   return (
@@ -62,7 +63,9 @@ export function LeadsTable({
           <tr
             key={row.id}
             className="clickable-row"
-            onClick={() => navigate(`/${businessId}/leads/${row.id}`)}
+            onClick={() =>
+              navigate(`/${businessId}/leads/${row.id}`, { state: { backgroundLocation: location } })
+            }
           >
             <td onClick={(e) => e.stopPropagation()}>
               <input

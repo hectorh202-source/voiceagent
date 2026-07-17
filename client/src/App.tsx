@@ -56,6 +56,7 @@ function AuthenticatedRoutes() {
       {backgroundLocation && (
         <Routes>
           <Route path="/:businessId/calls/:conversationId" element={<CallDetailPage />} />
+          <Route path="/:businessId/leads/:leadId" element={<LeadDetailPage />} />
         </Routes>
       )}
     </AuthGate>
