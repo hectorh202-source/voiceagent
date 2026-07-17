@@ -493,6 +493,19 @@ a.badge:hover {
   overflow-y: auto;
 }
 
+/* LeadDetailPage.tsx has no sidebar+main split like Calls does — just one
+   content card directly inside .call-detail-root — so that card itself is
+   the scrollable region, same flex/min-height/overflow-y treatment as
+   .call-detail-sidebar/.call-detail-main above. Scoped to a direct child so
+   it can't affect .card anywhere else in the app; a no-op outside the modal
+   (.call-detail-root itself is a no-op there too), so a direct/bookmarked
+   page load still just scrolls the whole page normally. */
+.call-detail-root > .card {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .badge-row {
   display: flex;
   flex-wrap: wrap;
