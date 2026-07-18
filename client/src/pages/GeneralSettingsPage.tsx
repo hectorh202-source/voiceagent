@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { GeneralSettings } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SecretRevealModal } from "../components/SecretRevealModal";
+import { MASKED_SECRET_PLACEHOLDER } from "../lib/format";
 
 export function GeneralSettingsPage() {
   const { businessId } = useParams();
@@ -158,7 +159,12 @@ export function GeneralSettingsPage() {
         <h2>ElevenLabs</h2>
         <div className="form-row">
           <label>API key {data.elevenLabs.apiKeySet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={elevenLabsApiKey} onChange={(e) => setElevenLabsApiKey(e.target.value)} />
+          <input
+            type="password"
+            value={elevenLabsApiKey}
+            onChange={(e) => setElevenLabsApiKey(e.target.value)}
+            placeholder={data.elevenLabs.apiKeySet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
         </div>
         <div className="form-row">
           <label>Agent ID</label>
@@ -177,15 +183,30 @@ export function GeneralSettingsPage() {
         </div>
         <div className="form-row">
           <label>Client ID {data.serviceTitan.clientIdSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+          <input
+            type="password"
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            placeholder={data.serviceTitan.clientIdSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
         </div>
         <div className="form-row">
           <label>Client secret {data.serviceTitan.clientSecretSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} />
+          <input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder={data.serviceTitan.clientSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
         </div>
         <div className="form-row">
           <label>App key {data.serviceTitan.appKeySet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input type="password" value={appKey} onChange={(e) => setAppKey(e.target.value)} />
+          <input
+            type="password"
+            value={appKey}
+            onChange={(e) => setAppKey(e.target.value)}
+            placeholder={data.serviceTitan.appKeySet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
         </div>
         <div className="form-row">
           <label>Tenant ID</label>
@@ -223,7 +244,12 @@ export function GeneralSettingsPage() {
             Tool webhook secret{" "}
             {data.operational.toolWebhookSecretSet && <span className="muted">(set — leave blank to keep)</span>}
           </label>
-          <input type="password" value={toolWebhookSecret} onChange={(e) => setToolWebhookSecret(e.target.value)} />
+          <input
+            type="password"
+            value={toolWebhookSecret}
+            onChange={(e) => setToolWebhookSecret(e.target.value)}
+            placeholder={data.operational.toolWebhookSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
           <div className="form-hint">
             <button
               className="link-btn"
@@ -250,7 +276,12 @@ export function GeneralSettingsPage() {
             Post-call webhook secret{" "}
             {data.operational.postCallWebhookSecretSet && <span className="muted">(set — leave blank to keep)</span>}
           </label>
-          <input type="password" value={postCallWebhookSecret} onChange={(e) => setPostCallWebhookSecret(e.target.value)} />
+          <input
+            type="password"
+            value={postCallWebhookSecret}
+            onChange={(e) => setPostCallWebhookSecret(e.target.value)}
+            placeholder={data.operational.postCallWebhookSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          />
         </div>
         <div className="form-row">
           <label>Twilio phone number</label>
@@ -274,6 +305,7 @@ export function GeneralSettingsPage() {
             type="password"
             value={leadIntakeWebhookSecret}
             onChange={(e) => setLeadIntakeWebhookSecret(e.target.value)}
+            placeholder={data.operational.leadIntakeWebhookSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
           />
           <div className="form-hint">
             <button
@@ -334,6 +366,7 @@ export function GeneralSettingsPage() {
             type="password"
             value={googleAdsRefreshToken}
             onChange={(e) => setGoogleAdsRefreshToken(e.target.value)}
+            placeholder={data.googleAds.refreshTokenSet ? MASKED_SECRET_PLACEHOLDER : undefined}
             autoComplete="off"
           />
           <div className="form-hint">

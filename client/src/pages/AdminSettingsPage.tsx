@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
+import { MASKED_SECRET_PLACEHOLDER } from "../lib/format";
 
 function EmailSettingsSection() {
   const queryClient = useQueryClient();
@@ -84,7 +85,13 @@ function EmailSettingsSection() {
         <label>
           Password {data?.smtpPasswordSet && <span className="muted">(set — leave blank to keep)</span>}
         </label>
-        <input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={smtpPassword}
+          onChange={(e) => setSmtpPassword(e.target.value)}
+          placeholder={data?.smtpPasswordSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <div className="form-row">
         <label>From address</label>
@@ -155,11 +162,23 @@ function TwilioSettingsSection() {
       </p>
       <div className="form-row">
         <label>Account SID {data?.accountSidSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-        <input type="password" value={accountSid} onChange={(e) => setAccountSid(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={accountSid}
+          onChange={(e) => setAccountSid(e.target.value)}
+          placeholder={data?.accountSidSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <div className="form-row">
         <label>Auth Token {data?.authTokenSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-        <input type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={authToken}
+          onChange={(e) => setAuthToken(e.target.value)}
+          placeholder={data?.authTokenSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
         Save
@@ -224,17 +243,35 @@ function GoogleAdsSettingsSection() {
         <label>
           Developer Token {data?.developerTokenSet && <span className="muted">(set — leave blank to keep)</span>}
         </label>
-        <input type="password" value={developerToken} onChange={(e) => setDeveloperToken(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={developerToken}
+          onChange={(e) => setDeveloperToken(e.target.value)}
+          placeholder={data?.developerTokenSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <div className="form-row">
         <label>OAuth Client ID {data?.clientIdSet && <span className="muted">(set — leave blank to keep)</span>}</label>
-        <input type="password" value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          placeholder={data?.clientIdSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <div className="form-row">
         <label>
           OAuth Client Secret {data?.clientSecretSet && <span className="muted">(set — leave blank to keep)</span>}
         </label>
-        <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" />
+        <input
+          type="password"
+          value={clientSecret}
+          onChange={(e) => setClientSecret(e.target.value)}
+          placeholder={data?.clientSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+          autoComplete="off"
+        />
       </div>
       <div className="form-row">
         <label>Manager account Customer ID</label>

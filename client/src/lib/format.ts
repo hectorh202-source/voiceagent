@@ -1,5 +1,12 @@
 import type { LeadSource } from "../api/types";
 
+// Shown as an empty secret input's placeholder when the server reports a
+// value is already set (the real value is never sent back, only a boolean
+// flag) — same pattern as Stripe/GitHub's settings pages, where an
+// already-configured secret's field shows masked dots rather than looking
+// indistinguishable from a field that was never set at all.
+export const MASKED_SECRET_PLACEHOLDER = "••••••••••••••••";
+
 export function formatDuration(secs: number | null): string {
   if (secs === null) return "—";
   const m = Math.floor(secs / 60);
