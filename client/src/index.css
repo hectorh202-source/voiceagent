@@ -983,6 +983,35 @@ select:focus,
   color: var(--text-muted);
 }
 
+/* LeadDetailPage.tsx's header status control — top-right, next to the
+   avatar/name, rather than its own separate "Status" section further down
+   the page. Colored per-status (background/text set inline from
+   STATUS_COLORS, the same neutral/warning/success/danger families as
+   .badge-*) so it reads as a colored status badge that happens to be
+   editable, not a plain form field. */
+.status-select-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.status-select {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 30px 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.status-select-wrap svg {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .empty-state-section .info-section-title {
   margin-bottom: 4px;
 }

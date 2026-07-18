@@ -3,7 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
 import { formatDateTime, formatPhoneNumber, getLeadSourceLabel, getInitials, avatarColorFor } from "../lib/format";
-import { UserIcon, PhoneIcon, MailIcon, MessageIcon, CalendarIcon, EditIcon, SaveIcon, CloseIcon } from "../components/icons";
+import {
+  UserIcon,
+  PhoneIcon,
+  MailIcon,
+  MessageIcon,
+  CalendarIcon,
+  EditIcon,
+  SaveIcon,
+  CloseIcon,
+  ChevronDownIcon,
+} from "../components/icons";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "New",
@@ -11,6 +21,20 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   qualified: "Qualified",
   won: "Won",
   lost: "Lost",
+};
+
+// Same color families as the shared .badge-* classes (neutral/warning/
+// success/danger), applied directly to the header status select instead —
+// this is the one selector in the app styled to always look like its own
+// colored badge rather than a plain form control, since it doubles as the
+// at-a-glance "what state is this lead in" signal that used to live in a
+// separate Status section further down the page.
+const STATUS_COLORS: Record<LeadStatus, { bg: string; fg: string }> = {
+  new: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  contacted: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  qualified: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
+  won: { bg: "var(--success-bg)", fg: "var(--success-text)" },
+  lost: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
 };
 
 // Rendered inline inside LeadsPage.tsx's right-hand pane — always visible
@@ -41,15 +65,32 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-        <div className="lead-avatar lead-avatar-lg" style={{ background: avatarColorFor(data.name) }}>
-          {getInitials(data.name)}
-        </div>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 19 }}>{data.name ?? "Unknown Lead"}</h2>
-          <div className="muted" style={{ fontSize: 12.5 }}>
-            {getLeadSourceLabel(data.source, data.sourceDetail)} · {formatDateTime(data.receivedAt)}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <div className="lead-avatar lead-avatar-lg" style={{ background: avatarColorFor(data.name) }}>
+            {getInitials(data.name)}
           </div>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 19 }}>{data.name ?? "Unknown Lead"}</h2>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              {getLeadSourceLabel(data.source, data.sourceDetail)} · {formatDateTime(data.receivedAt)}
+            </div>
+          </div>
+        </div>
+        <div className="status-select-wrap">
+          <select
+            className="status-select"
+            value={data.status}
+            onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
+            style={{ background: STATUS_COLORS[data.status].bg, color: STATUS_COLORS[data.status].fg }}
+          >
+            {(Object.keys(STATUS_LABEL) as LeadStatus[]).map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABEL[status]}
+              </option>
+            ))}
+          </select>
+          <ChevronDownIcon width={13} height={13} style={{ color: STATUS_COLORS[data.status].fg }} />
         </div>
       </div>
 
@@ -99,23 +140,6 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             </div>
           </div>
         )}
-
-        <div className="info-section">
-          <div className="info-section-title">Status</div>
-          <div className="select-display-wrap">
-            <select
-              className="select-display"
-              value={data.status}
-              onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
-            >
-              {(Object.keys(STATUS_LABEL) as LeadStatus[]).map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
 
         <div className="info-section">
           <div className="info-section-header">
