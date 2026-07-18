@@ -14,7 +14,7 @@ Deeper write-ups on specific subsystems, for anyone picking up this project who 
 - **[Leads inbox](leads-inbox.md)** — a unified per-business inbox (`/app/:businessId/leads`) aggregating raw inbound leads from website forms/chat today (a generic shared-secret webhook), with Facebook Lead Ads/Google Ads leads deferred — deliberately distinct from a ServiceTitan Lead, dashboard-only, never auto-pushed anywhere.
 - **[Google Local Services Ads (LSA) leads](google-lsa-leads.md)** — the third Leads inbox source, a polling integration against Google's Ads API (a Manager-account Developer Token, OAuth Client ID/Secret, per-business refresh tokens), live and verified against TitanZ's real account.
 - **[Per-business Knowledge Base](knowledge-base.md)** — a management UI (`/app/:businessId/settings/knowledge-base`) over ElevenLabs' own native Knowledge Base feature, letting each business upload/attach reference documents (text/URL/file) to its agent.
-- **[Dynamic memory](dynamic-memory.md)** — opt-in cross-call memory by phone number: a returning caller's agent gets a short summary of their last call, delivered by piggybacking on the existing `lookup_customer` tool call rather than ElevenLabs' riskier live-call personalization webhook (rejected after a real production incident — see the doc).
+- **[Dynamic memory](dynamic-memory.md)** — opt-in cross-call memory by phone number: a returning caller's agent gets a short summary of their last call, delivered by piggybacking on the existing `lookup_customer` tool call.
 
 ## Integrations (external systems this talks to)
 

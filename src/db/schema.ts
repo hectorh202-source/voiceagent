@@ -164,9 +164,9 @@ export function bootstrapSchema(db: DatabaseSync): void {
     -- Cross-call memory by phone number (see docs/dynamic-memory.md) — a
     -- business opts in via operational.dynamicMemoryEnabled; when enabled,
     -- the post-call webhook upserts the caller's most recent real call
-    -- summary here, and the (separately gated, Stage 0-blocked)
-    -- personalization webhook reads it back as a dynamic variable at the
-    -- start of that caller's next call.
+    -- summary here, and the lookup_customer tool call (already run
+    -- silently at the start of every call) reads it back as an extra
+    -- response field for that caller's next call.
     --
     -- phone_lookup_hash, not the phone number itself: this table is looked
     -- up BY the caller's phone number (arriving in an inbound webhook)

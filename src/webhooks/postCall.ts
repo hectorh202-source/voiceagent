@@ -143,8 +143,8 @@ async function updateLeadWithRealSummary(
     // Reuses request.phone already parsed/validated above — no new field
     // extraction needed (the post-call payload's own metadata.phone_call
     // object only ever carries a call_sid, not a phone number). Gated by
-    // the same opt-in toggle the (Stage 0-blocked) personalization webhook
-    // checks, so no memory is ever written for a business that hasn't
+    // the same opt-in toggle tools/lookupCustomer.ts checks on the read
+    // side, so no memory is ever written for a business that hasn't
     // enabled this — see docs/dynamic-memory.md.
     if (isDynamicMemoryEnabled(businessId)) {
       upsertCallMemory(businessId, request.phone, aiSummary);

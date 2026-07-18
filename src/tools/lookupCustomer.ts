@@ -27,14 +27,11 @@ export async function handleLookupCustomer(req: Request, res: Response): Promise
   try {
     const result = await lookupCustomerByPhone(business.id, phone);
 
-    // Dynamic memory piggybacks on this tool rather than ElevenLabs' own
-    // live-call personalization webhook — see docs/dynamic-memory.md for
-    // why that webhook was rejected (confirmed to fail the call outright
-    // on any response it doesn't like). This is a normal webhook tool
-    // call instead, so a failure here just means no memory context for
-    // this greeting, never a broken call. Read failure is isolated in its
-    // own try/catch so it can never turn an otherwise-successful customer
-    // lookup into a failed tool call.
+    // Dynamic memory (see docs/dynamic-memory.md) piggybacks on this tool
+    // call rather than a separate webhook, so a failure here just means no
+    // memory context for this greeting, never a broken call. Read failure
+    // is isolated in its own try/catch so it can never turn an otherwise-
+    // successful customer lookup into a failed tool call.
     let lastCallSummary: string | null = null;
     if (isDynamicMemoryEnabled(business.id)) {
       try {

@@ -268,13 +268,10 @@ export function getRawOperationalSettings(businessId: number) {
 }
 
 // Cross-call memory by phone number (see docs/dynamic-memory.md) — default
-// off. This is the real safety boundary for that feature, not just a hint:
-// the (Stage 0-blocked) personalization webhook checks this directly and
-// returns an empty-memory response when false, regardless of whatever's
-// configured on ElevenLabs' own side, so disabling it here is an instant,
-// reliable kill switch even if ElevenLabs keeps calling a stale webhook
-// URL. The post-call write side (webhooks/postCall.ts) checks this too, so
-// no memory row is ever written for a business that hasn't opted in.
+// off. Checked on both sides: tools/lookupCustomer.ts only includes
+// lastCallSummary in its response when this is true, and the post-call
+// write side (webhooks/postCall.ts) only upserts a memory row when this is
+// true — so a business that hasn't opted in sees zero behavior change.
 export function isDynamicMemoryEnabled(businessId: number): boolean {
   return getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true";
 }

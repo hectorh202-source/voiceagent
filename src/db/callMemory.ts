@@ -46,9 +46,8 @@ export function upsertCallMemory(businessId: number, phone: string, summary: str
 
 // Called from tools/lookupCustomer.ts, the same webhook tool that already
 // runs silently at the start of every call for ServiceTitan customer
-// lookup — not ElevenLabs' own live-call personalization webhook (that
-// approach was rejected; see docs/dynamic-memory.md). A missing row is a
-// normal, expected case (first-time caller), not an error.
+// lookup. A missing row is a normal, expected case (first-time caller),
+// not an error.
 export function getCallMemory(businessId: number, phone: string): CallMemory | undefined {
   const row = db
     .prepare(`SELECT last_summary, last_call_at, call_count FROM call_memory WHERE business_id = ? AND phone_lookup_hash = ?`)
