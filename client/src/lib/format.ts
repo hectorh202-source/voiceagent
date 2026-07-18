@@ -1,3 +1,5 @@
+import type { LeadSource } from "../api/types";
+
 export function formatDuration(secs: number | null): string {
   if (secs === null) return "—";
   const m = Math.floor(secs / 60);
@@ -45,3 +47,37 @@ export function formatPhoneNumber(phone: string): string {
   if (tenDigits.length !== 10) return phone;
   return `+1(${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6)}`;
 }
+
+const LEAD_SOURCE_LABEL: Record<string, string> = {
+  website_form: "Website form",
+  website_chat: "Website chat",
+  facebook_ads: "Facebook Ads",
+  google_ads: "Google Ads (Lead Form)",
+  google_lsa: "Google LSA",
+};
+
+// Google's own lead_type enum values, surfaced on source_detail — currently
+// only populated for google_lsa leads. Shown as a suffix so a Google LSA
+// phone-call lead reads differently from a Google LSA message lead in the
+// Source column, rather than both just showing "Google LSA".
+const SOURCE_DETAIL_LABEL: Record<string, string> = {
+  PHONE_CALL: "Phone Call",
+  MESSAGE: "Message",
+};
+
+// Single shared source label, used by LeadsTable/LeadsFiltersPanel/
+// LeadDetailPage so a new lead source or sourceDetail value only ever needs
+// updating here, not in three separate copy-pasted maps (the bug this fixed:
+// google_lsa was added as a real source before the client had a label for
+// it at all, so every google_lsa lead's Source column rendered blank).
+export function getLeadSourceLabel(source: string, sourceDetail?: string | null): string {
+  const base = LEAD_SOURCE_LABEL[source] ?? source;
+  const detail = sourceDetail ? SOURCE_DETAIL_LABEL[sourceDetail] ?? sourceDetail : null;
+  return detail ? `${base} — ${detail}` : base;
+}
+
+// The filter dropdown's option list — same reasoning as getLeadSourceLabel
+// above, one shared source of truth instead of a separately maintained list.
+export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = (
+  Object.keys(LEAD_SOURCE_LABEL) as LeadSource[]
+).map((value) => ({ value, label: LEAD_SOURCE_LABEL[value] }));

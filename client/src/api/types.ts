@@ -239,12 +239,16 @@ export interface GoogleAdsSettings {
 // Lead/Job links on the Calls pages) — these are a distinct concept, raw
 // inbound inquiries from a business's own lead sources, tracked in their
 // own inbox. See docs/leads-inbox.md.
-export type LeadSource = "website_form" | "website_chat" | "facebook_ads" | "google_ads";
+export type LeadSource = "website_form" | "website_chat" | "facebook_ads" | "google_ads" | "google_lsa";
 export type LeadStatus = "new" | "contacted" | "qualified" | "won" | "lost";
 
 export interface InboundLeadListRow {
   id: number;
   source: LeadSource;
+  // A sub-classification within source, currently only populated for
+  // google_lsa (the real Google lead_type, "PHONE_CALL"/"MESSAGE") — null
+  // for every other source. See docs/google-lsa-leads.md.
+  sourceDetail: string | null;
   receivedAt: string;
   name: string | null;
   phone: string | null;

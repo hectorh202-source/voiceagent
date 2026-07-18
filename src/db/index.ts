@@ -14,6 +14,7 @@ import { migratePiiEncryption } from "./migratePiiEncryption";
 import { migrateCallFlagsColumns } from "./migrateCallFlagsColumns";
 import { migrateAutoStatusColumn } from "./migrateAutoStatusColumn";
 import { migrateTwilioCallSidColumn } from "./migrateTwilioCallSidColumn";
+import { migrateInboundLeadSourceDetailColumn } from "./migrateInboundLeadSourceDetailColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -34,3 +35,4 @@ migratePiiEncryption(db);
 migrateCallFlagsColumns(db);
 migrateAutoStatusColumn(db);
 migrateTwilioCallSidColumn(db);
+migrateInboundLeadSourceDetailColumn(db);

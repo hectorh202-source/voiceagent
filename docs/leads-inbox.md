@@ -17,6 +17,7 @@ CREATE TABLE inbound_leads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   business_id INTEGER NOT NULL REFERENCES businesses(id),
   source TEXT NOT NULL,
+  source_detail TEXT,
   external_id TEXT,
   received_at TEXT NOT NULL DEFAULT (datetime('now')),
   name TEXT,
@@ -31,6 +32,8 @@ CREATE TABLE inbound_leads (
 ```
 
 `source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads` | `google_lsa`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
+
+`source_detail` is an optional, plain (unencrypted — not PII) sub-classification within a source, added once Google LSA leads shipped: it holds Google's real `lead_type` (`PHONE_CALL`/`MESSAGE`), null for every other source. Without it, the client had no way to distinguish a Google LSA phone-call lead from a Google LSA message lead in the Leads list — both would otherwise just show "Google LSA." Backfilled via `src/db/migrateInboundLeadSourceDetailColumn.ts` for databases that predate it; a fresh install gets the column from birth via `bootstrapSchema()`. Client-side, `getLeadSourceLabel(source, sourceDetail)` in `client/src/lib/format.ts` is the single shared place a source label gets built — used by `LeadsTable`/`LeadsFiltersPanel`/`LeadDetailPage` so a source added to the server (like `google_lsa` was) can't silently render blank in one of those three components because its label map wasn't updated there too — the exact bug this fixed.
 
 `name`/`phone`/`email`/`message`/`internal_notes` are encrypted at rest (`encryptNullable`/`decryptNullable`, same as equivalent PII fields on `call_log`/`elevenlabs_calls`); `raw_payload_json` (`NOT NULL`, the full original webhook body) is encrypted via `encryptField`/`decryptField` — kept for audit, same reasoning as `elevenlabs_calls.raw_payload_json`, and never returned by the API (`GET /leads/:id` excludes it, same as `GET /calls/:conversationId` excluding its own `raw_payload_json`). All of this lives in `src/db/inboundLeads.ts`, structured 1:1 with `src/db/callRecords.ts`.
 

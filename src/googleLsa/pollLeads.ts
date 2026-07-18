@@ -25,6 +25,7 @@ export async function pollGoogleLsaLeads(): Promise<void> {
           insertInboundLead({
             businessId: business.id,
             source: "google_lsa",
+            sourceDetail: lead.sourceDetail,
             externalId: lead.externalId,
             name: lead.name,
             phone: lead.phone,

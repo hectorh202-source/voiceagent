@@ -248,6 +248,7 @@ function parseLeadRow(record: ReturnType<typeof listInboundLeads>[number]) {
   return {
     id: record.id,
     source: record.source,
+    sourceDetail: record.source_detail,
     receivedAt: record.received_at,
     name: record.name,
     phone: record.phone,

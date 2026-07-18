@@ -44,6 +44,11 @@ interface LocalServicesLeadConversationRow {
 
 export interface LsaLeadResult {
   externalId: string;
+  // The real Google lead_type ("PHONE_CALL"/"MESSAGE") — surfaced as its own
+  // field (not folded into `message`) so the Leads inbox's Source column can
+  // distinguish a Google LSA phone-call lead from a Google LSA message lead,
+  // not just show "Google LSA" for both.
+  sourceDetail: string | null;
   name: string | null;
   phone: string | null;
   email: string | null;
@@ -177,6 +182,7 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig): Promise<LsaL
 
     results.push({
       externalId: lead.resourceName,
+      sourceDetail: lead.leadType ?? null,
       name: lead.contactDetails?.consumerName ?? null,
       phone: lead.contactDetails?.phoneNumber ?? null,
       email: lead.contactDetails?.email ?? null,

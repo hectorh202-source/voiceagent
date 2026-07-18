@@ -2,16 +2,9 @@ import { useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, type Location } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { InboundLeadDetail, LeadSource, LeadStatus } from "../api/types";
-import { formatDateTime, formatPhoneNumber } from "../lib/format";
+import type { InboundLeadDetail, LeadStatus } from "../api/types";
+import { formatDateTime, formatPhoneNumber, getLeadSourceLabel } from "../lib/format";
 import { UserIcon, PhoneIcon, MailIcon, MessageIcon, CalendarIcon, EditIcon, SaveIcon, CloseIcon } from "../components/icons";
-
-const SOURCE_LABEL: Record<LeadSource, string> = {
-  website_form: "Website form",
-  website_chat: "Website chat",
-  facebook_ads: "Facebook Ads",
-  google_ads: "Google Ads",
-};
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "New",
@@ -111,7 +104,7 @@ export function LeadDetailPage() {
             <div className="info-body">
               <div className="info-label">Received</div>
               <div className="info-value">
-                {formatDateTime(data.receivedAt)} — {SOURCE_LABEL[data.source]}
+                {formatDateTime(data.receivedAt)} — {getLeadSourceLabel(data.source, data.sourceDetail)}
               </div>
             </div>
           </div>

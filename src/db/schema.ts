@@ -137,6 +137,7 @@ export function bootstrapSchema(db: DatabaseSync): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       business_id INTEGER NOT NULL REFERENCES businesses(id),
       source TEXT NOT NULL,
+      source_detail TEXT,
       external_id TEXT,
       received_at TEXT NOT NULL DEFAULT (datetime('now')),
       name TEXT,

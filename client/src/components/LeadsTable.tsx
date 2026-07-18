@@ -1,13 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import type { InboundLeadListRow, LeadSource, LeadStatus } from "../api/types";
-import { formatDateTime, formatPhoneNumber } from "../lib/format";
-
-const SOURCE_LABEL: Record<LeadSource, string> = {
-  website_form: "Website form",
-  website_chat: "Website chat",
-  facebook_ads: "Facebook Ads",
-  google_ads: "Google Ads",
-};
+import type { InboundLeadListRow, LeadStatus } from "../api/types";
+import { formatDateTime, formatPhoneNumber, getLeadSourceLabel } from "../lib/format";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "New",
@@ -79,7 +72,7 @@ export function LeadsTable({
               <span className={`badge ${STATUS_CLASS[row.status]}`}>{STATUS_LABEL[row.status]}</span>
             </td>
             <td>{formatDateTime(row.receivedAt)}</td>
-            <td>{SOURCE_LABEL[row.source]}</td>
+            <td>{getLeadSourceLabel(row.source, row.sourceDetail)}</td>
             <td>{row.name ?? <span className="muted">Unknown</span>}</td>
             <td>{row.phone ? formatPhoneNumber(row.phone) : <span className="muted">—</span>}</td>
             <td>{row.email ?? <span className="muted">—</span>}</td>

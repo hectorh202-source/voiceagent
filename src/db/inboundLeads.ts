@@ -5,6 +5,7 @@ export interface InboundLeadRecord {
   id: number;
   business_id: number;
   source: string;
+  source_detail: string | null;
   external_id: string | null;
   received_at: string;
   name: string | null;
@@ -36,6 +37,11 @@ function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
 export interface InboundLeadEntry {
   businessId: number;
   source: string;
+  // A plain, unencrypted sub-classification within a source — e.g. Google
+  // LSA's "PHONE_CALL"/"MESSAGE" lead type — distinct from `message`'s
+  // actual free-text content. Not PII, so it isn't encrypted like
+  // name/phone/email/message below.
+  sourceDetail?: string | null;
   externalId?: string | null;
   name?: string | null;
   phone?: string | null;
@@ -57,9 +63,10 @@ export interface InboundLeadEntry {
 // clobber a human's triage work. Must repeat the partial index's WHERE
 // clause in the conflict target for SQLite to match it.
 const insertWithExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, external_id, name, phone, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @externalId, @name, @phone, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, email, message, raw_payload_json)
+  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @email, @message, @rawPayloadJson)
   ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+    source_detail = excluded.source_detail,
     name = excluded.name,
     phone = excluded.phone,
     email = excluded.email,
@@ -68,14 +75,15 @@ const insertWithExternalIdStmt = db.prepare(`
 `);
 
 const insertWithoutExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, name, phone, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @name, @phone, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, email, message, raw_payload_json)
+  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @email, @message, @rawPayloadJson)
 `);
 
 export function insertInboundLead(entry: InboundLeadEntry): void {
   const params = {
     businessId: entry.businessId,
     source: entry.source,
+    sourceDetail: entry.sourceDetail ?? null,
     name: encryptNullable(entry.name ?? null),
     phone: encryptNullable(entry.phone ?? null),
     email: encryptNullable(entry.email ?? null),

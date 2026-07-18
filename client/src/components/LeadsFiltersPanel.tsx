@@ -1,12 +1,6 @@
 import type { LeadListFilters } from "../api/types";
 import { DateRangePicker } from "./DateRangePicker";
-
-const SOURCE_LABEL: Record<string, string> = {
-  website_form: "Website form",
-  website_chat: "Website chat",
-  facebook_ads: "Facebook Ads",
-  google_ads: "Google Ads",
-};
+import { LEAD_SOURCE_OPTIONS } from "../lib/format";
 
 export function LeadsFiltersPanel({
   filters,
@@ -22,7 +16,7 @@ export function LeadsFiltersPanel({
         onChange={(e) => onChange({ ...filters, source: (e.target.value || undefined) as never })}
       >
         <option value="">All sources</option>
-        {Object.entries(SOURCE_LABEL).map(([value, label]) => (
+        {LEAD_SOURCE_OPTIONS.map(({ value, label }) => (
           <option key={value} value={value}>
             {label}
           </option>
