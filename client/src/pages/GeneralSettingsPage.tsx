@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { GeneralSettings } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SecretRevealModal } from "../components/SecretRevealModal";
 
 export function GeneralSettingsPage() {
   const { businessId } = useParams();
@@ -114,10 +116,21 @@ export function GeneralSettingsPage() {
     },
   });
 
+  // Which (if any) "Generate a new secret" confirm dialog is currently open,
+  // and the just-generated secret (if any) waiting to be shown in
+  // SecretRevealModal — both replace the old window.confirm()/inline-text
+  // flow with in-app modals matching the rest of the design system.
+  const [confirmRegenerate, setConfirmRegenerate] = useState<"tool" | "leadIntake" | null>(null);
+  const [revealedSecret, setRevealedSecret] = useState<{ title: string; secret: string; description: string } | null>(null);
+
   const generateSecretMutation = useMutation({
     mutationFn: () => api.post<{ secret: string }>(`/api/businesses/${businessId}/settings/general/generate-secret`),
     onSuccess: (res) => {
-      setMessage(`New tool webhook secret: ${res.secret} — copy it into ElevenLabs now, it will be masked after you leave this page.`);
+      setRevealedSecret({
+        title: "New tool webhook secret",
+        secret: res.secret,
+        description: "Copy this into ElevenLabs now — it will be masked after you leave this page.",
+      });
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -126,7 +139,11 @@ export function GeneralSettingsPage() {
     mutationFn: () =>
       api.post<{ secret: string }>(`/api/businesses/${businessId}/settings/general/generate-lead-intake-secret`),
     onSuccess: (res) => {
-      setMessage(`New lead intake secret: ${res.secret} — copy it into whatever sends form/chat leads now, it will be masked after you leave this page.`);
+      setRevealedSecret({
+        title: "New lead intake secret",
+        secret: res.secret,
+        description: "Copy this into whatever sends form/chat leads now — it will be masked after you leave this page.",
+      });
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -217,15 +234,11 @@ export function GeneralSettingsPage() {
                 // with no way to undo it. Only warn if a secret is already
                 // set; generating one for the first time has nothing live to
                 // break yet.
-                if (
-                  data.operational.toolWebhookSecretSet &&
-                  !confirm(
-                    "This immediately replaces the tool webhook secret ElevenLabs is currently configured to use. Every tool call (lookup_customer, check_availability, create_lead) will start failing with a 401 until you update the new secret in ElevenLabs too. Continue?",
-                  )
-                ) {
-                  return;
+                if (data.operational.toolWebhookSecretSet) {
+                  setConfirmRegenerate("tool");
+                } else {
+                  generateSecretMutation.mutate();
                 }
-                generateSecretMutation.mutate();
               }}
             >
               Generate a new secret
@@ -266,15 +279,11 @@ export function GeneralSettingsPage() {
             <button
               className="link-btn"
               onClick={() => {
-                if (
-                  data.operational.leadIntakeWebhookSecretSet &&
-                  !confirm(
-                    "This immediately replaces the lead intake secret. Whatever website form/chat/Zapier tool is currently configured to send leads here will start failing until you update the new secret there too. Continue?",
-                  )
-                ) {
-                  return;
+                if (data.operational.leadIntakeWebhookSecretSet) {
+                  setConfirmRegenerate("leadIntake");
+                } else {
+                  generateLeadIntakeSecretMutation.mutate();
                 }
-                generateLeadIntakeSecretMutation.mutate();
               }}
             >
               Generate a new secret
@@ -342,6 +351,39 @@ export function GeneralSettingsPage() {
         Save
       </button>
       {message && <div className="muted" style={{ marginTop: 8 }}>{message}</div>}
+
+      {confirmRegenerate === "tool" && (
+        <ConfirmDialog
+          title="Replace the tool webhook secret?"
+          message="ElevenLabs is currently signing tool calls with the existing secret. Replacing it now will immediately invalidate that secret — every tool call (lookup_customer, check_availability, create_lead) will start failing with a 401 until you update ElevenLabs with the new one."
+          confirmLabel="Generate new secret"
+          onCancel={() => setConfirmRegenerate(null)}
+          onConfirm={() => {
+            setConfirmRegenerate(null);
+            generateSecretMutation.mutate();
+          }}
+        />
+      )}
+      {confirmRegenerate === "leadIntake" && (
+        <ConfirmDialog
+          title="Replace the lead intake secret?"
+          message="Whatever website form, chat widget, or Zapier/Make integration is currently configured to send leads here is using the existing secret. Replacing it now will immediately invalidate that secret — those submissions will start failing until you update it there too."
+          confirmLabel="Generate new secret"
+          onCancel={() => setConfirmRegenerate(null)}
+          onConfirm={() => {
+            setConfirmRegenerate(null);
+            generateLeadIntakeSecretMutation.mutate();
+          }}
+        />
+      )}
+      {revealedSecret && (
+        <SecretRevealModal
+          title={revealedSecret.title}
+          secret={revealedSecret.secret}
+          description={revealedSecret.description}
+          onClose={() => setRevealedSecret(null)}
+        />
+      )}
     </div>
   );
 }

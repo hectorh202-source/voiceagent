@@ -209,6 +209,21 @@ button {
   color: var(--accent-contrast);
 }
 
+/* Fixed, theme-independent red (not --danger-text, which is tuned for
+   subtle badge backgrounds and gets too light against its own bg in dark
+   mode to work as a solid, white-text button) — same reasoning --accent
+   already gets its own fixed value rather than swapping per theme. */
+.btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -978,6 +993,101 @@ a.badge:hover {
 .modal-body {
   padding: 14px 16px 16px;
   overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px auto 16px;
+  flex-shrink: 0;
+}
+
+.modal-icon-circle.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.modal-icon-circle.danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.modal-icon-circle.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+/* ConfirmDialog.tsx — a narrower, text-centered variant of the standard
+   .modal, since a confirmation dialog is just an icon + a couple of
+   sentences + two buttons, not a data-dense panel like the voice picker or
+   call/lead detail modals. */
+.confirm-dialog {
+  width: 420px;
+}
+
+.confirm-dialog-body {
+  padding: 28px 24px 20px;
+  text-align: center;
+}
+
+.confirm-dialog-body h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.confirm-dialog-body p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+/* SecretRevealModal.tsx */
+.secret-reveal-body {
+  text-align: center;
+}
+
+.secret-reveal-body > p {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.secret-reveal-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--neutral-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-top: 14px;
+  text-align: left;
+}
+
+.secret-reveal-box code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.secret-copied-hint {
+  color: var(--success-text);
+  font-size: 12px;
+  margin-top: 8px;
 }
 
 .voice-search-row {
