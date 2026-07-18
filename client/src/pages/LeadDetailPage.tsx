@@ -49,14 +49,26 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
   // Viewing a lead marks it read, same as opening an email — the unread dot
   // in LeadsPage.tsx's list otherwise never clears on its own, since nothing
   // else in this flow sets isRead except the explicit Mark as read/unread
-  // button in the header. Guarded by leadId (not just data.isRead) so this
-  // fires exactly once per lead visited, not on every render while the
-  // mutation is still in flight and the query hasn't yet reflected the update.
-  const markedReadForLeadId = useRef<string | null>(null);
+  // button in the header.
+  //
+  // initializedLeadId tracks whether *this lead has been looked at yet*,
+  // separately from whether it's currently read — not just "have we already
+  // auto-marked it." Without that distinction, this bit: a lead that's
+  // already read when opened never sets any guard, so clicking "Mark as
+  // unread" flips isRead to false, the refetch delivers that new data, and
+  // this effect (seeing an unread lead with no guard set) immediately
+  // re-marks it read — the button visibly "flashes" back to read and needs
+  // a second click, once the guard from the *first* click has finally been
+  // recorded, to actually stick. Setting the guard unconditionally the
+  // moment data for this leadId first arrives — before ever checking
+  // isRead — means a manual toggle afterward is never second-guessed.
+  const initializedLeadId = useRef<string | null>(null);
   useEffect(() => {
-    if (data && !data.isRead && markedReadForLeadId.current !== leadId) {
-      markedReadForLeadId.current = leadId;
-      patchMutation.mutate({ isRead: true });
+    if (data && initializedLeadId.current !== leadId) {
+      initializedLeadId.current = leadId;
+      if (!data.isRead) {
+        patchMutation.mutate({ isRead: true });
+      }
     }
   }, [data, leadId]);
 
