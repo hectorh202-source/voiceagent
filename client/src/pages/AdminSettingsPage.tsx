@@ -379,6 +379,16 @@ function BusinessUserRow({ user, businessId }: { user: AdminUser; businessId: nu
   );
 }
 
+const BUSINESS_SETTINGS_SECTIONS = [
+  { id: "users", label: "Users" },
+  { id: "elevenlabs", label: "ElevenLabs" },
+  { id: "servicetitan", label: "ServiceTitan" },
+  { id: "operational", label: "Operational" },
+  { id: "google-ads", label: "Google Ads" },
+] as const;
+
+type BusinessSettingsSectionId = (typeof BUSINESS_SETTINGS_SECTIONS)[number]["id"];
+
 function BusinessAdminSettings({ businessId, businesses }: { businessId: number; businesses: Business[] }) {
   const queryClient = useQueryClient();
   const { data: userData } = useQuery({
@@ -388,6 +398,12 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
   const users = userData?.users ?? [];
   const business = businesses.find((b) => b.id === businessId);
   const businessUsers = users.filter((u) => !u.isPlatformAdmin && u.businessIds.includes(businessId));
+
+  // Same reasoning as GlobalAdminSettings' own sub-nav — this page
+  // accumulates a new card every time a new per-business integration
+  // ships, and showing one section at a time keeps it from becoming a
+  // long scroll.
+  const [activeSection, setActiveSection] = useState<BusinessSettingsSectionId>("users");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -409,36 +425,60 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
     <div>
       <h1>Admin Settings — {business?.name ?? `Business ${businessId}`}</h1>
 
-      <div className="card">
-        <h2>Users</h2>
-        {businessUsers.length === 0 ? (
-          <p className="muted">No users assigned to this business yet — add one below.</p>
-        ) : (
-          businessUsers.map((u) => <BusinessUserRow key={u.id} user={u} businessId={businessId} />)
-        )}
-        <div className="form-row" style={{ marginTop: 12 }}>
-          <label>Add a user — email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </div>
-        <div className="form-row">
-          <label>Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
-        </div>
-        <div className="form-row">
-          <label>Confirm password</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="off" />
-        </div>
-        <button
-          className="btn btn-primary"
-          disabled={!email || password.length < 8 || password !== confirmPassword || addUserMutation.isPending}
-          onClick={() => addUserMutation.mutate()}
-        >
-          Add user
-        </button>
-        {error && <div className="muted" style={{ marginTop: 8 }}>{error}</div>}
-      </div>
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {BUSINESS_SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={activeSection === section.id ? "settings-nav-link active" : "settings-nav-link"}
+              onClick={() => setActiveSection(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
 
-      <GeneralSettingsPage />
+        <div className="settings-panel">
+          {activeSection === "users" && (
+            <div className="card">
+              <h2>Users</h2>
+              {businessUsers.length === 0 ? (
+                <p className="muted">No users assigned to this business yet — add one below.</p>
+              ) : (
+                businessUsers.map((u) => <BusinessUserRow key={u.id} user={u} businessId={businessId} />)
+              )}
+              <div className="form-row" style={{ marginTop: 12 }}>
+                <label>Add a user — email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label>Password</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+              </div>
+              <div className="form-row">
+                <label>Confirm password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <button
+                className="btn btn-primary"
+                disabled={!email || password.length < 8 || password !== confirmPassword || addUserMutation.isPending}
+                onClick={() => addUserMutation.mutate()}
+              >
+                Add user
+              </button>
+              {error && <div className="muted" style={{ marginTop: 8 }}>{error}</div>}
+            </div>
+          )}
+
+          {activeSection !== "users" && <GeneralSettingsPage activeSection={activeSection} />}
+        </div>
+      </div>
     </div>
   );
 }

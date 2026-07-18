@@ -7,7 +7,20 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SecretRevealModal } from "../components/SecretRevealModal";
 import { MASKED_SECRET_PLACEHOLDER } from "../lib/format";
 
-export function GeneralSettingsPage() {
+export type GeneralSettingsSectionId = "elevenlabs" | "servicetitan" | "operational" | "google-ads";
+
+// Renders one card at a time (selected by the parent's sub-nav — see
+// AdminSettingsPage.tsx's BusinessAdminSettings) rather than the page's own
+// heading + all four cards stacked, since this page keeps growing a new
+// card with each integration (ServiceTitan, then Twilio-adjacent
+// Operational fields, then Google Ads) and turned into the same
+// long-scroll problem the Global Admin Settings page had. The Save button,
+// its critical-change confirms, and the secret dialogs stay unconditional
+// regardless of which card is showing — one combined save still submits
+// every field, including ones on a card the user has since navigated away
+// from, since all of this component's state lives here regardless of
+// which card is currently rendered.
+export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralSettingsSectionId }) {
   const { businessId } = useParams();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -152,26 +165,27 @@ export function GeneralSettingsPage() {
   if (isLoading || !data) return <div>Loading…</div>;
 
   return (
-    <div>
-      <h1>General Settings</h1>
-
-      <div className="card">
-        <h2>ElevenLabs</h2>
-        <div className="form-row">
-          <label>API key {data.elevenLabs.apiKeySet && <span className="muted">(set — leave blank to keep)</span>}</label>
-          <input
-            type="password"
-            value={elevenLabsApiKey}
-            onChange={(e) => setElevenLabsApiKey(e.target.value)}
-            placeholder={data.elevenLabs.apiKeySet ? MASKED_SECRET_PLACEHOLDER : undefined}
-          />
+    <>
+      {activeSection === "elevenlabs" && (
+        <div className="card">
+          <h2>ElevenLabs</h2>
+          <div className="form-row">
+            <label>API key {data.elevenLabs.apiKeySet && <span className="muted">(set — leave blank to keep)</span>}</label>
+            <input
+              type="password"
+              value={elevenLabsApiKey}
+              onChange={(e) => setElevenLabsApiKey(e.target.value)}
+              placeholder={data.elevenLabs.apiKeySet ? MASKED_SECRET_PLACEHOLDER : undefined}
+            />
+          </div>
+          <div className="form-row">
+            <label>Agent ID</label>
+            <input value={elevenLabsAgentId} onChange={(e) => setElevenLabsAgentId(e.target.value)} />
+          </div>
         </div>
-        <div className="form-row">
-          <label>Agent ID</label>
-          <input value={elevenLabsAgentId} onChange={(e) => setElevenLabsAgentId(e.target.value)} />
-        </div>
-      </div>
+      )}
 
+      {activeSection === "servicetitan" && (
       <div className="card">
         <h2>ServiceTitan</h2>
         <div className="form-row">
@@ -228,7 +242,9 @@ export function GeneralSettingsPage() {
           </select>
         </div>
       </div>
+      )}
 
+      {activeSection === "operational" && (
       <div className="card">
         <h2>Operational</h2>
         <div className="form-row">
@@ -339,7 +355,9 @@ export function GeneralSettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {activeSection === "google-ads" && (
       <div className="card">
         <h2>Google Ads (Local Services Ads)</h2>
         <p className="form-hint">
@@ -375,6 +393,7 @@ export function GeneralSettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
       <button
         className="btn btn-primary"
@@ -417,6 +436,6 @@ export function GeneralSettingsPage() {
           onClose={() => setRevealedSecret(null)}
         />
       )}
-    </div>
+    </>
   );
 }
