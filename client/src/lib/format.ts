@@ -101,13 +101,13 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   lost: "Lost",
 };
 
-// Same neutral/warning/success/danger color families as the shared
-// .badge-* classes, applied directly (bg/fg) rather than via className,
-// since both call sites also need the raw color values for non-badge
-// elements (a select's own background, a mini list-row dot/pill).
+// Each status gets its own distinct color family — new (blue) and contacted
+// (purple) originally both mapped to the shared neutral gray, making the
+// two most common statuses indistinguishable at a glance in both the list's
+// mini pill and the detail header's select.
 export const LEAD_STATUS_COLORS: Record<LeadStatus, { bg: string; fg: string }> = {
-  new: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
-  contacted: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  new: { bg: "var(--info-bg)", fg: "var(--info-text)" },
+  contacted: { bg: "var(--progress-bg)", fg: "var(--progress-text)" },
   qualified: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
   won: { bg: "var(--success-bg)", fg: "var(--success-text)" },
   lost: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
