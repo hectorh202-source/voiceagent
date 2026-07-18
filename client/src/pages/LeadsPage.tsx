@@ -6,16 +6,18 @@ import type { InboundLeadListRow, LeadListFilters, LeadStatus } from "../api/typ
 import { LeadsFiltersPanel } from "../components/LeadsFiltersPanel";
 import { LeadsBulkActionBar } from "../components/LeadsBulkActionBar";
 import { LeadDetailPage } from "./LeadDetailPage";
-import { formatDateTime, getLeadSourceLabel } from "../lib/format";
+import { formatDateTime, getLeadSourceLabel, LEAD_STATUS_LABEL, LEAD_STATUS_COLORS } from "../lib/format";
 import { DesktopIcon, MessageIcon, PhoneIcon, MegaphoneIcon } from "../components/icons";
 import type { ComponentType, SVGProps } from "react";
 
-// Status is deliberately not shown in the list row anymore — it's set/edited
-// in the detail pane's own Status dropdown (LeadDetailPage.tsx), and having
-// it here too just competed with the row's more scannable icon+name+type
-// hierarchy for attention. The icon is what should carry the "what kind of
-// lead is this" signal at a glance instead of a customer-initials avatar,
-// which told you nothing until you'd already read the name.
+// Status was previously dropped from the row entirely (it used to be a
+// full-size badge competing with the source line for attention) — brought
+// back as a small dot + label on the type line specifically so it can be
+// read at a glance across the whole list without opening each lead, while
+// staying visually much quieter than the original full badge. The icon
+// still carries the "what kind of lead is this" signal instead of a
+// customer-initials avatar, which told you nothing until you'd already
+// read the name.
 const SOURCE_ICON_STYLE: Record<string, { icon: ComponentType<SVGProps<SVGSVGElement>>; rgb: string }> = {
   website_form: { icon: DesktopIcon, rgb: "37, 99, 235" },
   website_chat: { icon: MessageIcon, rgb: "139, 92, 246" },
@@ -254,8 +256,19 @@ export function LeadsPage() {
                           <span className="lead-list-item-name">{row.name ?? "Unknown"}</span>
                           <span className="lead-list-item-date">{formatDateTime(row.receivedAt)}</span>
                         </div>
-                        <div className="lead-list-item-type" style={{ color: `rgb(${rgb})` }}>
-                          {getLeadSourceLabel(row.source, row.sourceDetail)}
+                        <div className="lead-list-item-type-row">
+                          <span className="lead-list-item-type" style={{ color: `rgb(${rgb})` }}>
+                            {getLeadSourceLabel(row.source, row.sourceDetail)}
+                          </span>
+                          <span
+                            className="lead-status-mini"
+                            style={{
+                              background: LEAD_STATUS_COLORS[row.status].bg,
+                              color: LEAD_STATUS_COLORS[row.status].fg,
+                            }}
+                          >
+                            {LEAD_STATUS_LABEL[row.status]}
+                          </span>
                         </div>
                       </div>
                     </div>

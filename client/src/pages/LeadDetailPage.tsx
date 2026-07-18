@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
-import { formatDateTime, formatPhoneNumber, getLeadSourceLabel, getInitials, avatarColorFor } from "../lib/format";
+import {
+  formatDateTime,
+  formatPhoneNumber,
+  getLeadSourceLabel,
+  getInitials,
+  avatarColorFor,
+  LEAD_STATUS_LABEL,
+  LEAD_STATUS_COLORS,
+} from "../lib/format";
 import {
   UserIcon,
   PhoneIcon,
@@ -14,28 +22,6 @@ import {
   CloseIcon,
   ChevronDownIcon,
 } from "../components/icons";
-
-const STATUS_LABEL: Record<LeadStatus, string> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  won: "Won",
-  lost: "Lost",
-};
-
-// Same color families as the shared .badge-* classes (neutral/warning/
-// success/danger), applied directly to the header status select instead —
-// this is the one selector in the app styled to always look like its own
-// colored badge rather than a plain form control, since it doubles as the
-// at-a-glance "what state is this lead in" signal that used to live in a
-// separate Status section further down the page.
-const STATUS_COLORS: Record<LeadStatus, { bg: string; fg: string }> = {
-  new: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
-  contacted: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
-  qualified: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
-  won: { bg: "var(--success-bg)", fg: "var(--success-text)" },
-  lost: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
-};
 
 // Rendered inline inside LeadsPage.tsx's right-hand pane — always visible
 // alongside the list, never a modal (see LeadsPage.tsx for the two-pane
@@ -96,15 +82,15 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             className="status-select"
             value={data.status}
             onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
-            style={{ background: STATUS_COLORS[data.status].bg, color: STATUS_COLORS[data.status].fg }}
+            style={{ background: LEAD_STATUS_COLORS[data.status].bg, color: LEAD_STATUS_COLORS[data.status].fg }}
           >
-            {(Object.keys(STATUS_LABEL) as LeadStatus[]).map((status) => (
+            {(Object.keys(LEAD_STATUS_LABEL) as LeadStatus[]).map((status) => (
               <option key={status} value={status}>
-                {STATUS_LABEL[status]}
+                {LEAD_STATUS_LABEL[status]}
               </option>
             ))}
           </select>
-          <ChevronDownIcon width={13} height={13} style={{ color: STATUS_COLORS[data.status].fg }} />
+          <ChevronDownIcon width={13} height={13} style={{ color: LEAD_STATUS_COLORS[data.status].fg }} />
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import type { LeadSource } from "../api/types";
+import type { LeadSource, LeadStatus } from "../api/types";
 
 // Shown as an empty secret input's placeholder when the server reports a
 // value is already set (the real value is never sent back, only a boolean
@@ -88,6 +88,30 @@ export function getLeadSourceLabel(source: string, sourceDetail?: string | null)
 export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = (
   Object.keys(LEAD_SOURCE_LABEL) as LeadSource[]
 ).map((value) => ({ value, label: LEAD_SOURCE_LABEL[value] }));
+
+// Shared between LeadsPage.tsx (the list's mini status indicator) and
+// LeadDetailPage.tsx (the header status select) — one definition so the two
+// views can never drift into showing different colors/labels for the same
+// status.
+export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
+  new: "New",
+  contacted: "Contacted",
+  qualified: "Qualified",
+  won: "Won",
+  lost: "Lost",
+};
+
+// Same neutral/warning/success/danger color families as the shared
+// .badge-* classes, applied directly (bg/fg) rather than via className,
+// since both call sites also need the raw color values for non-badge
+// elements (a select's own background, a mini list-row dot/pill).
+export const LEAD_STATUS_COLORS: Record<LeadStatus, { bg: string; fg: string }> = {
+  new: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  contacted: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  qualified: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
+  won: { bg: "var(--success-bg)", fg: "var(--success-text)" },
+  lost: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
+};
 
 // Up to 2 initials from a display name (or "?" for an unknown/empty one) —
 // used by the .lead-avatar circles in LeadsPage.tsx/LeadDetailPage.tsx.
