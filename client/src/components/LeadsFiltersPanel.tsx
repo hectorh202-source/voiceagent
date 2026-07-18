@@ -1,6 +1,6 @@
 import type { LeadListFilters } from "../api/types";
 import { DateRangePicker } from "./DateRangePicker";
-import { LEAD_SOURCE_OPTIONS } from "../lib/format";
+import { LEAD_SOURCE_OPTIONS, LEAD_STATUS_GROUPS } from "../lib/format";
 
 export function LeadsFiltersPanel({
   filters,
@@ -28,10 +28,15 @@ export function LeadsFiltersPanel({
       >
         <option value="">All statuses</option>
         <option value="new">New</option>
-        <option value="contacted">Contacted</option>
-        <option value="qualified">Qualified</option>
-        <option value="won">Won</option>
-        <option value="lost">Lost</option>
+        {LEAD_STATUS_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </optgroup>
+        ))}
       </select>
       <select
         value={filters.isRead === undefined ? "" : filters.isRead ? "1" : "0"}

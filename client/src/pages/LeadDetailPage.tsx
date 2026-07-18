@@ -8,8 +8,9 @@ import {
   getLeadSourceLabel,
   getInitials,
   avatarColorFor,
-  LEAD_STATUS_LABEL,
-  LEAD_STATUS_COLORS,
+  getLeadStatusLabel,
+  getLeadStatusColors,
+  LEAD_STATUS_GROUPS,
 } from "../lib/format";
 import {
   UserIcon,
@@ -98,15 +99,30 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
               className="status-select"
               value={data.status}
               onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
-              style={{ background: LEAD_STATUS_COLORS[data.status].bg, color: LEAD_STATUS_COLORS[data.status].fg }}
+              style={{ background: getLeadStatusColors(data.status).bg, color: getLeadStatusColors(data.status).fg }}
             >
-              {(Object.keys(LEAD_STATUS_LABEL) as LeadStatus[]).map((status) => (
-                <option key={status} value={status}>
-                  {LEAD_STATUS_LABEL[status]}
-                </option>
+              <option value="new">New</option>
+              {LEAD_STATUS_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
+              {/* A lead still holding a retired status (contacted/qualified/
+                  won/lost) from before this taxonomy replaced the original
+                  5-value set — see schemas.ts's LEAD_STATUS_VALUES comment
+                  on why old data is left as-is rather than migrated. Without
+                  this, the select would silently fall back to its first
+                  option ("New") since the real value isn't one of the
+                  <option>s above, hiding the lead's true stored status. */}
+              {data.status !== "new" && !LEAD_STATUS_GROUPS.some((group) => group.options.includes(data.status)) && (
+                <option value={data.status}>{getLeadStatusLabel(data.status)}</option>
+              )}
             </select>
-            <ChevronDownIcon width={13} height={13} style={{ color: LEAD_STATUS_COLORS[data.status].fg }} />
+            <ChevronDownIcon width={13} height={13} style={{ color: getLeadStatusColors(data.status).fg }} />
           </div>
         </div>
       </div>

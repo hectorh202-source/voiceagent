@@ -144,7 +144,63 @@ export const googleAdsSettingsSchema = z.object({
 // leadIntakeSchema below deliberately only accepts the two sources that
 // webhook actually handles.
 export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads", "google_lsa"] as const;
-export const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "won", "lost"] as const;
+// Mirrors CallDetailPage.tsx's CALL_REASON_GROUPS taxonomy (client-side),
+// minus the "Outbound" group — leads are always inbound, so those options
+// don't apply. Replaced the original flat new/contacted/qualified/won/lost
+// set so a lead's status can capture the same specific detail Call Reason
+// already does for calls, grouped under the same category names for a
+// consistent per-category color scheme (see lib/format.ts's
+// LEAD_STATUS_GROUPS/getLeadStatusColors on the client).
+//
+// Existing rows already set to a retired value (contacted/qualified/won/
+// lost) are deliberately left as-is in the DB — this enum only governs what
+// a *new* PATCH can set going forward (status is unconstrained TEXT with no
+// SQL CHECK constraint, see docs/leads-inbox.md), so old data isn't touched
+// or migrated; a business re-triages an old lead manually by picking a real
+// category next time they open it.
+export const LEAD_STATUS_VALUES = [
+  "new",
+  "Booked - Repair",
+  "Booked - Maintenance",
+  "Booked - Sales/Estimate",
+  "Booked - Service",
+  "Follow Up - Cancel",
+  "Follow Up - Membership Cancel",
+  "Follow Up - ETA",
+  "Follow Up - Reschedule",
+  "Follow Up - Other Update",
+  "Follow Up - Complaint",
+  "Follow Up - Compliment",
+  "Follow Up - Invoice/Payment",
+  "Follow Up - Confirming Time",
+  "Excused - Test Call",
+  "Excused - Outside of Area",
+  "Excused - Outside of Services",
+  "Excused - Telemarketing",
+  "Excused - Spam",
+  "Excused - Internal Call",
+  "Excused - Employment",
+  "Excused - Update Profile",
+  "Excused - Other Questions",
+  "Excused - No Reason",
+  "Excused - Silent Call",
+  "Excused - Not Homeowner",
+  "Excused - Installation Call",
+  "Excused - Live Agent Request",
+  "Excused - Transfer to Specific Person",
+  "Excused - Membership Inquiry",
+  "Excused - Installation Pictures",
+  "Excused - Returning Call",
+  "Unbooked - Reject Agent",
+  "Unbooked - Time Concern",
+  "Unbooked - Price Concern",
+  "Unbooked - Call Back Later",
+  "Unbooked - Trip Charge",
+  "Unbooked - Commercial",
+  "Unbooked - Pending Coordination",
+  "Unbooked - Callback (Previous Job)",
+  "Other",
+] as const;
 
 // Deliberately no "at least one of name/phone/email required" check, and no
 // `.email()` format validation on email — a submission is never rejected

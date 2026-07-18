@@ -89,29 +89,109 @@ export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = (
   Object.keys(LEAD_SOURCE_LABEL) as LeadSource[]
 ).map((value) => ({ value, label: LEAD_SOURCE_LABEL[value] }));
 
-// Shared between LeadsPage.tsx (the list's mini status indicator) and
-// LeadDetailPage.tsx (the header status select) — one definition so the two
-// views can never drift into showing different colors/labels for the same
-// status.
-export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  won: "Won",
-  lost: "Lost",
+// Mirrors CallDetailPage.tsx's CALL_REASON_GROUPS taxonomy exactly, minus
+// the "Outbound" group (leads are always inbound) — kept here rather than
+// imported from CallDetailPage.tsx so this file (already the shared home
+// for Leads' other label/format helpers) doesn't import a page component,
+// and so a change to Call Reason's own list doesn't silently ripple into
+// Leads' status options without a deliberate edit here too. If Call
+// Reason's list changes, update both call sites by hand — matches how the
+// server's independent LEAD_STATUS_VALUES (src/api/schemas.ts) already
+// mirrors this same taxonomy without importing it either.
+export const LEAD_STATUS_GROUPS: { label: string; options: string[] }[] = [
+  { label: "Booked", options: ["Booked - Repair", "Booked - Maintenance", "Booked - Sales/Estimate", "Booked - Service"] },
+  {
+    label: "Follow Up",
+    options: [
+      "Follow Up - Cancel",
+      "Follow Up - Membership Cancel",
+      "Follow Up - ETA",
+      "Follow Up - Reschedule",
+      "Follow Up - Other Update",
+      "Follow Up - Complaint",
+      "Follow Up - Compliment",
+      "Follow Up - Invoice/Payment",
+      "Follow Up - Confirming Time",
+    ],
+  },
+  {
+    label: "Excused",
+    options: [
+      "Excused - Test Call",
+      "Excused - Outside of Area",
+      "Excused - Outside of Services",
+      "Excused - Telemarketing",
+      "Excused - Spam",
+      "Excused - Internal Call",
+      "Excused - Employment",
+      "Excused - Update Profile",
+      "Excused - Other Questions",
+      "Excused - No Reason",
+      "Excused - Silent Call",
+      "Excused - Not Homeowner",
+      "Excused - Installation Call",
+      "Excused - Live Agent Request",
+      "Excused - Transfer to Specific Person",
+      "Excused - Membership Inquiry",
+      "Excused - Installation Pictures",
+      "Excused - Returning Call",
+    ],
+  },
+  {
+    label: "Unbooked",
+    options: [
+      "Unbooked - Reject Agent",
+      "Unbooked - Time Concern",
+      "Unbooked - Price Concern",
+      "Unbooked - Call Back Later",
+      "Unbooked - Trip Charge",
+      "Unbooked - Commercial",
+      "Unbooked - Pending Coordination",
+      "Unbooked - Callback (Previous Job)",
+    ],
+  },
+  { label: "Other", options: ["Other"] },
+];
+
+// One color per main category (not per individual reason — there are ~40
+// of those) — reuses the same tokens already established for other status-
+// like indicators elsewhere (success/progress/neutral/danger/warning)
+// rather than inventing a sixth palette.
+const LEAD_STATUS_GROUP_COLOR: Record<string, { bg: string; fg: string }> = {
+  Booked: { bg: "var(--success-bg)", fg: "var(--success-text)" },
+  "Follow Up": { bg: "var(--progress-bg)", fg: "var(--progress-text)" },
+  Excused: { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" },
+  Unbooked: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
+  Other: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
 };
 
-// Each status gets its own distinct color family — new (blue) and contacted
-// (purple) originally both mapped to the shared neutral gray, making the
-// two most common statuses indistinguishable at a glance in both the list's
-// mini pill and the detail header's select.
-export const LEAD_STATUS_COLORS: Record<LeadStatus, { bg: string; fg: string }> = {
-  new: { bg: "var(--info-bg)", fg: "var(--info-text)" },
-  contacted: { bg: "var(--progress-bg)", fg: "var(--progress-text)" },
-  qualified: { bg: "var(--warning-bg)", fg: "var(--warning-text)" },
-  won: { bg: "var(--success-bg)", fg: "var(--success-text)" },
-  lost: { bg: "var(--danger-bg)", fg: "var(--danger-text)" },
-};
+// Flattened option -> parent group label, so a specific status string (e.g.
+// "Booked - Repair") can be colored by its category without the caller
+// needing to know which group it belongs to.
+const LEAD_STATUS_TO_GROUP: Record<string, string> = Object.fromEntries(
+  LEAD_STATUS_GROUPS.flatMap((group) => group.options.map((option) => [option, group.label])),
+);
+
+// "New" is deliberately not part of any group above — unlike a completed
+// call, a lead that hasn't been triaged yet has no equivalent in Call
+// Reason's own taxonomy, so it stays a standalone first option instead of
+// being force-fit into one of the borrowed categories.
+export function getLeadStatusLabel(status: LeadStatus): string {
+  return status === "new" ? "New" : status;
+}
+
+// Falls back to a plain neutral tint for anything outside the current
+// taxonomy — specifically existing leads still holding a retired value
+// (contacted/qualified/won/lost) from before this taxonomy replaced the
+// original 5-value status. Those are deliberately left as-is in the data
+// (see src/api/schemas.ts's LEAD_STATUS_VALUES) rather than auto-migrated,
+// so this needs to render *something* sensible for them rather than
+// crashing on a missing lookup key.
+export function getLeadStatusColors(status: LeadStatus): { bg: string; fg: string } {
+  if (status === "new") return { bg: "var(--info-bg)", fg: "var(--info-text)" };
+  const group = LEAD_STATUS_TO_GROUP[status];
+  return group ? LEAD_STATUS_GROUP_COLOR[group] : { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" };
+}
 
 // Up to 2 initials from a display name (or "?" for an unknown/empty one) —
 // used by the .lead-avatar circles in LeadsPage.tsx/LeadDetailPage.tsx.

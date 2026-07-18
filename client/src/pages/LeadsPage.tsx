@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { InboundLeadListRow, LeadListFilters } from "../api/types";
 import { LeadsFiltersPanel } from "../components/LeadsFiltersPanel";
 import { LeadDetailPage } from "./LeadDetailPage";
-import { formatDateTime, getLeadSourceLabel, LEAD_STATUS_LABEL, LEAD_STATUS_COLORS } from "../lib/format";
+import { formatDateTime, getLeadSourceLabel, getLeadStatusLabel, getLeadStatusColors } from "../lib/format";
 import { DesktopIcon, MessageIcon, PhoneIcon, MegaphoneIcon } from "../components/icons";
 import type { ComponentType, SVGProps } from "react";
 
@@ -213,11 +213,11 @@ export function LeadsPage() {
                           <span
                             className="lead-status-mini"
                             style={{
-                              background: LEAD_STATUS_COLORS[row.status].bg,
-                              color: LEAD_STATUS_COLORS[row.status].fg,
+                              background: getLeadStatusColors(row.status).bg,
+                              color: getLeadStatusColors(row.status).fg,
                             }}
                           >
-                            {LEAD_STATUS_LABEL[row.status]}
+                            {getLeadStatusLabel(row.status)}
                           </span>
                         </div>
                       </div>

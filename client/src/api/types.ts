@@ -269,7 +269,15 @@ export interface GoogleAdsSettings {
 // inbound inquiries from a business's own lead sources, tracked in their
 // own inbox. See docs/leads-inbox.md.
 export type LeadSource = "website_form" | "website_chat" | "facebook_ads" | "google_ads" | "google_lsa";
-export type LeadStatus = "new" | "contacted" | "qualified" | "won" | "lost";
+// Plain string, not a literal union — same reasoning as CallDetail's own
+// callReason/callReasonOverride fields. The real valid set (see lib/
+// format.ts's LEAD_STATUS_GROUPS) is large (~40 values, mirroring Call
+// Reason's own taxonomy) and existing leads may still hold a retired value
+// from before that change (new/contacted/qualified/won/lost); a strict
+// union would either have to include those forever or make old data
+// impossible to type, so this stays a plain string and label/color lookup
+// falls back gracefully for anything outside the known set.
+export type LeadStatus = string;
 
 export interface InboundLeadListRow {
   id: number;
