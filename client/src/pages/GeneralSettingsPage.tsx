@@ -208,7 +208,26 @@ export function GeneralSettingsPage() {
           </label>
           <input type="password" value={toolWebhookSecret} onChange={(e) => setToolWebhookSecret(e.target.value)} />
           <div className="form-hint">
-            <button className="link-btn" onClick={() => generateSecretMutation.mutate()}>
+            <button
+              className="link-btn"
+              onClick={() => {
+                // Same guardrail as confirmCriticalChanges() below — this
+                // silently invalidates the secret ElevenLabs' tool webhook is
+                // currently configured to sign with the moment it's clicked,
+                // with no way to undo it. Only warn if a secret is already
+                // set; generating one for the first time has nothing live to
+                // break yet.
+                if (
+                  data.operational.toolWebhookSecretSet &&
+                  !confirm(
+                    "This immediately replaces the tool webhook secret ElevenLabs is currently configured to use. Every tool call (lookup_customer, check_availability, create_lead) will start failing with a 401 until you update the new secret in ElevenLabs too. Continue?",
+                  )
+                ) {
+                  return;
+                }
+                generateSecretMutation.mutate();
+              }}
+            >
               Generate a new secret
             </button>
           </div>
@@ -244,7 +263,20 @@ export function GeneralSettingsPage() {
             onChange={(e) => setLeadIntakeWebhookSecret(e.target.value)}
           />
           <div className="form-hint">
-            <button className="link-btn" onClick={() => generateLeadIntakeSecretMutation.mutate()}>
+            <button
+              className="link-btn"
+              onClick={() => {
+                if (
+                  data.operational.leadIntakeWebhookSecretSet &&
+                  !confirm(
+                    "This immediately replaces the lead intake secret. Whatever website form/chat/Zapier tool is currently configured to send leads here will start failing until you update the new secret there too. Continue?",
+                  )
+                ) {
+                  return;
+                }
+                generateLeadIntakeSecretMutation.mutate();
+              }}
+            >
               Generate a new secret
             </button>
           </div>
