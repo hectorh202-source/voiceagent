@@ -443,6 +443,16 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
   );
 }
 
+const GLOBAL_SETTINGS_SECTIONS = [
+  { id: "businesses", label: "Businesses" },
+  { id: "email", label: "Email (SMTP)" },
+  { id: "twilio", label: "Twilio" },
+  { id: "google-ads", label: "Google Ads" },
+  { id: "platform-admins", label: "Platform Admins" },
+] as const;
+
+type GlobalSettingsSectionId = (typeof GLOBAL_SETTINGS_SECTIONS)[number]["id"];
+
 function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
   const currentUser = useAuthedUser();
   const queryClient = useQueryClient();
@@ -452,6 +462,13 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
   });
   const users = userData?.users ?? [];
   const admins = users.filter((u) => u.isPlatformAdmin);
+
+  // Switches which single section renders, rather than a scroll-to-anchor
+  // list — this page accumulates a new card every time a new global
+  // integration ships (Twilio, then Google Ads, ...), and a long scroll
+  // gets worse with each one; a sub-nav that shows one section at a time
+  // doesn't.
+  const [activeSection, setActiveSection] = useState<GlobalSettingsSectionId>("businesses");
 
   const [businessName, setBusinessName] = useState("");
   const addBusinessMutation = useMutation({
@@ -488,67 +505,97 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
     <div>
       <h1>Admin Settings</h1>
 
-      <div className="card">
-        <h2>Businesses</h2>
-        {businesses.length === 0 ? (
-          <p className="muted">No businesses yet — add one below.</p>
-        ) : (
-          businesses.map((b) => <div key={b.id} className="details-row">{b.name}</div>)
-        )}
-        <div className="form-row" style={{ marginTop: 12 }}>
-          <label>Add a business — name</label>
-          <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
-        </div>
-        <button className="btn" onClick={() => addBusinessMutation.mutate()} disabled={!businessName.trim()}>
-          Add business
-        </button>
-        <div className="form-hint" style={{ marginTop: 8 }}>
-          Pick a business from the switcher above to manage its users and general settings.
-        </div>
-      </div>
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {GLOBAL_SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={activeSection === section.id ? "settings-nav-link active" : "settings-nav-link"}
+              onClick={() => setActiveSection(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
 
-      <EmailSettingsSection />
+        <div className="settings-panel">
+          {activeSection === "businesses" && (
+            <div className="card">
+              <h2>Businesses</h2>
+              {businesses.length === 0 ? (
+                <p className="muted">No businesses yet — add one below.</p>
+              ) : (
+                businesses.map((b) => <div key={b.id} className="details-row">{b.name}</div>)
+              )}
+              <div className="form-row" style={{ marginTop: 12 }}>
+                <label>Add a business — name</label>
+                <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+              </div>
+              <button className="btn" onClick={() => addBusinessMutation.mutate()} disabled={!businessName.trim()}>
+                Add business
+              </button>
+              <div className="form-hint" style={{ marginTop: 8 }}>
+                Pick a business from the switcher above to manage its users and general settings.
+              </div>
+            </div>
+          )}
 
-      <TwilioSettingsSection />
+          {activeSection === "email" && <EmailSettingsSection />}
 
-      <GoogleAdsSettingsSection />
+          {activeSection === "twilio" && <TwilioSettingsSection />}
 
-      <h2>Platform Admins</h2>
-      {admins.map((u) => (
-        <PlatformAdminRow key={u.id} user={u} currentUserId={currentUser.id} />
-      ))}
+          {activeSection === "google-ads" && <GoogleAdsSettingsSection />}
 
-      <div className="card">
-        <h2>Add a platform admin</h2>
-        <div className="form-row">
-          <label>Email</label>
-          <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          {activeSection === "platform-admins" && (
+            <>
+              <h2>Platform Admins</h2>
+              {admins.map((u) => (
+                <PlatformAdminRow key={u.id} user={u} currentUserId={currentUser.id} />
+              ))}
+
+              <div className="card">
+                <h2>Add a platform admin</h2>
+                <div className="form-row">
+                  <label>Email</label>
+                  <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+                </div>
+                <div className="form-row">
+                  <label>Password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Confirm password</label>
+                  <input
+                    type="password"
+                    value={newConfirmPassword}
+                    onChange={(e) => setNewConfirmPassword(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="form-hint">
+                  To give a user access to a specific business instead of full platform-admin access, pick that
+                  business from the switcher above and add them there.
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={
+                    !newEmail || newPassword.length < 8 || newPassword !== newConfirmPassword || addAdminMutation.isPending
+                  }
+                  onClick={() => addAdminMutation.mutate()}
+                >
+                  Add platform admin
+                </button>
+                {addAdminError && <div className="muted" style={{ marginTop: 8 }}>{addAdminError}</div>}
+              </div>
+            </>
+          )}
         </div>
-        <div className="form-row">
-          <label>Password</label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="off" />
-        </div>
-        <div className="form-row">
-          <label>Confirm password</label>
-          <input
-            type="password"
-            value={newConfirmPassword}
-            onChange={(e) => setNewConfirmPassword(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-        <div className="form-hint">
-          To give a user access to a specific business instead of full platform-admin access, pick that business
-          from the switcher above and add them there.
-        </div>
-        <button
-          className="btn btn-primary"
-          disabled={!newEmail || newPassword.length < 8 || newPassword !== newConfirmPassword || addAdminMutation.isPending}
-          onClick={() => addAdminMutation.mutate()}
-        >
-          Add platform admin
-        </button>
-        {addAdminError && <div className="muted" style={{ marginTop: 8 }}>{addAdminError}</div>}
       </div>
     </div>
   );

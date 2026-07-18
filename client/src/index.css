@@ -189,6 +189,57 @@ button {
   overflow-x: auto;
 }
 
+/* Global Admin Settings' section nav (AdminSettingsPage.tsx's
+   GlobalAdminSettings) — a light, in-content sub-nav distinct from the
+   app's own dark .sidebar, since this lives inside .content rather than
+   being a top-level section of the app. Switches which single section's
+   card(s) render, rather than a scroll-to-anchor list, so a long settings
+   page never requires scrolling to find a section. */
+.settings-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.settings-nav {
+  width: 200px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-nav-link:hover {
+  background: var(--neutral-bg);
+  color: var(--text);
+}
+
+.settings-nav-link.active {
+  background: var(--neutral-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-panel {
+  flex: 1;
+  min-width: 0;
+}
+
 .btn {
   border: 1px solid var(--border);
   background: var(--panel);
