@@ -46,6 +46,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [leadIntakeWebhookSecret, setLeadIntakeWebhookSecret] = useState("");
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
   const [googleAdsRefreshToken, setGoogleAdsRefreshToken] = useState("");
+  const [dynamicMemoryEnabled, setDynamicMemoryEnabled] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
     setDashboardBaseUrl(data.operational.dashboardBaseUrl);
     setTwilioPhoneNumber(data.operational.twilioPhoneNumber);
     setGoogleAdsCustomerId(data.googleAds.customerId);
+    setDynamicMemoryEnabled(data.operational.dynamicMemoryEnabled);
   }, [data]);
 
   // A stray click on one of these silently breaks the integration rather
@@ -115,6 +117,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         leadIntakeWebhookSecret: leadIntakeWebhookSecret || undefined,
         googleAdsCustomerId: googleAdsCustomerId || undefined,
         googleAdsRefreshToken: googleAdsRefreshToken || undefined,
+        dynamicMemoryEnabled,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -352,6 +355,23 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
             header field), put the secret in the URL instead:
             <br />
             <code>{`${window.location.origin}/b/${businessId}/webhooks/leads/inbound?secret=<the secret above>`}</code>
+          </div>
+        </div>
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={dynamicMemoryEnabled}
+              onChange={(e) => setDynamicMemoryEnabled(e.target.checked)}
+            />
+            Enable cross-call memory
+          </label>
+          <div className="form-hint">
+            When enabled, this business's agent gets a short summary of what a returning caller discussed last time,
+            fed in as a dynamic variable at the start of their next call. This requires a one-time manual setup step
+            in ElevenLabs' own dashboard (the agent's Security tab) — see docs/dynamic-memory.md before enabling.
+            Off by default; disabling this here always takes effect immediately regardless of what's configured on
+            ElevenLabs' side.
           </div>
         </div>
       </div>

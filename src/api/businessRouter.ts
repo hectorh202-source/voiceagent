@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import crypto from "node:crypto";
 import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
@@ -38,11 +39,30 @@ import {
 } from "../settings/store";
 import { searchVoices, exploreVoices, addSharedVoice, getVoice } from "../elevenlabs/voices";
 import { getAgentVoiceConfig, updateAgentVoiceConfig, generateTestAudio, TTS_MODEL_IDS } from "../elevenlabs/agents";
+import {
+  listKnowledgeBaseDocuments,
+  getDependentAgents,
+  createTextDocument,
+  createUrlDocument,
+  createFileDocument,
+  deleteKnowledgeBaseDocument,
+  getAgentKnowledgeBase,
+  attachDocumentToAgent,
+  detachDocumentFromAgent,
+} from "../elevenlabs/knowledgeBase";
 import { ElevenLabsNotConfiguredError } from "../elevenlabs/httpClient";
 import { describeError } from "../servicetitan/httpClient";
-import { voiceConfigSchema } from "./schemas";
+import { voiceConfigSchema, kbTextSchema, kbUrlSchema, kbAttachSchema } from "./schemas";
 
 export const apiBusinessRouter = Router({ mergeParams: true });
+
+// Memory storage, not disk — ElevenLabs stays the sole source of truth for
+// document content (same zero-local-caching philosophy as voices.ts), so
+// nothing here needs to persist beyond the single request. Size limit
+// matches ElevenLabs' own documented non-enterprise account cap (20MB) so
+// an oversized upload fails fast locally instead of round-tripping there
+// first.
+const knowledgeBaseUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 apiBusinessRouter.use(resolveBusiness);
 apiBusinessRouter.use(requireApiSession);
@@ -465,6 +485,146 @@ apiBusinessRouter.post("/settings/voice/test-audio", async (req, res) => {
   }
 });
 
+// Knowledge Base — a growing content library non-admin staff would
+// plausibly manage regularly, not a rarely-touched config field, so this
+// gets the same requireBusinessAccess-only gating as Voices above rather
+// than the requireApiPlatformAdmin gate General Settings uses below (the
+// ElevenLabs API key itself stays admin-only there; this only manages
+// documents on top of it). See docs/knowledge-base.md.
+apiBusinessRouter.get("/settings/knowledge-base", async (req, res) => {
+  const business = req.business!;
+  const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  try {
+    const [list, attached] = await Promise.all([
+      listKnowledgeBaseDocuments(business.id, { search, cursor }),
+      getAgentKnowledgeBase(business.id),
+    ]);
+    const attachedIds = new Set(attached.map((entry) => entry.id));
+    res.json({
+      documents: list.documents.map((doc) => ({ ...doc, attached: attachedIds.has(doc.id) })),
+      hasMore: list.hasMore,
+      nextCursor: list.nextCursor,
+    });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+// Combined with dependent-agents so the client can show a real warning
+// ("also used by 2 other agents") before a delete, in one request.
+apiBusinessRouter.get("/settings/knowledge-base/:id/dependent-agents", async (req, res) => {
+  const business = req.business!;
+  try {
+    const dependentAgents = await getDependentAgents(business.id, req.params.id);
+    res.json({ dependentAgents });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.post("/settings/knowledge-base/text", async (req, res) => {
+  const business = req.business!;
+  const parsed = kbTextSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const document = await createTextDocument(business.id, parsed.data);
+    res.json({ document });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.post("/settings/knowledge-base/url", async (req, res) => {
+  const business = req.business!;
+  const parsed = kbUrlSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const document = await createUrlDocument(business.id, parsed.data);
+    res.json({ document });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.post("/settings/knowledge-base/file", knowledgeBaseUpload.single("file"), async (req, res) => {
+  const business = req.business!;
+  if (!req.file) {
+    res.status(400).json({ error: "No file uploaded" });
+    return;
+  }
+  try {
+    const name = typeof req.body.name === "string" && req.body.name.trim() ? req.body.name.trim() : undefined;
+    const document = await createFileDocument(business.id, {
+      buffer: req.file.buffer,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      name,
+    });
+    res.json({ document });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.delete("/settings/knowledge-base/:id", async (req, res) => {
+  const business = req.business!;
+  const force = req.query.force === "1";
+  try {
+    await deleteKnowledgeBaseDocument(business.id, req.params.id, force);
+    res.json({ success: true });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.put("/settings/knowledge-base/:id/attach", async (req, res) => {
+  const business = req.business!;
+  const parsed = kbAttachSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    await attachDocumentToAgent(business.id, { id: req.params.id, ...parsed.data, createdAtUnixSecs: null, updatedAtUnixSecs: null, sizeBytes: null });
+    res.json({ success: true });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+apiBusinessRouter.delete("/settings/knowledge-base/:id/attach", async (req, res) => {
+  const business = req.business!;
+  try {
+    await detachDocumentFromAgent(business.id, req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
 // Credentials and secrets, not operational metadata like Business Info —
 // only a platform admin can view or change these, and only from that
 // business's own admin console (client/src/pages/AdminSettingsPage.tsx),
@@ -512,6 +672,11 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", body.leadIntakeWebhookSecret);
   maybeSetBusinessSetting(business.id, "googleAds.customerId", body.googleAdsCustomerId);
   maybeSetBusinessSetting(business.id, "googleAds.refreshToken", body.googleAdsRefreshToken);
+  // Checkbox-backed, not a secret — same "always write, no blank state to
+  // distinguish from unchanged" reasoning as serviceTitanEnvironment above.
+  if (body.dynamicMemoryEnabled !== undefined) {
+    setBusinessSetting(business.id, "operational.dynamicMemoryEnabled", body.dynamicMemoryEnabled ? "true" : "false");
+  }
 
   res.json({ success: true });
 });

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { getBusinessSetting } from "../settings/store";
+import { getBusinessSetting, isDynamicMemoryEnabled } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath, setCallDerivedFields } from "../db/callRecords";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
@@ -9,6 +9,7 @@ import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
 import { updateJobSummary } from "../servicetitan/jobs";
 import { computeCallFlags } from "../dashboard/callDetails";
+import { upsertCallMemory } from "../db/callMemory";
 import { env } from "../config/env";
 
 interface TranscriptTurn {
@@ -138,6 +139,16 @@ async function updateLeadWithRealSummary(
     if (!updated) {
       console.error(`Failed to update lead ${leadId} with real call summary for conversation ${conversationId}`);
     }
+
+    // Reuses request.phone already parsed/validated above — no new field
+    // extraction needed (the post-call payload's own metadata.phone_call
+    // object only ever carries a call_sid, not a phone number). Gated by
+    // the same opt-in toggle the (Stage 0-blocked) personalization webhook
+    // checks, so no memory is ever written for a business that hasn't
+    // enabled this — see docs/dynamic-memory.md.
+    if (isDynamicMemoryEnabled(businessId)) {
+      upsertCallMemory(businessId, request.phone, aiSummary);
+    }
   } catch (error) {
     console.error("updateLeadWithRealSummary failed:", error);
   }
@@ -187,6 +198,11 @@ async function updateJobWithRealSummary(
     const updated = await updateJobSummary(businessId, jobId, summary);
     if (!updated) {
       console.error(`Failed to update job ${jobId} with real call summary for conversation ${conversationId}`);
+    }
+
+    // See updateLeadWithRealSummary's identical comment above.
+    if (isDynamicMemoryEnabled(businessId)) {
+      upsertCallMemory(businessId, request.phone, aiSummary);
     }
   } catch (error) {
     console.error("updateJobWithRealSummary failed:", error);

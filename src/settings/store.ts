@@ -263,7 +263,20 @@ export function getRawOperationalSettings(businessId: number) {
     // mapping stored anywhere.
     twilioPhoneNumber: getBusinessSetting(businessId, "operational.twilioPhoneNumber") ?? "",
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
+    dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
   };
+}
+
+// Cross-call memory by phone number (see docs/dynamic-memory.md) — default
+// off. This is the real safety boundary for that feature, not just a hint:
+// the (Stage 0-blocked) personalization webhook checks this directly and
+// returns an empty-memory response when false, regardless of whatever's
+// configured on ElevenLabs' own side, so disabling it here is an instant,
+// reliable kill switch even if ElevenLabs keeps calling a stale webhook
+// URL. The post-call write side (webhooks/postCall.ts) checks this too, so
+// no memory row is ever written for a business that hasn't opted in.
+export function isDynamicMemoryEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true";
 }
 
 export interface GoogleAdsPlatformConfig {

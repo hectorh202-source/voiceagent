@@ -387,7 +387,8 @@ a.badge:hover {
 }
 
 .form-row input,
-.form-row select {
+.form-row select,
+.form-row textarea {
   width: 100%;
   max-width: 420px;
   padding: 8px 10px;
@@ -396,6 +397,7 @@ a.badge:hover {
   background: var(--panel);
   color: var(--text);
   font-size: 13px;
+  font-family: inherit;
 }
 
 .form-hint {

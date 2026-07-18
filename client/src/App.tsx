@@ -11,6 +11,7 @@ import { LeadDetailPage } from "./pages/LeadDetailPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { BusinessInfoSettingsPage } from "./pages/BusinessInfoSettingsPage";
 import { VoiceSettingsPage } from "./pages/VoiceSettingsPage";
+import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SetupPage } from "./pages/auth/SetupPage";
@@ -50,6 +51,7 @@ function AuthenticatedRoutes() {
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="settings/business-info" element={<BusinessInfoSettingsPage />} />
           <Route path="settings/voices" element={<VoiceSettingsPage />} />
+          <Route path="settings/knowledge-base" element={<KnowledgeBasePage />} />
           <Route path="admin" element={<AdminSettingsPage />} />
         </Route>
       </Routes>

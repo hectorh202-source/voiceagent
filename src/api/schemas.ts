@@ -112,6 +112,7 @@ export const generalSettingsSchema = z.object({
   leadIntakeWebhookSecret: z.string().optional(),
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
+  dynamicMemoryEnabled: z.boolean().optional(),
 });
 
 // The OAuth Client ID/Secret and Developer Token this platform's Google Ads
@@ -198,4 +199,23 @@ export const voiceConfigSchema = z.object({
       name: z.string().min(1),
     })
     .optional(),
+});
+
+export const kbTextSchema = z.object({
+  text: z.string().min(1),
+  name: z.string().optional(),
+});
+
+export const kbUrlSchema = z.object({
+  url: z.string().url(),
+  name: z.string().optional(),
+});
+
+// Sent by the client alongside the document id in the URL when attaching —
+// the agent's knowledge_base array entry needs a name/type, and the client
+// already has both from the list view it's attaching from, so there's no
+// need for the server to re-fetch the document just to attach it.
+export const kbAttachSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(["file", "url", "text", "folder"]),
 });

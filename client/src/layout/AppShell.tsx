@@ -49,6 +49,12 @@ export function AppShell() {
               </NavLink>
             </nav>
             <nav className="nav-group">
+              <div className="nav-group-label">Knowledge Base</div>
+              <NavLink to={`/${businessId}/settings/knowledge-base`} className={navClass}>
+                Knowledge Base
+              </NavLink>
+            </nav>
+            <nav className="nav-group">
               <div className="nav-group-label">Settings</div>
               <NavLink to={`/${businessId}/settings/business-info`} className={navClass}>
                 Business Info

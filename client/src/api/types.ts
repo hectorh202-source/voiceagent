@@ -191,6 +191,34 @@ export interface VoicesSearchResponse {
   hasMore: boolean;
 }
 
+export type KnowledgeBaseDocumentType = "file" | "url" | "text" | "folder";
+
+export interface KnowledgeBaseDocument {
+  id: string;
+  name: string;
+  type: KnowledgeBaseDocumentType;
+  createdAtUnixSecs: number | null;
+  updatedAtUnixSecs: number | null;
+  sizeBytes: number | null;
+  // Whether this document is currently referenced in this business's own
+  // agent's conversation_config.agent.prompt.knowledge_base array — not an
+  // ElevenLabs field, computed server-side by cross-referencing the
+  // account-wide document list against that one array.
+  attached: boolean;
+}
+
+export interface KnowledgeBaseListResponse {
+  documents: KnowledgeBaseDocument[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export interface KnowledgeBaseDependentAgent {
+  type: "available" | "unknown";
+  id?: string;
+  name?: string;
+}
+
 export interface GeneralSettings {
   elevenLabs: { apiKeySet: boolean; agentId: string };
   serviceTitan: {
@@ -214,6 +242,7 @@ export interface GeneralSettings {
     dashboardBaseUrl: string;
     twilioPhoneNumber: string;
     leadIntakeWebhookSecretSet: boolean;
+    dynamicMemoryEnabled: boolean;
   };
   googleAds: {
     customerId: string;

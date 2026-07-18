@@ -160,5 +160,34 @@ export function bootstrapSchema(db: DatabaseSync): void {
     -- needs a schema change to get idempotency.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_leads_source_external
       ON inbound_leads(business_id, source, external_id) WHERE external_id IS NOT NULL;
+
+    -- Cross-call memory by phone number (see docs/dynamic-memory.md) — a
+    -- business opts in via operational.dynamicMemoryEnabled; when enabled,
+    -- the post-call webhook upserts the caller's most recent real call
+    -- summary here, and the (separately gated, Stage 0-blocked)
+    -- personalization webhook reads it back as a dynamic variable at the
+    -- start of that caller's next call.
+    --
+    -- phone_lookup_hash, not the phone number itself: this table is looked
+    -- up BY the caller's phone number (arriving in an inbound webhook)
+    -- before any row exists to decrypt, and AES-GCM's random per-encryption
+    -- IV means an encrypted phone column could never be searched directly
+    -- (two encryptions of the same number produce different ciphertext).
+    -- A deterministic SHA-256 hash of the normalized number sidesteps that
+    -- — not strong anonymization (US phone numbers are low-entropy enough
+    -- to be rainbow-table-able), just an index that avoids storing/
+    -- searching the raw number, which v1 has no need to display back
+    -- anywhere.
+    CREATE TABLE IF NOT EXISTS call_memory (
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      phone_lookup_hash TEXT NOT NULL,
+      last_summary TEXT,
+      last_call_at TEXT NOT NULL DEFAULT (datetime('now')),
+      call_count INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (business_id, phone_lookup_hash)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_call_memory_business ON call_memory(business_id);
   `);
 }
