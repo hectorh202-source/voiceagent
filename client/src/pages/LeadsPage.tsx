@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { InboundLeadListRow, LeadListFilters, LeadStatus } from "../api/types";
+import type { InboundLeadListRow, LeadListFilters } from "../api/types";
 import { LeadsFiltersPanel } from "../components/LeadsFiltersPanel";
-import { LeadsBulkActionBar } from "../components/LeadsBulkActionBar";
 import { LeadDetailPage } from "./LeadDetailPage";
 import { formatDateTime, getLeadSourceLabel, LEAD_STATUS_LABEL, LEAD_STATUS_COLORS } from "../lib/format";
 import { DesktopIcon, MessageIcon, PhoneIcon, MegaphoneIcon } from "../components/icons";
@@ -68,17 +67,18 @@ function toCsv(rows: InboundLeadListRow[]): string {
 // left, selected lead's detail always visible on the right — replacing the
 // old table-plus-modal-popup design. Both the "leads" and "leads/:leadId"
 // routes point here (see App.tsx); leadId (present or not) just decides
-// what the right pane shows. Owns all the list state (filters, pagination,
-// selection, bulk actions, CSV export) that used to live in the retired
-// LeadsListPage.tsx, largely unchanged.
+// what the right pane shows.
+//
+// No bulk-select/bulk-action UI (checkboxes, LeadsBulkActionBar) — removed
+// once status became a per-lead action (the detail pane's own header
+// selector) rather than something worth batch-editing across many rows at
+// once; a checkbox with nothing meaningful left to batch was just clutter.
 export function LeadsPage() {
   const { businessId, leadId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const queryClient = useQueryClient();
 
   // Same keyset (cursor) pagination as CallsListPage.tsx — every filter is a
   // real SQL predicate server-side (api/businessRouter.ts), so a page can
@@ -96,14 +96,6 @@ export function LeadsPage() {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
-  const patchMutation = useMutation({
-    mutationFn: (body: { ids: number[]; isRead?: boolean; status?: LeadStatus }) =>
-      api.patch(`/api/businesses/${businessId}/leads`, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads", businessId] });
-    },
-  });
-
   const rows = useMemo(() => data?.pages.flatMap((page) => page.leads) ?? [], [data]);
 
   // Gmail-style default: once the first page has loaded and nothing is
@@ -118,27 +110,6 @@ export function LeadsPage() {
 
   function updateFilters(next: LeadListFilters) {
     setSearchParams(paramsFromFilters(next));
-  }
-
-  function toggleSelect(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSelectAll() {
-    setSelected((prev) => {
-      if (rows.every((r) => prev.has(r.id)) && rows.length > 0) return new Set();
-      return new Set(rows.map((r) => r.id));
-    });
-  }
-
-  function bulkAction(patch: { isRead?: boolean; status?: LeadStatus }) {
-    patchMutation.mutate({ ids: Array.from(selected), ...patch });
-    setSelected(new Set());
   }
 
   // Same drain-all-remaining-pages export pattern as CallsListPage.tsx —
@@ -188,8 +159,6 @@ export function LeadsPage() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-
   return (
     <div className="leads-page-root">
       <div className="topbar">
@@ -207,19 +176,6 @@ export function LeadsPage() {
 
       <div className="leads-layout">
         <div className="leads-list-pane">
-          <LeadsBulkActionBar
-            count={selected.size}
-            onMarkRead={() => bulkAction({ isRead: true })}
-            onMarkUnread={() => bulkAction({ isRead: false })}
-            onSetStatus={(status) => bulkAction({ status })}
-            onClear={() => setSelected(new Set())}
-          />
-          {rows.length > 0 && (
-            <div className="form-hint" style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-              Select all
-            </div>
-          )}
           <div className="leads-list-scroll">
             {isLoading ? (
               <div style={{ padding: 16 }} className="muted">
@@ -241,12 +197,6 @@ export function LeadsPage() {
                       }`}
                       onClick={() => navigate(`/${businessId}/leads/${row.id}`)}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={() => toggleSelect(row.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
                       <div className="lead-list-item-icon" style={{ background: `rgba(${rgb}, 0.14)`, color: `rgb(${rgb})` }}>
                         {!row.isRead && <span className="lead-list-item-unread-dot" />}
                         <SourceIcon width={18} height={18} />
