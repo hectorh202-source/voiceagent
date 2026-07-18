@@ -6,7 +6,7 @@ import type { InboundLeadListRow, LeadListFilters, LeadStatus } from "../api/typ
 import { LeadsFiltersPanel } from "../components/LeadsFiltersPanel";
 import { LeadsBulkActionBar } from "../components/LeadsBulkActionBar";
 import { LeadDetailPage } from "./LeadDetailPage";
-import { formatDateTime, formatPhoneNumber, getLeadSourceLabel } from "../lib/format";
+import { formatDateTime, formatPhoneNumber, getLeadSourceLabel, getInitials, avatarColorFor } from "../lib/format";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "New",
@@ -232,6 +232,9 @@ export function LeadsPage() {
                       onChange={() => toggleSelect(row.id)}
                       onClick={(e) => e.stopPropagation()}
                     />
+                    <div className="lead-avatar" style={{ background: avatarColorFor(row.name) }}>
+                      {getInitials(row.name)}
+                    </div>
                     <div className="lead-list-item-body">
                       <div className="lead-list-item-top">
                         <span className="lead-list-item-name">{row.name ?? "Unknown"}</span>

@@ -88,3 +88,29 @@ export function getLeadSourceLabel(source: string, sourceDetail?: string | null)
 export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = (
   Object.keys(LEAD_SOURCE_LABEL) as LeadSource[]
 ).map((value) => ({ value, label: LEAD_SOURCE_LABEL[value] }));
+
+// Up to 2 initials from a display name (or "?" for an unknown/empty one) —
+// used by the .lead-avatar circles in LeadsPage.tsx/LeadDetailPage.tsx.
+export function getInitials(name: string | null): string {
+  if (!name || !name.trim()) return "?";
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
+  return (first + last).toUpperCase();
+}
+
+// A small fixed palette of avatar background colors, picked deterministically
+// from the name itself (a simple char-code hash) — same name always gets the
+// same color across the list and detail views, without needing to store a
+// color anywhere. Not tied to lead status/source; purely a Gmail/Slack-style
+// visual distinguisher between rows.
+const AVATAR_COLORS = ["#635bff", "#ec4899", "#0f9d58", "#f59e0b", "#0ea5e9", "#8b5cf6", "#ef4444", "#14b8a6"];
+
+export function avatarColorFor(seed: string | null): string {
+  const value = seed && seed.trim() ? seed : "?";
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}

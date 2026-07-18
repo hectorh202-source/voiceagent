@@ -1,49 +1,76 @@
 :root {
-  --bg: #f5f6f8;
+  /* Stripe-adjacent palette: a slightly blue-tinted neutral scale (not flat
+     gray) plus a vivid indigo/violet accent, the closest single color to
+     Stripe's own brand purple that still reads clearly as an "accent" next
+     to badge colors. --accent-2 is a secondary hue (pink-violet) used only
+     for gradients (buttons, the sidebar brand mark, auth hero) — never as a
+     flat fill on its own, so it never needs its own contrast/hover pairing. */
+  --bg: #f6f7fb;
   --panel: #ffffff;
-  --border: #e2e5ea;
-  --text: #1a1d23;
+  --border: #e4e7f0;
+  --border-strong: #d6dae6;
+  --text: #16181d;
   --text-muted: #6b7280;
-  --sidebar-bg: #12151c;
-  --sidebar-text: #c7cbd4;
+  --sidebar-bg: #14121f;
+  --sidebar-text: #c7c5d6;
   --sidebar-text-active: #ffffff;
-  --sidebar-active-bg: #1f2430;
-  --accent: #3b6ef6;
+  --sidebar-active-bg: #221f36;
+  --accent: #635bff;
+  --accent-2: #ec4899;
   --accent-contrast: #ffffff;
-  --success-bg: #e6f6ec;
-  --success-text: #15803d;
-  --danger-bg: #fdeaea;
-  --danger-text: #b91c1c;
-  --warning-bg: #fff4e0;
-  --warning-text: #92620a;
-  --neutral-bg: #eef0f3;
-  --neutral-text: #4b5563;
-  --radius: 8px;
+  --accent-rgb: 99, 91, 255;
+  --success-bg: #e3f8ec;
+  --success-text: #0f9d58;
+  --danger-bg: #fce8ec;
+  --danger-text: #d1274a;
+  --warning-bg: #fff3dc;
+  --warning-text: #a6650a;
+  --neutral-bg: #eef0f6;
+  --neutral-text: #4b5566;
+  --radius: 10px;
+  --radius-sm: 7px;
   /* Only used by the .auth-* pre-session pages (login/setup/migrate/
      forgot-password/reset-password) — no dark-mode override needed since
      the original server-rendered version didn't have one either. */
-  --accent-hover: #2f5bd6;
-  --radius-lg: 16px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --accent-hover: #4f47e0;
+  --radius-lg: 18px;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Layered, colored-neutral shadows (not plain black) read as noticeably
+     more premium than a flat 1px border — this is most of what separates a
+     "billion dollar SaaS" surface from a bland one. Used on .card/.stat-tile/
+     .modal/dropdowns instead of (or alongside a much lighter) border. */
+  --shadow-xs: 0 1px 2px rgba(20, 21, 40, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 21, 40, 0.06), 0 1px 2px rgba(20, 21, 40, 0.04);
+  --shadow-md: 0 4px 10px -2px rgba(20, 21, 40, 0.08), 0 2px 6px -2px rgba(20, 21, 40, 0.05);
+  --shadow-lg: 0 16px 32px -8px rgba(20, 21, 40, 0.16), 0 4px 8px -4px rgba(20, 21, 40, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14161a;
-    --panel: #1c1f26;
-    --border: #2b2f38;
-    --text: #e7e9ee;
-    --text-muted: #9aa0ab;
-    --sidebar-bg: #0d0f14;
-    --sidebar-active-bg: #1c2130;
+    --bg: #0e1016;
+    --panel: #181b24;
+    --border: #2a2e3a;
+    --border-strong: #3a3f4f;
+    --text: #eceef3;
+    --text-muted: #9aa0b3;
+    --sidebar-bg: #0a0912;
+    --sidebar-active-bg: #221f36;
+    --accent: #8b85ff;
+    --accent-hover: #a29cff;
+    --accent-rgb: 139, 133, 255;
     --success-bg: #123420;
     --success-text: #4ade80;
-    --danger-bg: #3a1717;
+    --danger-bg: #3a1720;
     --danger-text: #f87171;
     --warning-bg: #3a2c0f;
     --warning-text: #fbbf24;
-    --neutral-bg: #262b34;
+    --neutral-bg: #23262f;
     --neutral-text: #b7bcc6;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 10px -2px rgba(0, 0, 0, 0.36), 0 2px 6px -2px rgba(0, 0, 0, 0.24);
+    --shadow-lg: 0 16px 32px -8px rgba(0, 0, 0, 0.5), 0 4px 8px -4px rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -62,6 +89,12 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
 }
 
 a {
@@ -72,26 +105,51 @@ button {
   font-family: inherit;
 }
 
+button,
+input,
+select,
+textarea,
+.card,
+.lead-list-item,
+.nav-link,
+.history-row {
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, color 0.15s ease;
+}
+
 .app-shell {
   display: flex;
   height: 100vh;
 }
 
 .sidebar {
-  width: 240px;
+  width: 248px;
   flex-shrink: 0;
   background: var(--sidebar-bg);
   color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
-  padding: 16px 12px;
+  padding: 18px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-weight: 700;
   color: #fff;
-  padding: 8px 8px 16px;
-  font-size: 15px;
+  padding: 4px 8px 20px;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.5);
 }
 
 .business-switcher {
@@ -102,50 +160,57 @@ button {
   width: 100%;
   background: var(--sidebar-active-bg);
   color: #fff;
-  border: 1px solid #2a2f3c;
-  border-radius: var(--radius);
-  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
   font-size: 13px;
 }
 
 .nav-group {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .nav-group-label {
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6b7280;
-  padding: 4px 8px;
+  letter-spacing: 0.07em;
+  color: #6f7285;
+  padding: 4px 10px;
 }
 
 .nav-link {
   display: block;
   padding: 8px 10px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   color: var(--sidebar-text);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13.5px;
   margin-bottom: 2px;
 }
 
 .nav-link:hover {
-  background: var(--sidebar-active-bg);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
 }
 
+/* Soft accent-tinted pill rather than plain gray — the "current page" state
+   should read as a deliberate, colored highlight, not just a hover-adjacent
+   shade. This is the single highest-leverage nav change for a premium feel:
+   most bland admin UIs use the same neutral fill for hover and active. */
 .nav-link.active {
-  background: var(--sidebar-active-bg);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.28) 0%, rgba(var(--accent-rgb), 0.14) 100%);
   color: var(--sidebar-text-active);
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.3);
 }
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 10px 8px;
+  padding: 12px 10px 4px;
   font-size: 12px;
-  color: var(--text-muted);
-  border-top: 1px solid #262b36;
+  color: #8a8ea0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .sidebar-footer button {
@@ -169,13 +234,14 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
 .topbar h1 {
   font-size: 18px;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -242,7 +308,7 @@ button {
 }
 
 .settings-nav-link.active {
-  background: var(--neutral-bg);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   font-weight: 600;
 }
@@ -253,23 +319,49 @@ button {
 }
 
 .btn {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--panel);
   color: var(--text);
-  border-radius: var(--radius);
-  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  box-shadow: var(--shadow-xs);
 }
 
 .btn:hover {
   background: var(--neutral-bg);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Subtle diagonal gradient rather than a flat fill — the one Stripe-style
+   touch worth spending on a primary action button, since it's the button
+   used most often across every page in the app. */
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent) 0%, #7c74ff 100%);
   border-color: var(--accent);
   color: var(--accent-contrast);
+  box-shadow: 0 1px 2px rgba(var(--accent-rgb), 0.3), 0 2px 6px rgba(var(--accent-rgb), 0.25);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
+  box-shadow: 0 2px 4px rgba(var(--accent-rgb), 0.35), 0 4px 12px rgba(var(--accent-rgb), 0.3);
 }
 
 /* Fixed, theme-independent red (not --danger-text, which is tuned for
@@ -291,8 +383,9 @@ button {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 18px 20px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 table.data-table {
@@ -303,15 +396,18 @@ table.data-table {
 
 .data-table th {
   text-align: left;
-  padding: 8px 10px;
+  padding: 10px 12px;
   color: var(--text-muted);
   font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .data-table td {
-  padding: 10px;
+  padding: 12px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   white-space: nowrap;
@@ -327,10 +423,11 @@ table.data-table {
 
 .badge {
   display: inline-block;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
@@ -373,18 +470,29 @@ a.badge:hover {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-tile .label {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .stat-tile .value {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.02em;
+  /* A subtle gradient text treatment on the number itself — cheap, very
+     "SaaS dashboard" signature look, and only applied to the one type of
+     element (a big standalone metric) where it reads as intentional rather
+     than gimmicky. */
+  background: linear-gradient(135deg, var(--text) 0%, var(--text) 60%, var(--accent) 140%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .form-row {
@@ -403,13 +511,23 @@ a.badge:hover {
 .form-row textarea {
   width: 100%;
   max-width: 420px;
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
   background: var(--panel);
   color: var(--text);
   font-size: 13px;
   font-family: inherit;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus,
+select:focus,
+.select-display:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
 }
 
 .form-hint {
@@ -424,9 +542,9 @@ a.badge:hover {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: var(--neutral-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1) 0%, rgba(var(--accent-rgb), 0.04) 100%);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  border-radius: var(--radius-sm);
   margin-bottom: 12px;
   font-size: 13px;
 }
@@ -434,10 +552,26 @@ a.badge:hover {
 .filters-panel {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   margin-bottom: 12px;
   font-size: 13px;
+}
+
+/* Bare selects used directly in .filters-panel/.bulk-action-bar (not
+   wrapped in .form-row) had no visual treatment at all before, just
+   browser-default chrome — every other clickable control on the page got
+   the .btn/.form-row treatment except these. */
+.filters-panel select,
+.bulk-action-bar select {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .link-btn {
@@ -642,8 +776,31 @@ a.badge:hover {
 }
 
 .lead-list-item.selected {
-  background: var(--neutral-bg);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.08) 0%, rgba(var(--accent-rgb), 0.02) 100%);
   border-left-color: var(--accent);
+}
+
+/* Initials avatar, colored deterministically per name (see
+   lib/format.ts's avatarColorFor) — the single biggest "does this look
+   like a real inbox product" signal a plain list of rows is missing. */
+.lead-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.lead-avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
 }
 
 .lead-list-item-body {
@@ -867,7 +1024,7 @@ a.badge:hover {
 }
 
 .history-row.current {
-  background: var(--neutral-bg);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.08) 0%, rgba(var(--accent-rgb), 0.02) 100%);
   border-left: 3px solid var(--accent);
 }
 
@@ -1094,7 +1251,8 @@ a.badge:hover {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(14, 16, 22, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1103,13 +1261,13 @@ a.badge:hover {
 
 .modal {
   background: var(--panel);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   width: 480px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
 }
 
 /* The call detail modal (client/src/pages/CallDetailPage.tsx) needs the

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
-import { formatDateTime, formatPhoneNumber, getLeadSourceLabel } from "../lib/format";
+import { formatDateTime, formatPhoneNumber, getLeadSourceLabel, getInitials, avatarColorFor } from "../lib/format";
 import { UserIcon, PhoneIcon, MailIcon, MessageIcon, CalendarIcon, EditIcon, SaveIcon, CloseIcon } from "../components/icons";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -41,10 +41,17 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
 
   return (
     <div>
-      <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <UserIcon />
-        Lead Details
-      </h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+        <div className="lead-avatar lead-avatar-lg" style={{ background: avatarColorFor(data.name) }}>
+          {getInitials(data.name)}
+        </div>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 19 }}>{data.name ?? "Unknown Lead"}</h2>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            {getLeadSourceLabel(data.source, data.sourceDetail)} · {formatDateTime(data.receivedAt)}
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <div className="info-section">

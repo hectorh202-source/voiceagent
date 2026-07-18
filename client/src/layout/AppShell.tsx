@@ -26,7 +26,10 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-brand">Voice Agent Platform</div>
+        <div className="sidebar-brand">
+          <span className="sidebar-brand-mark" />
+          Voice Agent Platform
+        </div>
         <BusinessSwitcher />
         {businessId && (
           <>
