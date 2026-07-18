@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
@@ -59,6 +59,20 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
 
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
+
+  // Viewing a lead marks it read, same as opening an email — the unread dot
+  // in LeadsPage.tsx's list otherwise never clears on its own, since nothing
+  // else in this flow sets isRead except the explicit Mark as read/unread
+  // button below. Guarded by leadId (not just data.isRead) so this fires
+  // exactly once per lead visited, not on every render while the mutation
+  // is still in flight and the query hasn't yet reflected the update.
+  const markedReadForLeadId = useRef<string | null>(null);
+  useEffect(() => {
+    if (data && !data.isRead && markedReadForLeadId.current !== leadId) {
+      markedReadForLeadId.current = leadId;
+      patchMutation.mutate({ isRead: true });
+    }
+  }, [data, leadId]);
 
   if (isLoading) return <div className="leads-empty-state">Loading…</div>;
   if (!data) return <div className="leads-empty-state">Lead not found.</div>;
