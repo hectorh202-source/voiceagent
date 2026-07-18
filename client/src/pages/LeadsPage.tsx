@@ -251,8 +251,9 @@ export function LeadsPage() {
                           <span className="lead-list-item-name">{row.name ?? "Unknown"}</span>
                           <span className="lead-list-item-date">{formatDateTime(row.receivedAt)}</span>
                         </div>
-                        <div className="lead-list-item-type">{getLeadSourceLabel(row.source, row.sourceDetail)}</div>
-                        {row.message && <div className="lead-list-item-snippet">{row.message}</div>}
+                        <div className="lead-list-item-type" style={{ color: `rgb(${rgb})` }}>
+                          {getLeadSourceLabel(row.source, row.sourceDetail)}
+                        </div>
                       </div>
                     </div>
                   );

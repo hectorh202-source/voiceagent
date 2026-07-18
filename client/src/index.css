@@ -869,26 +869,22 @@ select:focus,
 }
 
 /* The lead's source/type as plain text directly under the name (e.g.
-   "Website form", "Google LSA — Phone Call") — no badge, no icon of its
-   own (the row's .lead-list-item-icon already carries that signal), just
-   a second, quieter text line. This is what replaced the old status badge
-   that used to sit on this line, competing for attention with the source. */
+   "Website form", "Google LSA — Phone Call") — the row's only second line
+   now (no message/raw-data preview, no status badge — both were competing
+   with this for attention and made the list hard to scan at a glance;
+   clicking a row is how you get the rest of the detail). Colored to match
+   its own .lead-list-item-icon tile (set inline per row in LeadsPage.tsx)
+   so the type reads as one visual unit with the icon, not a separate,
+   disconnected label. font-weight 600 (vs. the name's default weight) is
+   deliberate — this is the one piece of info meant to visually "stand
+   out" per row, more than a plain muted caption would. */
 .lead-list-item-type {
   font-size: 12px;
-  color: var(--text-muted);
+  font-weight: 600;
   margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.lead-list-item-snippet {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
 }
 
 .badge-row {
