@@ -724,6 +724,22 @@ select:focus,
   margin: -24px; /* escapes .content's own padding, same trick LeadDetailPage.tsx's old non-modal case used */
 }
 
+/* Spans the full width above both panes (list + detail) rather than being
+   squeezed into the narrow list column — filtering applies to the whole
+   inbox, not just what's visible on the left, and giving it the full
+   width both reads as more deliberate/modern and frees up real vertical
+   space in the list pane for what actually matters there: the leads. */
+.leads-filters-bar {
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.leads-filters-bar .filters-panel {
+  margin-bottom: 0;
+}
+
 .leads-layout {
   display: flex;
   flex: 1;

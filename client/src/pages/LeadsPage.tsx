@@ -199,9 +199,12 @@ export function LeadsPage() {
         </div>
       </div>
 
+      <div className="leads-filters-bar">
+        <LeadsFiltersPanel filters={filters} onChange={updateFilters} />
+      </div>
+
       <div className="leads-layout">
         <div className="leads-list-pane">
-          <LeadsFiltersPanel filters={filters} onChange={updateFilters} />
           <LeadsBulkActionBar
             count={selected.size}
             onMarkRead={() => bulkAction({ isRead: true })}
