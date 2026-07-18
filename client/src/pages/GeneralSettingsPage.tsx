@@ -70,31 +70,37 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   // pipeline, or a booking mode the agent's prompt isn't set up for. Same
   // guardrail the old server-rendered form had (unlock-then-confirm); this
   // is the equivalent for the React form, gating the whole save rather than
-  // per-field unlock buttons.
-  function confirmCriticalChanges(): boolean {
-    if (!data) return true;
+  // per-field unlock buttons. Returns each applicable warning's message
+  // rather than blocking synchronously (a styled ConfirmDialog can't block
+  // like window.confirm() did) — the Save button queues these one at a
+  // time and only calls saveMutation once the queue is empty.
+  function getCriticalChangeWarnings(): string[] {
+    if (!data) return [];
+    const warnings: string[] = [];
     if (elevenLabsAgentId !== data.elevenLabs.agentId) {
-      if (!confirm("You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly. Continue?")) {
-        return false;
-      }
+      warnings.push(
+        "You are changing the ElevenLabs Agent ID. This points the whole app at a different agent — make sure its tools and webhooks are already configured to match, or calls will stop working correctly.",
+      );
     }
     if (tenantId !== data.serviceTitan.tenantId) {
-      if (!confirm("You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account. Continue?")) {
-        return false;
-      }
+      warnings.push(
+        "You are changing the ServiceTitan Tenant ID. This points the whole app at a different ServiceTitan tenant — leads, customer lookups, and everything else will start hitting the wrong account.",
+      );
     }
     if (tagName !== data.serviceTitan.tagName) {
-      if (!confirm("You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag. Continue?")) {
-        return false;
-      }
+      warnings.push(
+        "You are changing the ServiceTitan lead tag name. Make sure a tag with this exact name already exists in ServiceTitan (Settings → Tags), or new leads will be created without a tag.",
+      );
     }
     if (bookingMode !== data.serviceTitan.bookingMode) {
-      if (!confirm("You are changing what calls produce in ServiceTitan (Lead vs. booked Job). Make sure the ElevenLabs agent's tools/prompt are already set up to match this mode, or calls will behave incorrectly. Continue?")) {
-        return false;
-      }
+      warnings.push(
+        "You are changing what calls produce in ServiceTitan (Lead vs. booked Job). Make sure the ElevenLabs agent's tools/prompt are already set up to match this mode, or calls will behave incorrectly.",
+      );
     }
-    return true;
+    return warnings;
   }
+
+  const [criticalWarningQueue, setCriticalWarningQueue] = useState<string[] | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -416,12 +422,37 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
 
       <button
         className="btn btn-primary"
-        onClick={() => confirmCriticalChanges() && saveMutation.mutate()}
+        onClick={() => {
+          const warnings = getCriticalChangeWarnings();
+          if (warnings.length > 0) {
+            setCriticalWarningQueue(warnings);
+          } else {
+            saveMutation.mutate();
+          }
+        }}
         disabled={saveMutation.isPending}
       >
         Save
       </button>
       {message && <div className="muted" style={{ marginTop: 8 }}>{message}</div>}
+
+      {criticalWarningQueue && criticalWarningQueue.length > 0 && (
+        <ConfirmDialog
+          title="Confirm critical change"
+          message={criticalWarningQueue[0]}
+          confirmLabel="Continue"
+          onCancel={() => setCriticalWarningQueue(null)}
+          onConfirm={() => {
+            const rest = criticalWarningQueue.slice(1);
+            if (rest.length > 0) {
+              setCriticalWarningQueue(rest);
+            } else {
+              setCriticalWarningQueue(null);
+              saveMutation.mutate();
+            }
+          }}
+        />
+      )}
 
       {confirmRegenerate === "tool" && (
         <ConfirmDialog

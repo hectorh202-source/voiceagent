@@ -6,6 +6,7 @@ import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSetti
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
 import { MASKED_SECRET_PLACEHOLDER } from "../lib/format";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 function EmailSettingsSection() {
   const queryClient = useQueryClient();
@@ -292,6 +293,7 @@ function GoogleAdsSettingsSection() {
 function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUserId: number }) {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(user.isPlatformAdmin);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const isSelf = user.id === currentUserId;
   const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
 
@@ -320,12 +322,7 @@ function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUse
           )}
         </div>
         {!isSelf && (
-          <button
-            className="btn"
-            onClick={() => {
-              if (confirm(`Remove ${user.email}? They will be logged out immediately.`)) deleteMutation.mutate();
-            }}
-          >
+          <button className="btn" onClick={() => setConfirmingRemove(true)}>
             Remove
           </button>
         )}
@@ -342,12 +339,26 @@ function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUse
         Save
       </button>
       {saveMutation.isError && <span className="muted" style={{ marginLeft: 8 }}>{(saveMutation.error as Error).message}</span>}
+
+      {confirmingRemove && (
+        <ConfirmDialog
+          title="Remove this user?"
+          message={`Remove ${user.email}? They will be logged out immediately.`}
+          confirmLabel="Remove"
+          onCancel={() => setConfirmingRemove(false)}
+          onConfirm={() => {
+            setConfirmingRemove(false);
+            deleteMutation.mutate();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function BusinessUserRow({ user, businessId }: { user: AdminUser; businessId: number }) {
   const queryClient = useQueryClient();
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
 
   const removeMutation = useMutation({
@@ -365,16 +376,22 @@ function BusinessUserRow({ user, businessId }: { user: AdminUser; businessId: nu
           </span>
         )}
       </span>
-      <button
-        className="btn"
-        onClick={() => {
-          if (confirm(`Remove ${user.email}'s access to this business? Their account (and access to any other business) stays intact.`)) {
-            removeMutation.mutate();
-          }
-        }}
-      >
+      <button className="btn" onClick={() => setConfirmingRemove(true)}>
         Remove
       </button>
+
+      {confirmingRemove && (
+        <ConfirmDialog
+          title="Remove access?"
+          message={`Remove ${user.email}'s access to this business? Their account (and access to any other business) stays intact.`}
+          confirmLabel="Remove"
+          onCancel={() => setConfirmingRemove(false)}
+          onConfirm={() => {
+            setConfirmingRemove(false);
+            removeMutation.mutate();
+          }}
+        />
+      )}
     </div>
   );
 }
