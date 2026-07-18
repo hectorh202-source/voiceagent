@@ -74,7 +74,7 @@ button {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .sidebar {
@@ -160,6 +160,7 @@ button {
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -184,8 +185,19 @@ button {
   align-items: center;
 }
 
+/* flex:1 + min-height:0 + overflow-y:auto makes .content the app's actual
+   scroll container instead of the whole document/window scrolling — the
+   topbar and sidebar now stay fixed in place while .content scrolls on its
+   own, and any page needing an internal bounded-height layout (e.g.
+   LeadsPage.tsx's two-pane list+detail split) can rely on real inherited
+   height (display:flex; flex-direction:column; height:100%) rather than a
+   per-page calc()/negative-margin hack. Invisible on pages that don't
+   overflow — they look and scroll exactly as before. */
 .content {
+  flex: 1;
+  min-height: 0;
   padding: 24px;
+  overflow-y: auto;
   overflow-x: auto;
 }
 
@@ -408,6 +420,7 @@ a.badge:hover {
 
 .bulk-action-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -522,15 +535,16 @@ a.badge:hover {
   color: var(--text);
 }
 
-/* Wraps the header + layout together (see CallDetailPage.tsx) so that,
-   inside the bounded-height modal, the header can stay put while
-   .call-detail-layout's own two columns each scroll independently below
-   it. flex/min-height:0 here are load-bearing: without min-height:0 a
-   flex child refuses to shrink below its content size, which is exactly
-   what would otherwise prevent the columns beneath it from scrolling at
-   all. Outside the modal (a direct/bookmarked page load, no bounded
-   height available), this is a no-op — it just behaves like a plain
-   block, and the whole page scrolls together same as before. */
+/* Wraps the header + layout together (see CallDetailPage.tsx — the only
+   remaining user; LeadDetailPage.tsx no longer uses this, see
+   .leads-page-root below) so that, inside the bounded-height modal, the
+   header can stay put while .call-detail-layout's own two columns each
+   scroll independently below it. flex/min-height:0 here are load-bearing:
+   without min-height:0 a flex child refuses to shrink below its content
+   size, which is exactly what would otherwise prevent the columns beneath
+   it from scrolling at all. Outside the modal (a direct/bookmarked page
+   load, no bounded height available), this is a no-op — it just behaves
+   like a plain block, and the whole page scrolls together same as before. */
 .call-detail-root {
   display: flex;
   flex-direction: column;
@@ -561,17 +575,124 @@ a.badge:hover {
   overflow-y: auto;
 }
 
-/* LeadDetailPage.tsx has no sidebar+main split like Calls does — just one
-   content card directly inside .call-detail-root — so that card itself is
-   the scrollable region, same flex/min-height/overflow-y treatment as
-   .call-detail-sidebar/.call-detail-main above. Scoped to a direct child so
-   it can't affect .card anywhere else in the app; a no-op outside the modal
-   (.call-detail-root itself is a no-op there too), so a direct/bookmarked
-   page load still just scrolls the whole page normally. */
-.call-detail-root > .card {
+/* Leads' two-pane inbox layout (LeadsPage.tsx) — list always visible on the
+   left, selected lead's detail always visible on the right, no modal.
+   Reuses the exact same "flex:1; min-height:0; overflow-y:auto on each
+   column" trick as .call-detail-layout/.call-detail-sidebar/.call-detail-main
+   above, except here it works on a normal (non-modal) page because .content
+   is now itself a bounded-height scroll container (see .content near the
+   top of this file) — .leads-page-root just inherits that real height via
+   height:100%, the same way .call-detail-root inherits it from the modal. */
+.leads-page-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: -24px; /* escapes .content's own padding, same trick LeadDetailPage.tsx's old non-modal case used */
+}
+
+.leads-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.leads-list-pane {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  padding: 16px;
+}
+
+.leads-list-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  margin: 0 -16px;
+}
+
+.leads-detail-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.leads-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+}
+
+.lead-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+
+.lead-list-item:hover {
+  background: var(--neutral-bg);
+}
+
+.lead-list-item.selected {
+  background: var(--neutral-bg);
+  border-left-color: var(--accent);
+}
+
+.lead-list-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.lead-list-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.lead-list-item-name {
+  font-size: 13.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-list-item.unread .lead-list-item-name {
+  font-weight: 700;
+}
+
+.lead-list-item-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lead-list-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lead-list-item-snippet {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
 }
 
 .badge-row {

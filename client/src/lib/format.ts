@@ -72,7 +72,7 @@ const SOURCE_DETAIL_LABEL: Record<string, string> = {
   MESSAGE: "Message",
 };
 
-// Single shared source label, used by LeadsTable/LeadsFiltersPanel/
+// Single shared source label, used by LeadsPage/LeadsFiltersPanel/
 // LeadDetailPage so a new lead source or sourceDetail value only ever needs
 // updating here, not in three separate copy-pasted maps (the bug this fixed:
 // google_lsa was added as a real source before the client had a label for

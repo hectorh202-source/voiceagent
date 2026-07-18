@@ -1,5 +1,4 @@
-import { useState, type ReactNode } from "react";
-import { useLocation, useNavigate, useParams, type Location } from "react-router-dom";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
@@ -14,34 +13,11 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   lost: "Lost",
 };
 
-export function LeadDetailPage() {
-  const { businessId, leadId } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+// Rendered inline inside LeadsPage.tsx's right-hand pane — always visible
+// alongside the list, never a modal (see LeadsPage.tsx for the two-pane
+// layout this lives in).
+export function LeadDetailPage({ businessId, leadId }: { businessId: string; leadId: string }) {
   const queryClient = useQueryClient();
-
-  // Same modal-over-list pattern as CallDetailPage.tsx — present only when
-  // reached via LeadsTable.tsx's row click (see App.tsx's
-  // AuthenticatedRoutes). A direct navigation/refresh/bookmark carries no
-  // such state, so this page renders as a normal full page in that case
-  // instead of a modal.
-  const backgroundLocation = (location.state as { backgroundLocation?: Location } | null)?.backgroundLocation;
-  const isModal = !!backgroundLocation;
-
-  function closeModal() {
-    navigate(-1);
-  }
-
-  function wrapIfModal(content: ReactNode) {
-    if (!isModal) return content;
-    return (
-      <div className="modal-overlay" onClick={closeModal}>
-        <div className="modal modal-large" onClick={(e) => e.stopPropagation()}>
-          {content}
-        </div>
-      </div>
-    );
-  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["lead", businessId, leadId],
@@ -60,20 +36,15 @@ export function LeadDetailPage() {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
 
-  if (isLoading) return wrapIfModal(<div className="centered-spinner">Loading…</div>);
-  if (!data) return wrapIfModal(<div className="centered-spinner">Lead not found.</div>);
+  if (isLoading) return <div className="leads-empty-state">Loading…</div>;
+  if (!data) return <div className="leads-empty-state">Lead not found.</div>;
 
-  return wrapIfModal(
-    <div className="call-detail-root" style={isModal ? undefined : { margin: "-24px" }}>
-      <div className="call-detail-header">
-        <div className="title">
-          <UserIcon />
-          Lead Details
-        </div>
-        <button className="icon-btn" onClick={() => (isModal ? closeModal() : navigate(`/${businessId}/leads`))} title="Close">
-          <CloseIcon />
-        </button>
-      </div>
+  return (
+    <div>
+      <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <UserIcon />
+        Lead Details
+      </h2>
 
       <div className="card">
         <div className="info-section">
