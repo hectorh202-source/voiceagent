@@ -35,8 +35,7 @@ const upsertStmt = db.prepare(`
 // Called from webhooks/postCall.ts once a call's real AI summary is known
 // (mirrors upsertCallTranscription()'s own upsert-on-conflict shape) — not
 // on the live-call path, so this can use the same "never throws, logged
-// only" style the caller already wraps it in, rather than the fail-open
-// guarantee the personalization webhook (Stage 2, not yet built) needs.
+// only" style the caller already wraps it in.
 export function upsertCallMemory(businessId: number, phone: string, summary: string): void {
   upsertStmt.run({
     businessId,
@@ -45,8 +44,10 @@ export function upsertCallMemory(businessId: number, phone: string, summary: str
   });
 }
 
-// Called from the (Stage 0-blocked) personalization webhook — must stay
-// fast, since it sits on the live call-answering path. A missing row is a
+// Called from tools/lookupCustomer.ts, the same webhook tool that already
+// runs silently at the start of every call for ServiceTitan customer
+// lookup — not ElevenLabs' own live-call personalization webhook (that
+// approach was rejected; see docs/dynamic-memory.md). A missing row is a
 // normal, expected case (first-time caller), not an error.
 export function getCallMemory(businessId: number, phone: string): CallMemory | undefined {
   const row = db

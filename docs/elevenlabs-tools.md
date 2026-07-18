@@ -35,9 +35,12 @@ All four: validate the request body with `zod`, do the work, log the attempt to 
 ```
 POST /b/:businessId/tools/lookup-customer
 Request:  { "phone": string }
-Response: { "found": boolean, "customerId": string|null, "name": string|null, "address": string|null }
+Response: { "found": boolean, "customerId": string|null, "name": string|null, "address": string|null,
+            "email": string|null, "equipmentAge": string|null, "lastCallSummary": string|null }
 ```
 Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently** at the start of a call (see agent config below) so the caller isn't asked to repeat a phone number ElevenLabs already has from caller ID.
+
+**`lastCallSummary`** is [dynamic memory](dynamic-memory.md) — populated from `db/callMemory.ts#getCallMemory` only when that business has `operational.dynamicMemoryEnabled` turned on (off by default), `null` otherwise (opted out, or a first-time caller with no prior memory row). Read in its own try/catch, separate from the ServiceTitan lookup — a memory-read failure only means a missing summary, never a failed customer lookup. A business that enables this toggle needs one added prompt instruction: *"if `lastCallSummary` is non-empty, acknowledge what was discussed last time before continuing."* No other agent-side configuration is needed — this deliberately avoids ElevenLabs' separate live-call personalization webhook (see dynamic-memory.md's "Rejected design" for why).
 
 ### `check_availability` — [`tools/checkAvailability.ts`](../src/tools/checkAvailability.ts)
 

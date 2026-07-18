@@ -367,11 +367,10 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
             Enable cross-call memory
           </label>
           <div className="form-hint">
-            When enabled, this business's agent gets a short summary of what a returning caller discussed last time,
-            fed in as a dynamic variable at the start of their next call. This requires a one-time manual setup step
-            in ElevenLabs' own dashboard (the agent's Security tab) — see docs/dynamic-memory.md before enabling.
-            Off by default; disabling this here always takes effect immediately regardless of what's configured on
-            ElevenLabs' side.
+            When enabled, the existing "lookup customer" tool call at the start of every call also returns a short
+            summary of what a returning caller discussed last time — no separate webhook or ElevenLabs dashboard
+            setup needed beyond a small prompt tweak telling the agent to use it. See docs/dynamic-memory.md.
+            Off by default; disabling this here always takes effect immediately on the very next call.
           </div>
         </div>
       </div>
