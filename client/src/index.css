@@ -781,8 +781,11 @@ select:focus,
 }
 
 /* Initials avatar, colored deterministically per name (see
-   lib/format.ts's avatarColorFor) — the single biggest "does this look
-   like a real inbox product" signal a plain list of rows is missing. */
+   lib/format.ts's avatarColorFor) — used only in the detail pane's own
+   header now (LeadDetailPage.tsx). The list rows use a source-type icon
+   tile instead (.lead-list-item-icon below) — a customer's initials don't
+   tell you anything scannable about a *lead* the way "this came from the
+   website contact form" vs. "this was an AI chat" does. */
 .lead-avatar {
   width: 32px;
   height: 32px;
@@ -801,6 +804,37 @@ select:focus,
   width: 44px;
   height: 44px;
   font-size: 15px;
+}
+
+/* Rounded-square icon tile identifying the lead's source/type at a glance —
+   background is a translucent tint of the icon's own color (set inline per
+   row in LeadsPage.tsx, since the exact hue varies by source), so it reads
+   as "this row is about a phone call" / "...a website form" etc. before
+   reading a single word of text. */
+.lead-list-item-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Unread indicator moved off the text (no more bold-name-only signal) and
+   onto the icon tile itself, top-left — matches the "small dot on the
+   avatar" pattern common to real inbox products, and keeps the row's text
+   hierarchy (name → type → snippet) uncluttered by an extra badge. */
+.lead-list-item-unread-dot {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
 }
 
 .lead-list-item-body {
@@ -834,13 +868,18 @@ select:focus,
   white-space: nowrap;
 }
 
-.lead-list-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
+/* The lead's source/type as plain text directly under the name (e.g.
+   "Website form", "Google LSA — Phone Call") — no badge, no icon of its
+   own (the row's .lead-list-item-icon already carries that signal), just
+   a second, quieter text line. This is what replaced the old status badge
+   that used to sit on this line, competing for attention with the source. */
+.lead-list-item-type {
   font-size: 12px;
   color: var(--text-muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lead-list-item-snippet {

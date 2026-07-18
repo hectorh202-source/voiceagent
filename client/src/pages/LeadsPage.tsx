@@ -6,23 +6,31 @@ import type { InboundLeadListRow, LeadListFilters, LeadStatus } from "../api/typ
 import { LeadsFiltersPanel } from "../components/LeadsFiltersPanel";
 import { LeadsBulkActionBar } from "../components/LeadsBulkActionBar";
 import { LeadDetailPage } from "./LeadDetailPage";
-import { formatDateTime, formatPhoneNumber, getLeadSourceLabel, getInitials, avatarColorFor } from "../lib/format";
+import { formatDateTime, getLeadSourceLabel } from "../lib/format";
+import { DesktopIcon, MessageIcon, PhoneIcon, MegaphoneIcon } from "../components/icons";
+import type { ComponentType, SVGProps } from "react";
 
-const STATUS_LABEL: Record<LeadStatus, string> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  won: "Won",
-  lost: "Lost",
+// Status is deliberately not shown in the list row anymore — it's set/edited
+// in the detail pane's own Status dropdown (LeadDetailPage.tsx), and having
+// it here too just competed with the row's more scannable icon+name+type
+// hierarchy for attention. The icon is what should carry the "what kind of
+// lead is this" signal at a glance instead of a customer-initials avatar,
+// which told you nothing until you'd already read the name.
+const SOURCE_ICON_STYLE: Record<string, { icon: ComponentType<SVGProps<SVGSVGElement>>; rgb: string }> = {
+  website_form: { icon: DesktopIcon, rgb: "37, 99, 235" },
+  website_chat: { icon: MessageIcon, rgb: "139, 92, 246" },
+  facebook_ads: { icon: MegaphoneIcon, rgb: "245, 158, 11" },
+  google_ads: { icon: MegaphoneIcon, rgb: "234, 88, 12" },
 };
 
-const STATUS_CLASS: Record<LeadStatus, string> = {
-  new: "badge-neutral",
-  contacted: "badge-neutral",
-  qualified: "badge-warning",
-  won: "badge-success",
-  lost: "badge-danger",
-};
+function getSourceIconStyle(source: string, sourceDetail?: string | null) {
+  if (source === "google_lsa") {
+    return sourceDetail === "PHONE_CALL"
+      ? { icon: PhoneIcon, rgb: "20, 184, 166" }
+      : { icon: MessageIcon, rgb: "139, 92, 246" };
+  }
+  return SOURCE_ICON_STYLE[source] ?? { icon: MessageIcon, rgb: "107, 114, 128" };
+}
 
 function filtersFromParams(params: URLSearchParams): LeadListFilters {
   return {
@@ -218,38 +226,37 @@ export function LeadsPage() {
               </div>
             ) : (
               <>
-                {rows.map((row) => (
-                  <div
-                    key={row.id}
-                    className={`lead-list-item${!row.isRead ? " unread" : ""}${
-                      leadId === String(row.id) ? " selected" : ""
-                    }`}
-                    onClick={() => navigate(`/${businessId}/leads/${row.id}`)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(row.id)}
-                      onChange={() => toggleSelect(row.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="lead-avatar" style={{ background: avatarColorFor(row.name) }}>
-                      {getInitials(row.name)}
+                {rows.map((row) => {
+                  const { icon: SourceIcon, rgb } = getSourceIconStyle(row.source, row.sourceDetail);
+                  return (
+                    <div
+                      key={row.id}
+                      className={`lead-list-item${!row.isRead ? " unread" : ""}${
+                        leadId === String(row.id) ? " selected" : ""
+                      }`}
+                      onClick={() => navigate(`/${businessId}/leads/${row.id}`)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleSelect(row.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className="lead-list-item-icon" style={{ background: `rgba(${rgb}, 0.14)`, color: `rgb(${rgb})` }}>
+                        {!row.isRead && <span className="lead-list-item-unread-dot" />}
+                        <SourceIcon width={18} height={18} />
+                      </div>
+                      <div className="lead-list-item-body">
+                        <div className="lead-list-item-top">
+                          <span className="lead-list-item-name">{row.name ?? "Unknown"}</span>
+                          <span className="lead-list-item-date">{formatDateTime(row.receivedAt)}</span>
+                        </div>
+                        <div className="lead-list-item-type">{getLeadSourceLabel(row.source, row.sourceDetail)}</div>
+                        {row.message && <div className="lead-list-item-snippet">{row.message}</div>}
+                      </div>
                     </div>
-                    <div className="lead-list-item-body">
-                      <div className="lead-list-item-top">
-                        <span className="lead-list-item-name">{row.name ?? "Unknown"}</span>
-                        <span className="lead-list-item-date">{formatDateTime(row.receivedAt)}</span>
-                      </div>
-                      <div className="lead-list-item-meta">
-                        <span className={`badge ${STATUS_CLASS[row.status]}`}>{STATUS_LABEL[row.status]}</span>
-                        <span>{getLeadSourceLabel(row.source, row.sourceDetail)}</span>
-                      </div>
-                      <div className="lead-list-item-snippet">
-                        {row.message ?? (row.phone ? formatPhoneNumber(row.phone) : "—")}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={sentinelRef} style={{ height: 1 }} />
                 {isFetchingNextPage && (
                   <div style={{ padding: 12, textAlign: "center" }} className="muted">

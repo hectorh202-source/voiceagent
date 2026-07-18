@@ -209,3 +209,26 @@ export function MailIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+// Website contact form leads — a monitor represents "submitted via the
+// business's website," distinct from a chat bubble (live chat) or a phone
+// (a tracked call), per the source-icon mapping in LeadsPage.tsx.
+export function DesktopIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </Icon>
+  );
+}
+
+// Facebook/Google Ads lead sources — a megaphone reads as "paid
+// advertising" at a glance, distinct from the organic website/chat icons.
+export function MegaphoneIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m3 11 18-5v12L3 14v-3z" />
+      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+    </Icon>
+  );
+}
