@@ -49,9 +49,9 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
   // Viewing a lead marks it read, same as opening an email — the unread dot
   // in LeadsPage.tsx's list otherwise never clears on its own, since nothing
   // else in this flow sets isRead except the explicit Mark as read/unread
-  // button below. Guarded by leadId (not just data.isRead) so this fires
-  // exactly once per lead visited, not on every render while the mutation
-  // is still in flight and the query hasn't yet reflected the update.
+  // button in the header. Guarded by leadId (not just data.isRead) so this
+  // fires exactly once per lead visited, not on every render while the
+  // mutation is still in flight and the query hasn't yet reflected the update.
   const markedReadForLeadId = useRef<string | null>(null);
   useEffect(() => {
     if (data && !data.isRead && markedReadForLeadId.current !== leadId) {
@@ -77,20 +77,25 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             </div>
           </div>
         </div>
-        <div className="status-select-wrap">
-          <select
-            className="status-select"
-            value={data.status}
-            onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
-            style={{ background: LEAD_STATUS_COLORS[data.status].bg, color: LEAD_STATUS_COLORS[data.status].fg }}
-          >
-            {(Object.keys(LEAD_STATUS_LABEL) as LeadStatus[]).map((status) => (
-              <option key={status} value={status}>
-                {LEAD_STATUS_LABEL[status]}
-              </option>
-            ))}
-          </select>
-          <ChevronDownIcon width={13} height={13} style={{ color: LEAD_STATUS_COLORS[data.status].fg }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <button className="btn" onClick={() => patchMutation.mutate({ isRead: !data.isRead })}>
+            {data.isRead ? "Mark as unread" : "Mark as read"}
+          </button>
+          <div className="status-select-wrap">
+            <select
+              className="status-select"
+              value={data.status}
+              onChange={(e) => patchMutation.mutate({ status: e.target.value as LeadStatus })}
+              style={{ background: LEAD_STATUS_COLORS[data.status].bg, color: LEAD_STATUS_COLORS[data.status].fg }}
+            >
+              {(Object.keys(LEAD_STATUS_LABEL) as LeadStatus[]).map((status) => (
+                <option key={status} value={status}>
+                  {LEAD_STATUS_LABEL[status]}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon width={13} height={13} style={{ color: LEAD_STATUS_COLORS[data.status].fg }} />
+          </div>
         </div>
       </div>
 
@@ -195,10 +200,6 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             <div className="muted" style={{ fontSize: 13 }}>No notes added yet</div>
           )}
         </div>
-
-        <button className="btn" onClick={() => patchMutation.mutate({ isRead: !data.isRead })}>
-          {data.isRead ? "Mark as unread" : "Mark as read"}
-        </button>
 
         {/* Always shown, regardless of how well name/phone/email/message
             got matched — every client's form is labeled differently, so
