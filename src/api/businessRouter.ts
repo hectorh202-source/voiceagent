@@ -5,7 +5,7 @@ import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
 import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { patchCallsSchema, businessInfoSchema, generalSettingsSchema, patchLeadsSchema } from "./schemas";
+import { patchCallsSchema, businessInfoSchema, generalSettingsSchema, patchLeadsSchema, chatWidgetSettingsSchema } from "./schemas";
 import {
   listCallRecords,
   getCallRecord,
@@ -39,6 +39,9 @@ import {
   setBusinessSetting,
   maybeSetBusinessSetting,
   getGoogleLsaConfig,
+  getRawChatWidgetSettings,
+  getOrCreateWidgetEmbedKey,
+  getWidgetServiceBaseUrl,
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
@@ -793,4 +796,80 @@ apiBusinessRouter.post("/settings/general/generate-lead-intake-secret", requireA
   const secret = crypto.randomBytes(24).toString("hex");
   setBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", secret);
   res.json({ secret });
+});
+
+// Normalizes user-entered allowed domains to bare origins (scheme+host+port),
+// dropping any path/trailing slash and de-duping. A value with no scheme is
+// assumed https. Invalid entries are silently dropped rather than rejecting
+// the whole save.
+function normalizeOrigins(origins: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of origins) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    try {
+      out.push(new URL(trimmed).origin);
+    } catch {
+      try {
+        out.push(new URL(`https://${trimmed}`).origin);
+      } catch {
+        // skip un-parseable entry
+      }
+    }
+  }
+  return Array.from(new Set(out));
+}
+
+// Website chat widget config — admin-gated like General Settings because it
+// holds a credential (the Anthropic API key); the non-secret pieces (enable,
+// branding, allowed domains, model) ride along in the same page. The embed key
+// is generated on read so the copy-paste snippet is always available.
+apiBusinessRouter.get("/settings/chat-widget", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  getOrCreateWidgetEmbedKey(business.id);
+  // widgetServiceBaseUrl is global (Admin Settings) — included here so the
+  // settings page can build the install snippet pointing at the service.
+  res.json({ ...getRawChatWidgetSettings(business.id), widgetServiceBaseUrl: getWidgetServiceBaseUrl() });
+});
+
+apiBusinessRouter.put("/settings/chat-widget", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const parsed = chatWidgetSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const body = parsed.data;
+
+  if (body.enabled !== undefined) {
+    setBusinessSetting(business.id, "chatWidget.enabled", body.enabled ? "true" : "false");
+  }
+  // Secret: blank means "leave the stored key unchanged" (it's never echoed
+  // back to the form), same convention as every other credential.
+  maybeSetBusinessSetting(business.id, "credentials.anthropicApiKey", body.anthropicApiKey);
+  // Non-secret editable fields are shown pre-filled, so an empty submission is
+  // a real "clear it" — use setBusinessSetting (write exactly what was sent)
+  // rather than the blank-means-keep maybeSet.
+  if (body.model) setBusinessSetting(business.id, "chatWidget.model", body.model);
+  if (body.agentName !== undefined) setBusinessSetting(business.id, "chatWidget.agentName", body.agentName);
+  if (body.accentColor !== undefined) setBusinessSetting(business.id, "chatWidget.accentColor", body.accentColor);
+  if (body.greeting !== undefined) setBusinessSetting(business.id, "chatWidget.greeting", body.greeting);
+  if (body.systemPromptExtras !== undefined) {
+    setBusinessSetting(business.id, "chatWidget.systemPromptExtras", body.systemPromptExtras);
+  }
+  if (body.allowedOrigins) {
+    setBusinessSetting(business.id, "chatWidget.allowedOrigins", JSON.stringify(normalizeOrigins(body.allowedOrigins)));
+  }
+
+  res.json({ success: true });
+});
+
+// Rotates the public embed key — invalidates every old snippet still deployed
+// on client sites (they'll start failing the key check), the operator's
+// "revoke" lever.
+apiBusinessRouter.post("/settings/chat-widget/rotate-embed-key", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const key = crypto.randomBytes(24).toString("base64url");
+  setBusinessSetting(business.id, "chatWidget.embedKey", key);
+  res.json({ embedKey: key });
 });

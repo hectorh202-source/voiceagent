@@ -250,6 +250,31 @@ export interface GeneralSettings {
   };
 }
 
+// Website chat widget config (see src/chat/* and src/widget/*). embedKey is
+// public (it ships in the client-site snippet), so it's returned in the clear;
+// the Anthropic key is only ever reported set/unset, never echoed back.
+export interface ChatWidgetSettings {
+  enabled: boolean;
+  embedKey: string;
+  anthropicApiKeySet: boolean;
+  allowedOrigins: string[];
+  model: string;
+  agentName: string;
+  accentColor: string;
+  greeting: string;
+  systemPromptExtras: string;
+  // Where the standalone chat-widget service is hosted (global; set in Admin
+  // Settings). The install snippet points here. Empty until configured.
+  widgetServiceBaseUrl: string;
+}
+
+// Global config for the standalone chat-widget service (separate repo) —
+// managed in the global Admin Settings, like Twilio/Google-Ads.
+export interface WidgetServiceSettings {
+  apiSecretSet: boolean;
+  baseUrl: string;
+}
+
 // The OAuth Client ID/Secret + Developer Token this platform's Google Ads
 // API access is registered under — global (see settings/store.ts's
 // getGoogleAdsPlatformConfig), managed from AdminSettingsPage.tsx's global

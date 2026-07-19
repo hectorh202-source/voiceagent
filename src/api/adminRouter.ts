@@ -1,8 +1,15 @@
 import { Router } from "express";
 import { z } from "zod";
+import crypto from "node:crypto";
 import { requireApiSession } from "./requireApiSession";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { emailSettingsSchema, testEmailSchema, twilioSettingsSchema, googleAdsSettingsSchema } from "./schemas";
+import {
+  emailSettingsSchema,
+  testEmailSchema,
+  twilioSettingsSchema,
+  googleAdsSettingsSchema,
+  widgetServiceSettingsSchema,
+} from "./schemas";
 import { createBusiness, listBusinesses, getBusinessById } from "../db/businesses";
 import { createUser, listUsers, deleteUser, setPlatformAdmin } from "../db/users";
 import { getUserBusinessIds, setUserBusinesses, removeUserFromBusiness } from "../db/userBusinesses";
@@ -10,6 +17,7 @@ import {
   getRawEmailSettings,
   getRawTwilioSettings,
   getRawGoogleAdsSettings,
+  getRawWidgetServiceSettings,
   setSetting,
   maybeSetSetting,
 } from "../settings/store";
@@ -235,4 +243,28 @@ adminRouter.put("/google-ads-settings", (req, res) => {
   maybeSetSetting("googleAds.clientSecret", body.clientSecret);
   maybeSetSetting("googleAds.loginCustomerId", body.loginCustomerId);
   res.json({ success: true });
+});
+
+// Global config for the standalone chat-widget service (separate repo) — the
+// shared service secret (which lets the service fetch any business's widget
+// config) and the service's public base URL (used to build the install
+// snippet). Global, like the Twilio/Google-Ads platform config above.
+adminRouter.get("/widget-service-settings", (_req, res) => {
+  res.json(getRawWidgetServiceSettings());
+});
+
+adminRouter.put("/widget-service-settings", (req, res) => {
+  const parsed = widgetServiceSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  maybeSetSetting("widgetService.baseUrl", parsed.data.baseUrl?.replace(/\/+$/, ""));
+  res.json({ success: true });
+});
+
+adminRouter.post("/widget-service-settings/generate-secret", (_req, res) => {
+  const secret = crypto.randomBytes(24).toString("hex");
+  setSetting("widgetService.apiSecret", secret);
+  res.json({ secret });
 });

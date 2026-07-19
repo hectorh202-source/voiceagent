@@ -419,3 +419,146 @@ export function maybeSetSetting(key: string, value: string | undefined): void {
 export function getDashboardBaseUrl(businessId: number): string {
   return getBusinessSetting(businessId, "operational.dashboardBaseUrl") ?? "https://dashboard.laughslapper.com";
 }
+
+// ---------------------------------------------------------------------------
+// Website chat widget (see src/chat/* and src/widget/*)
+// ---------------------------------------------------------------------------
+
+// The Claude models offered per business for the chat widget. Opus 4.8 is the
+// default (best qualifying-conversation quality); Sonnet 5 / Haiku 4.5 are
+// selectable to trade quality for cost on high-traffic sites. Kept as a fixed
+// allowlist so an arbitrary/typo'd model string can never reach the API.
+export const CHAT_WIDGET_MODELS = ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"] as const;
+export type ChatWidgetModel = (typeof CHAT_WIDGET_MODELS)[number];
+const DEFAULT_CHAT_WIDGET_MODEL: ChatWidgetModel = "claude-opus-4-8";
+
+// The Anthropic API key powering the widget. Per-business for consistency with
+// every other credential in this app, but falls back to a single global key
+// (settings table) so the operator can run every business off one platform key
+// if they prefer — getChatWidgetConfig treats either as sufficient.
+export function getAnthropicApiKey(businessId: number): string | null {
+  return getBusinessSetting(businessId, "credentials.anthropicApiKey") ?? getSetting("anthropic.apiKey");
+}
+
+// The public embed key baked into the <script> snippet on client sites. Not a
+// secret (see middleware/verifyWidgetRequest.ts's threat model) — its job is
+// to identify the business, with the origin allowlist doing the real gating.
+// Generated on first read so enabling the widget never requires a separate
+// "generate key" step.
+export function getOrCreateWidgetEmbedKey(businessId: number): string {
+  const existing = getBusinessSetting(businessId, "chatWidget.embedKey");
+  if (existing) return existing;
+  const key = crypto.randomBytes(24).toString("base64url");
+  setBusinessSetting(businessId, "chatWidget.embedKey", key);
+  return key;
+}
+
+// Origins are stored as a JSON array of scheme+host(+port) strings (e.g.
+// "https://acme.com"). The settings UI writes it; the widget middleware reads
+// it to CORS-allow and gate requests. Malformed storage degrades to [] rather
+// than throwing.
+export function getWidgetAllowedOrigins(businessId: number): string[] {
+  const raw = getBusinessSetting(businessId, "chatWidget.allowedOrigins");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((o): o is string => typeof o === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isChatWidgetEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "chatWidget.enabled") === "true";
+}
+
+export function getChatWidgetModel(businessId: number): ChatWidgetModel {
+  const stored = getBusinessSetting(businessId, "chatWidget.model") as ChatWidgetModel | null;
+  return stored && (CHAT_WIDGET_MODELS as readonly string[]).includes(stored) ? stored : DEFAULT_CHAT_WIDGET_MODEL;
+}
+
+export interface ChatWidgetBranding {
+  agentName: string;
+  accentColor: string;
+  greeting: string;
+}
+
+export function getChatWidgetBranding(businessId: number): ChatWidgetBranding {
+  return {
+    agentName: getBusinessSetting(businessId, "chatWidget.agentName") ?? "Assistant",
+    accentColor: getBusinessSetting(businessId, "chatWidget.accentColor") ?? "#2563eb",
+    greeting:
+      getBusinessSetting(businessId, "chatWidget.greeting") ??
+      "Hi! I can help you book a service or answer questions. How can I help?",
+  };
+}
+
+// Free-text business context the operator adds to the widget's system prompt
+// (services offered, hours, service area, tone). "" when unset.
+export function getChatWidgetSystemPromptExtras(businessId: number): string {
+  return getBusinessSetting(businessId, "chatWidget.systemPromptExtras") ?? "";
+}
+
+export interface ChatWidgetConfig {
+  enabled: boolean;
+  embedKey: string;
+  allowedOrigins: string[];
+  model: ChatWidgetModel;
+  branding: ChatWidgetBranding;
+  systemPromptExtras: string;
+  anthropicApiKey: string;
+}
+
+// Strict, all-required-to-run view — returns null unless the widget is enabled
+// AND an Anthropic key is available. Same reasoning as getServiceTitanConfig/
+// getElevenLabsConfig: a half-configured widget should behave exactly like a
+// disabled one rather than 500 on the first message.
+export function getChatWidgetConfig(businessId: number): ChatWidgetConfig | null {
+  if (!isChatWidgetEnabled(businessId)) return null;
+  const anthropicApiKey = getAnthropicApiKey(businessId);
+  if (!anthropicApiKey) return null;
+  return {
+    enabled: true,
+    embedKey: getOrCreateWidgetEmbedKey(businessId),
+    allowedOrigins: getWidgetAllowedOrigins(businessId),
+    model: getChatWidgetModel(businessId),
+    branding: getChatWidgetBranding(businessId),
+    systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
+    anthropicApiKey,
+  };
+}
+
+// Per-field view for the settings UI — mirrors getRawElevenLabsSettings: the
+// Anthropic key is only reported set/unset, never echoed back; everything else
+// is shown for editing. embedKey is safe to show (it's public by design).
+export function getRawChatWidgetSettings(businessId: number) {
+  return {
+    enabled: isChatWidgetEnabled(businessId),
+    embedKey: getBusinessSetting(businessId, "chatWidget.embedKey") ?? "",
+    anthropicApiKeySet: !!getAnthropicApiKey(businessId),
+    allowedOrigins: getWidgetAllowedOrigins(businessId),
+    model: getChatWidgetModel(businessId),
+    ...getChatWidgetBranding(businessId),
+    systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
+  };
+}
+
+// The standalone chat-widget SERVICE (separate repo) fetches per-business
+// config from this dashboard using a shared service secret, and the install
+// snippet points at the service's own base URL. Both are global (one widget
+// service serves every business), so they live in the `settings` table, not
+// business_settings — same reasoning as the master Twilio/Google-Ads config.
+export function getWidgetServiceApiSecret(): string | null {
+  return getSetting("widgetService.apiSecret");
+}
+
+export function getWidgetServiceBaseUrl(): string {
+  return getSetting("widgetService.baseUrl") ?? "";
+}
+
+export function getRawWidgetServiceSettings() {
+  return {
+    apiSecretSet: !!getSetting("widgetService.apiSecret"),
+    baseUrl: getSetting("widgetService.baseUrl") ?? "",
+  };
+}
