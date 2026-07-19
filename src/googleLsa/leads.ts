@@ -1,5 +1,7 @@
+import { getServiceTitanConfig } from "../settings/store";
 import type { GoogleLsaConfig } from "../settings/store";
 import { gaqlSearch } from "./httpClient";
+import { lookupCustomerByPhone } from "../servicetitan/customers";
 
 // Field names confirmed 2026-07-17 against the real Google Ads API v24
 // (google.ads.googleads.v24.resources LocalServicesLead /
@@ -160,7 +162,7 @@ function buildMessage(
   return fallbackLines.length > 0 ? fallbackLines.join("\n") : null;
 }
 
-export async function fetchRecentLsaLeads(config: GoogleLsaConfig): Promise<LsaLeadResult[]> {
+export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: number): Promise<LsaLeadResult[]> {
   const [leadRows, conversationRows] = await Promise.all([
     gaqlSearch<LocalServicesLeadRow>(config, LEADS_QUERY),
     gaqlSearch<LocalServicesLeadConversationRow>(config, CONVERSATIONS_QUERY),
@@ -182,17 +184,50 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig): Promise<LsaL
     convos.sort((a, b) => (a.eventDateTime ?? "").localeCompare(b.eventDateTime ?? ""));
   }
 
+  // Checked once per call, not once per lead — a business with no
+  // ServiceTitan configured should never even attempt a lookup, and this is
+  // the one config check that's the same for every lead in this batch.
+  const serviceTitanConfigured = getServiceTitanConfig(businessId) !== null;
+
   const results: LsaLeadResult[] = [];
   for (const row of leadRows) {
     const lead = row.localServicesLead;
     if (!lead?.resourceName) continue;
     const conversations = conversationsByLead.get(lead.resourceName) ?? [];
 
+    const phone = lead.contactDetails?.phoneNumber ?? null;
+    let name = lead.contactDetails?.consumerName ?? null;
+
+    // Google's API never returns a caller name for a PHONE_CALL lead —
+    // confirmed against real data (2026-07-18): contactDetails only ever
+    // has phoneNumber for that lead type, no consumerName, and there's no
+    // transcript field to extract one from either. The only other place a
+    // name could come from is this business's own ServiceTitan CRM, if the
+    // caller already exists there by phone number — same lookup createLead.ts
+    // already uses for AI-handled calls. A caller with no existing
+    // ServiceTitan customer record genuinely has no name available from any
+    // source this app has, and keeps showing "Unknown".
+    //
+    // Runs on every 5-minute poll for every still-nameless PHONE_CALL lead
+    // in the last 50 (insertInboundLead's upsert means a later match
+    // correctly backfills a lead that had none before) — an accepted,
+    // unbounded-retry tradeoff at today's lead volume; revisit if this ever
+    // grows enough to strain ServiceTitan's rate limits.
+    if (!name && lead.leadType === "PHONE_CALL" && phone && serviceTitanConfigured) {
+      try {
+        const match = await lookupCustomerByPhone(businessId, phone);
+        if (match.found && match.name) name = match.name;
+      } catch {
+        // Best-effort — a transient ServiceTitan failure just leaves this
+        // lead nameless for this poll, same as if it had no match at all.
+      }
+    }
+
     results.push({
       externalId: lead.resourceName,
       sourceDetail: lead.leadType ?? null,
-      name: lead.contactDetails?.consumerName ?? null,
-      phone: lead.contactDetails?.phoneNumber ?? null,
+      name,
+      phone,
       email: lead.contactDetails?.email ?? null,
       message: buildMessage(lead, conversations),
       // Always the full retrieved data, regardless of how the mapping above

@@ -20,7 +20,7 @@ export async function pollGoogleLsaLeads(): Promise<void> {
       if (!config) continue; // not configured for this business yet
 
       try {
-        const leads = await fetchRecentLsaLeads(config);
+        const leads = await fetchRecentLsaLeads(config, business.id);
         for (const lead of leads) {
           insertInboundLead({
             businessId: business.id,
