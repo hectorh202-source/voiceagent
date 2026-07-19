@@ -168,6 +168,7 @@ export function CallDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
       queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
     },
   });
 

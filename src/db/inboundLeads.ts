@@ -153,6 +153,16 @@ export function listInboundLeads(businessId: number, limit = 50, filters: Inboun
   return records.map(decryptInboundLead);
 }
 
+// Powers the sidebar's Gmail-style unread badge (AppShell.tsx) — a plain
+// COUNT rather than reusing listInboundLeads, since the badge only ever
+// needs a number, not full decrypted rows for every unread lead.
+export function countUnreadLeads(businessId: number): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) as count FROM inbound_leads WHERE business_id = ? AND is_read = 0`)
+    .get(businessId) as { count: number };
+  return row.count;
+}
+
 export function getInboundLeadById(businessId: number, id: number): InboundLeadRecord | undefined {
   const record = db
     .prepare(`SELECT * FROM inbound_leads WHERE id = ? AND business_id = ?`)

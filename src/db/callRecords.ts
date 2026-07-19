@@ -183,6 +183,16 @@ export function setCallDerivedFields(
 // depends on for tenant isolation, since the URL itself is the only access
 // control. A conversationId belonging to another business must never match
 // here just because the ID happens to be correct.
+// Powers the sidebar's Gmail-style unread badge (AppShell.tsx) — a plain
+// COUNT rather than reusing listCallRecords, since the badge only ever needs
+// a number, not full decrypted rows for every unread call.
+export function countUnreadCalls(businessId: number): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) as count FROM elevenlabs_calls WHERE business_id = ? AND is_read = 0`)
+    .get(businessId) as { count: number };
+  return row.count;
+}
+
 export function getCallRecord(businessId: number, conversationId: string): ElevenLabsCallRecord | undefined {
   const record = db
     .prepare(`SELECT * FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`)

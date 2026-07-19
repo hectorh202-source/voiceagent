@@ -191,13 +191,34 @@ textarea,
 }
 
 .nav-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   color: var(--sidebar-text);
   text-decoration: none;
   font-size: 13.5px;
   margin-bottom: 2px;
+}
+
+/* Gmail-style unread count — a small solid pill, not a full badge, since it
+   sits inline with the nav label rather than floating on a corner. Only
+   rendered at all when count > 0 (see AppShell.tsx), same as Gmail hiding
+   the number entirely at inbox zero rather than showing "0". */
+.nav-badge {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.9);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 .nav-link:hover {

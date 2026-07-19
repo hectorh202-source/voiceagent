@@ -330,3 +330,10 @@ export interface CallListFilters {
   recoveryStatus?: "recovered" | "not_recovered" | "null";
   status?: CallStatus;
 }
+
+// Powers AppShell.tsx's sidebar unread badges — see GET /unread-counts in
+// businessRouter.ts.
+export interface UnreadCounts {
+  calls: number;
+  leads: number;
+}

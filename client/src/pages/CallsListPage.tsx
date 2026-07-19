@@ -86,6 +86,7 @@ export function CallsListPage() {
       api.patch(`/api/businesses/${businessId}/calls`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
     },
   });
 

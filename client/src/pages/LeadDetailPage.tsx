@@ -41,6 +41,7 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lead", businessId, leadId] });
       queryClient.invalidateQueries({ queryKey: ["leads", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
     },
   });
 

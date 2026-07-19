@@ -10,9 +10,10 @@ import {
   listCallRecords,
   getCallRecord,
   updateCallStatus,
+  countUnreadCalls,
 } from "../db/callRecords";
 import type { CallDateRange, CallCursor } from "../db/callRecords";
-import { listInboundLeads, getInboundLeadById, updateInboundLead } from "../db/inboundLeads";
+import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads } from "../db/inboundLeads";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
@@ -344,6 +345,17 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     ...parseLeadRow(record),
     internalNotes: record.internal_notes,
     rawDump,
+  });
+});
+
+// Powers AppShell.tsx's sidebar unread badges (Calls/Leads), Gmail-style —
+// a single lightweight endpoint rather than making the sidebar infer counts
+// from the paginated list queries, which only ever hold one page of rows.
+apiBusinessRouter.get("/unread-counts", (req, res) => {
+  const business = req.business!;
+  res.json({
+    calls: countUnreadCalls(business.id),
+    leads: countUnreadLeads(business.id),
   });
 });
 
