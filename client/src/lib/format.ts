@@ -1,4 +1,4 @@
-import type { LeadSource, LeadStatus } from "../api/types";
+import type { LeadSource, LeadStatus, LeadNameSource } from "../api/types";
 
 // Shown as an empty secret input's placeholder when the server reports a
 // value is already set (the real value is never sent back, only a boolean
@@ -191,6 +191,22 @@ export function getLeadStatusColors(status: LeadStatus): { bg: string; fg: strin
   if (status === "new") return { bg: "var(--info-bg)", fg: "var(--info-text)" };
   const group = LEAD_STATUS_TO_GROUP[status];
   return group ? LEAD_STATUS_GROUP_COLOR[group] : { bg: "var(--neutral-bg)", fg: "var(--neutral-text)" };
+}
+
+// Surfaces, next to a Google LSA phone-call lead's name, how confident that
+// name actually is — a ServiceTitan CRM match is a real customer record,
+// while a Caller ID (Twilio CNAM) result is only ever a best-effort phone-
+// carrier guess (see googleLsa/nameSource.ts). Shows nothing at all for a
+// MESSAGE lead (name came straight from Google) or an unresolved one.
+export function getNameSourceLabel(source: LeadNameSource): string | null {
+  if (source === "servicetitan") return "Verified via ServiceTitan";
+  if (source === "caller_id") return "Caller ID";
+  return null;
+}
+
+export function getNameSourceColors(source: LeadNameSource): { bg: string; fg: string } {
+  if (source === "servicetitan") return { bg: "var(--success-bg)", fg: "var(--success-text)" };
+  return { bg: "var(--warning-bg)", fg: "var(--warning-text)" };
 }
 
 // Up to 2 initials from a display name (or "?" for an unknown/empty one) —

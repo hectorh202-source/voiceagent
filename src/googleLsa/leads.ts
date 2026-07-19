@@ -199,6 +199,13 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
     const phone = lead.contactDetails?.phoneNumber ?? null;
     let name = lead.contactDetails?.consumerName ?? null;
     let email = lead.contactDetails?.email ?? null;
+    // Which fallback (if either) actually supplied `name` — surfaced in the
+    // UI (see googleLsa/nameSource.ts) so staff can see a ServiceTitan CRM
+    // match is a real customer record, while a Caller ID result is only ever
+    // a best-effort phone-carrier guess. Left null when Google's own
+    // contactDetails.consumerName already had it (MESSAGE leads) or when
+    // nothing resolved a name at all.
+    let nameSource: "servicetitan" | "caller_id" | null = null;
 
     // Google's API never returns a caller name or email for a PHONE_CALL
     // lead — confirmed against real data (2026-07-18): contactDetails only
@@ -228,7 +235,10 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       try {
         const match = await lookupCustomerByPhone(businessId, phone);
         if (match.found) {
-          if (!name && match.name) name = match.name;
+          if (!name && match.name) {
+            name = match.name;
+            nameSource = "servicetitan";
+          }
           if (!email && match.email) email = match.email;
         }
       } catch {
@@ -239,7 +249,10 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
     if (!name && lead.leadType === "PHONE_CALL" && phone) {
       try {
         const callerName = await lookupCallerName(phone);
-        if (callerName) name = callerName;
+        if (callerName) {
+          name = callerName;
+          nameSource = "caller_id";
+        }
       } catch {
         // Best-effort — lookupCallerName already swallows its own errors
         // and returns null, but this guards against any future change to
@@ -256,8 +269,12 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       message: buildMessage(lead, conversations),
       // Always the full retrieved data, regardless of how the mapping above
       // went — same "store everything, map best-effort" precedent as the
-      // generic webhook's raw_payload_json.
-      rawPayloadJson: JSON.stringify({ lead, conversations }),
+      // generic webhook's raw_payload_json. nameSource rides along here
+      // (not a real Google field) rather than getting its own DB column —
+      // see googleLsa/nameSource.ts's extractNameSource, same "encode it in
+      // the already-stored payload, extract at read time" pattern as
+      // hasRecording/attachmentCount.
+      rawPayloadJson: JSON.stringify({ lead, conversations, nameSource }),
     });
   }
   return results;

@@ -11,6 +11,8 @@ import {
   getLeadStatusLabel,
   getLeadStatusColors,
   LEAD_STATUS_GROUPS,
+  getNameSourceLabel,
+  getNameSourceColors,
 } from "../lib/format";
 import {
   UserIcon,
@@ -161,7 +163,27 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             <UserIcon />
             <div className="info-body">
               <div className="info-label">Name</div>
-              <div className="info-value">{data.name ?? "Unknown"}</div>
+              <div className="info-value" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {data.name ?? "Unknown"}
+                {/* Only ever set for a Google LSA phone-call lead whose name
+                    came from a fallback rather than Google itself — lets
+                    staff see whether it's a real ServiceTitan customer match
+                    or just a best-effort Caller ID guess. */}
+                {getNameSourceLabel(data.nameSource) && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: getNameSourceColors(data.nameSource).bg,
+                      color: getNameSourceColors(data.nameSource).fg,
+                    }}
+                  >
+                    {getNameSourceLabel(data.nameSource)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="info-row">

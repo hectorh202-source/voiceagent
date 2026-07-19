@@ -16,6 +16,7 @@ import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads } from "../db/inboundLeads";
 import { extractRecordingUrl, fetchRecordingAudio } from "../googleLsa/recordings";
 import { extractAttachmentUrls, fetchAttachment } from "../googleLsa/attachments";
+import { extractNameSource } from "../googleLsa/nameSource";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
@@ -350,6 +351,7 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     rawDump,
     hasRecording: extractRecordingUrl(record.raw_payload_json) !== null,
     attachmentCount: extractAttachmentUrls(record.raw_payload_json).length,
+    nameSource: extractNameSource(record.raw_payload_json),
   });
 });
 

@@ -312,7 +312,14 @@ export interface InboundLeadDetail extends InboundLeadListRow {
   // MESSAGE-type lead) — 0 for everything else. Each is fetched individually
   // via GET /leads/:id/attachments/:index, indices 0..attachmentCount-1.
   attachmentCount: number;
+  // Which fallback (if either) resolved a Google LSA phone-call lead's name
+  // — "servicetitan" is a real matched customer record, "caller_id" is only
+  // ever a best-effort Twilio CNAM guess. Null when the name came straight
+  // from Google (a MESSAGE lead) or when nothing resolved a name at all.
+  nameSource: LeadNameSource;
 }
+
+export type LeadNameSource = "servicetitan" | "caller_id" | null;
 
 export interface LeadListFilters {
   source?: LeadSource;
