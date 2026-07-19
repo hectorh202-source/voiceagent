@@ -5,3 +5,10 @@ voiceagent.laughslapper.com {
 dashboard.laughslapper.com {
 	reverse_proxy app:3000
 }
+
+# The chat-widget service (separate repo, same stack). Point this subdomain's
+# DNS at this VPS; Caddy gets its cert automatically. This is the public URL
+# that goes in the dashboard's Admin Settings → Chat Widget Service "base URL".
+chat.laughslapper.com {
+	reverse_proxy widget:3020
+}
