@@ -172,6 +172,20 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
                 <div className="info-value">{data.message}</div>
               </div>
             </div>
+            {/* Proxied through this server rather than a plain <audio src>
+                pointed at Google's own attachment URL directly — that URL
+                requires an OAuth bearer token the browser has no way to
+                attach (confirmed: an unauthenticated request just redirects
+                to a Google sign-in page). See GET /leads/:id/recording. */}
+            {data.hasRecording && (
+              <div className="info-row">
+                <audio
+                  controls
+                  src={`/api/businesses/${businessId}/leads/${leadId}/recording`}
+                  style={{ width: "100%" }}
+                />
+              </div>
+            )}
           </div>
         )}
 

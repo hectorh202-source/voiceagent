@@ -302,6 +302,11 @@ export interface InboundLeadDetail extends InboundLeadListRow {
   // own field-matching (name/phone/email/message) mapped things cleanly.
   // See docs/leads-inbox.md.
   rawDump: string;
+  // True only for a Google LSA PHONE_CALL lead with a real recording URL
+  // captured at ingestion — see GET /leads/:id/recording (businessRouter.ts)
+  // and googleLsa/recordings.ts for why this can't just be a plain <audio>
+  // src pointed at Google's own URL directly.
+  hasRecording: boolean;
 }
 
 export interface LeadListFilters {

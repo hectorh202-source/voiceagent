@@ -14,6 +14,7 @@ import {
 } from "../db/callRecords";
 import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads } from "../db/inboundLeads";
+import { extractRecordingUrl, fetchRecordingAudio } from "../googleLsa/recordings";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
@@ -35,6 +36,7 @@ import {
   getRawGoogleAdsBusinessSettings,
   setBusinessSetting,
   maybeSetBusinessSetting,
+  getGoogleLsaConfig,
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
@@ -345,7 +347,46 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     ...parseLeadRow(record),
     internalNotes: record.internal_notes,
     rawDump,
+    hasRecording: extractRecordingUrl(record.raw_payload_json) !== null,
   });
+});
+
+// Proxies the actual recording audio (see googleLsa/recordings.ts for why
+// this can't just be a raw <audio src="..."> pointed at Google's own URL —
+// it requires a bearer token the browser has no way to attach). 404s for
+// anything without a recording, 503 if this business hasn't got Google LSA
+// configured (credentials could be removed after a lead was already synced),
+// 502 for a real request failure — same three-way split every other
+// external-API route in this file already uses.
+apiBusinessRouter.get("/leads/:id/recording", async (req, res) => {
+  const business = req.business!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  const record = getInboundLeadById(business.id, id);
+  if (!record) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  const recordingUrl = extractRecordingUrl(record.raw_payload_json);
+  if (!recordingUrl) {
+    res.status(404).json({ error: "No recording available for this lead" });
+    return;
+  }
+  const config = getGoogleLsaConfig(business.id);
+  if (!config) {
+    res.status(503).json({ error: "Google LSA is not configured for this business" });
+    return;
+  }
+  try {
+    const audio = await fetchRecordingAudio(config, recordingUrl);
+    res.set("Content-Type", audio.contentType);
+    res.send(audio.data);
+  } catch (error) {
+    res.status(502).json({ error: describeError(error) });
+  }
 });
 
 // Powers AppShell.tsx's sidebar unread badges (Calls/Leads), Gmail-style —
