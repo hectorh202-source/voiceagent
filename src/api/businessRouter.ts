@@ -15,6 +15,7 @@ import {
 import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads } from "../db/inboundLeads";
 import { extractRecordingUrl, fetchRecordingAudio } from "../googleLsa/recordings";
+import { extractAttachmentUrls, fetchAttachment } from "../googleLsa/attachments";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
 import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
@@ -348,6 +349,7 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     internalNotes: record.internal_notes,
     rawDump,
     hasRecording: extractRecordingUrl(record.raw_payload_json) !== null,
+    attachmentCount: extractAttachmentUrls(record.raw_payload_json).length,
   });
 });
 
@@ -384,6 +386,43 @@ apiBusinessRouter.get("/leads/:id/recording", async (req, res) => {
     const audio = await fetchRecordingAudio(config, recordingUrl);
     res.set("Content-Type", audio.contentType);
     res.send(audio.data);
+  } catch (error) {
+    res.status(502).json({ error: describeError(error) });
+  }
+});
+
+// Same proxy reasoning as GET /leads/:id/recording — attachment_urls needs
+// the same bearer token. :index addresses one attachment out of the
+// (possibly several, across possibly several messages) flattened list
+// extractAttachmentUrls returns for this lead — see attachmentCount on
+// GET /leads/:id, which tells the client how many indices exist.
+apiBusinessRouter.get("/leads/:id/attachments/:index", async (req, res) => {
+  const business = req.business!;
+  const id = Number(req.params.id);
+  const index = Number(req.params.index);
+  if (!Number.isInteger(id) || !Number.isInteger(index) || index < 0) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  const record = getInboundLeadById(business.id, id);
+  if (!record) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  const url = extractAttachmentUrls(record.raw_payload_json)[index];
+  if (!url) {
+    res.status(404).json({ error: "No attachment at that index" });
+    return;
+  }
+  const config = getGoogleLsaConfig(business.id);
+  if (!config) {
+    res.status(503).json({ error: "Google LSA is not configured for this business" });
+    return;
+  }
+  try {
+    const file = await fetchAttachment(config, url);
+    res.set("Content-Type", file.contentType);
+    res.send(file.data);
   } catch (error) {
     res.status(502).json({ error: describeError(error) });
   }

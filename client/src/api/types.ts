@@ -307,6 +307,11 @@ export interface InboundLeadDetail extends InboundLeadListRow {
   // and googleLsa/recordings.ts for why this can't just be a plain <audio>
   // src pointed at Google's own URL directly.
   hasRecording: boolean;
+  // Number of MessageDetails.attachment_urls found across this lead's
+  // conversations (photos/files sent via SMS or email in a Google LSA
+  // MESSAGE-type lead) — 0 for everything else. Each is fetched individually
+  // via GET /leads/:id/attachments/:index, indices 0..attachmentCount-1.
+  attachmentCount: number;
 }
 
 export interface LeadListFilters {

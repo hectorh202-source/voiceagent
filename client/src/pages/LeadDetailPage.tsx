@@ -24,6 +24,32 @@ import {
   ChevronDownIcon,
 } from "../components/icons";
 
+// Google's MessageDetails.attachment_urls doesn't say what file type each
+// attachment actually is (could be a photo, could be some other file) and
+// the URL itself carries no extension — so this tries rendering it as an
+// image first and falls back to a plain download link if that fails, rather
+// than guessing from the URL. Proxied through the server the same way the
+// recording audio is (see GET /leads/:id/attachments/:index) since these
+// URLs need a bearer token the browser has no way to attach.
+function AttachmentPreview({ url }: { url: string }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  if (imageFailed) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="link-btn">
+        Download attachment
+      </a>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt="Lead attachment"
+      style={{ maxWidth: 160, maxHeight: 160, borderRadius: 8, border: "1px solid var(--border)", objectFit: "cover" }}
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
+
 // Rendered inline inside LeadsPage.tsx's right-hand pane — always visible
 // alongside the list, never a modal (see LeadsPage.tsx for the two-pane
 // layout this lives in).
@@ -184,6 +210,16 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
                   src={`/api/businesses/${businessId}/leads/${leadId}/recording`}
                   style={{ width: "100%" }}
                 />
+              </div>
+            )}
+            {data.attachmentCount > 0 && (
+              <div className="info-row" style={{ flexWrap: "wrap", gap: 8 }}>
+                {Array.from({ length: data.attachmentCount }, (_, i) => (
+                  <AttachmentPreview
+                    key={i}
+                    url={`/api/businesses/${businessId}/leads/${leadId}/attachments/${i}`}
+                  />
+                ))}
               </div>
             )}
           </div>

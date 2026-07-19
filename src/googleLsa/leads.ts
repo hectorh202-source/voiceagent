@@ -37,7 +37,14 @@ interface LocalServicesLeadConversationRow {
     conversationChannel?: string; // "EMAIL" | "MESSAGE" | "PHONE_CALL" | "SMS"
     participantType?: string; // "ADVERTISER" | "CONSUMER"
     eventDateTime?: string;
-    messageDetails?: { text?: string };
+    // attachmentUrls: real field, confirmed against the official v24 proto
+    // (LocalServicesLeadConversation.MessageDetails) — "URL to the SMS or
+    // email attachments. These URLs can be used to download the contents of
+    // the attachment by using the developer token." No real lead in this
+    // account has one populated yet (checked directly, 2026-07-18), so the
+    // proxy route built against this (googleLsa/attachments.ts) is unverified
+    // end-to-end until a real attachment shows up in a future poll.
+    messageDetails?: { text?: string; attachmentUrls?: string[] };
     phoneCallDetails?: { callDurationMillis?: string; callRecordingUrl?: string };
   };
 }
@@ -100,6 +107,7 @@ const CONVERSATIONS_QUERY = `
     local_services_lead_conversation.participant_type,
     local_services_lead_conversation.event_date_time,
     local_services_lead_conversation.message_details.text,
+    local_services_lead_conversation.message_details.attachment_urls,
     local_services_lead_conversation.phone_call_details.call_duration_millis,
     local_services_lead_conversation.phone_call_details.call_recording_url
   FROM local_services_lead_conversation
