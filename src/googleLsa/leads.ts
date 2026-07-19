@@ -2,6 +2,7 @@ import { getServiceTitanConfig } from "../settings/store";
 import type { GoogleLsaConfig } from "../settings/store";
 import { gaqlSearch } from "./httpClient";
 import { lookupCustomerByPhone } from "../servicetitan/customers";
+import { lookupCallerName } from "../twilio/callerName";
 
 // Field names confirmed 2026-07-17 against the real Google Ads API v24
 // (google.ads.googleads.v24.resources LocalServicesLead /
@@ -202,20 +203,27 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
     // Google's API never returns a caller name or email for a PHONE_CALL
     // lead — confirmed against real data (2026-07-18): contactDetails only
     // ever has phoneNumber for that lead type, and there's no transcript
-    // field to extract either from. The only other place either could come
-    // from is this business's own ServiceTitan CRM, if the caller already
-    // exists there by phone number — same lookup createLead.ts already uses
-    // for AI-handled calls, and it already fetches email alongside name in
-    // the same request, so backfilling both here costs nothing extra beyond
-    // the one lookup already added for the name. A caller with no existing
-    // ServiceTitan customer record genuinely has neither available from any
-    // source this app has, and keeps showing "Unknown" / a blank email.
+    // field to extract either from. Two fallback sources are tried in
+    // order, cheapest/most-authoritative first:
+    //   1. This business's own ServiceTitan CRM, if the caller already
+    //      exists there by phone number (same lookup createLead.ts already
+    //      uses for AI-handled calls; it fetches email alongside name in one
+    //      request, so both are backfilled for the cost of one lookup).
+    //   2. Twilio's Caller ID (CNAM) lookup, name-only — a real phone
+    //      carrier record rather than this app's own data, so it's tried
+    //      whenever ServiceTitan didn't resolve a name. Known to be
+    //      unreliable for mobile numbers specifically (many carriers don't
+    //      populate CNAM), so this is a last-resort, not authoritative.
+    // A caller that neither source resolves genuinely has no name/email
+    // available from anywhere this app can reach, and keeps showing
+    // "Unknown" / a blank email.
     //
     // Runs on every 5-minute poll for every PHONE_CALL lead still missing
     // either field, in the last 50 (insertInboundLead's upsert means a later
     // match correctly backfills a lead that had neither before) — an
     // accepted, unbounded-retry tradeoff at today's lead volume; revisit if
-    // this ever grows enough to strain ServiceTitan's rate limits.
+    // this ever grows enough to strain ServiceTitan's rate limits or run up
+    // Twilio's per-lookup CNAM cost.
     if ((!name || !email) && lead.leadType === "PHONE_CALL" && phone && serviceTitanConfigured) {
       try {
         const match = await lookupCustomerByPhone(businessId, phone);
@@ -226,6 +234,16 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       } catch {
         // Best-effort — a transient ServiceTitan failure just leaves this
         // lead as it was, same as if it had no match at all.
+      }
+    }
+    if (!name && lead.leadType === "PHONE_CALL" && phone) {
+      try {
+        const callerName = await lookupCallerName(phone);
+        if (callerName) name = callerName;
+      } catch {
+        // Best-effort — lookupCallerName already swallows its own errors
+        // and returns null, but this guards against any future change to
+        // that contract.
       }
     }
 
