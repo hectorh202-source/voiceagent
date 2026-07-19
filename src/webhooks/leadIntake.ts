@@ -11,8 +11,17 @@ import { formatKeyValueDump } from "../lib/format";
 // in priority order. Deliberately broad: a false-positive match just means
 // a field lands somewhere slightly odd, whereas a missed match means losing
 // a lead's contact info outright, which is the worse failure mode here.
+// "number" added after a real test (2026-07-19) against a differently-
+// labeled form tool: "Best Contact Number" has neither "phone"/"mobile"/
+// "cell" in it, so a phone number was silently falling out of the
+// structured field into the plain message dump instead. No collision risk
+// introduced by this: name/address/email's own substrings don't overlap
+// with "number" at all, and every field on a lead-intake form is already
+// scoped to "info about this one contact request" (not a general business
+// form with unrelated reference/order/invoice numbers), so the broad match
+// stays safe in this specific context.
 const FIELD_SUBSTRINGS = {
-  phone: ["phone", "mobile", "cell"],
+  phone: ["phone", "mobile", "cell", "number"],
   address: ["address", "street"],
   email: ["mail"],
   message: ["message", "comment", "note", "detail", "inquiry", "enquiry"],
