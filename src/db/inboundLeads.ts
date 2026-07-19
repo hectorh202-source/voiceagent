@@ -26,6 +26,11 @@ export interface InboundLeadRecord {
   email_override: string | null;
   phone_override: string | null;
   address_override: string | null;
+  // Not PII — a plain attempt-tracking flag, see schema.ts's comment on the
+  // real incident this exists to prevent (an unbounded per-poll Twilio
+  // Caller ID retry, 9,717 lookups in under 24 hours). Set once on first
+  // insert, never touched again by insertInboundLead's upsert.
+  caller_id_checked: number;
 }
 
 // name/phone/address/email/message/internal_notes/*_override carry customer
@@ -64,6 +69,11 @@ export interface InboundLeadEntry {
   email?: string | null;
   message?: string | null;
   rawPayloadJson: string;
+  // Whether a Caller ID lookup was attempted for this lead on THIS
+  // ingestion pass — only meaningful the first time a row is created (the
+  // upsert below deliberately never updates this column afterward, so it's
+  // a true one-shot-ever flag, not re-evaluated on later polls).
+  callerIdChecked?: boolean;
 }
 
 // external_id is only ever present for a source that redelivers/re-polls the
@@ -78,9 +88,21 @@ export interface InboundLeadEntry {
 // are deliberately excluded from the SET clause so a re-poll can never
 // clobber a human's triage work. Must repeat the partial index's WHERE
 // clause in the conflict target for SQLite to match it.
+// caller_id_checked needs to be in the DO UPDATE SET clause too, unlike the
+// override columns — most polls hit an *existing* row (external_id already
+// seen before), not a fresh INSERT, so a column only set in the VALUES
+// clause would never actually persist for the realistic case (confirmed by
+// testing this directly: after the very first version of this fix, every
+// row's caller_id_checked stayed 0 across repeated polls, because all 50
+// rows already existed and the UPDATE branch — the one that actually fires
+// — never touched the column at all). MAX(...) makes it monotonic: once 1,
+// always 1, since a pass where this lead's callerIdChecked comes back false
+// (already checked, so leads.ts's gate skipped it and never re-attempted)
+// must never reset a real "already checked" back to 0. See schema.ts's
+// comment for the real incident this whole column exists to prevent.
 const insertWithExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, address, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @address, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, address, email, message, raw_payload_json, caller_id_checked)
+  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @address, @email, @message, @rawPayloadJson, @callerIdChecked)
   ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
     source_detail = excluded.source_detail,
     name = excluded.name,
@@ -88,12 +110,13 @@ const insertWithExternalIdStmt = db.prepare(`
     address = excluded.address,
     email = excluded.email,
     message = excluded.message,
-    raw_payload_json = excluded.raw_payload_json
+    raw_payload_json = excluded.raw_payload_json,
+    caller_id_checked = MAX(inbound_leads.caller_id_checked, excluded.caller_id_checked)
 `);
 
 const insertWithoutExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, address, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, address, email, message, raw_payload_json, caller_id_checked)
+  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @rawPayloadJson, @callerIdChecked)
 `);
 
 export function insertInboundLead(entry: InboundLeadEntry): void {
@@ -107,12 +130,27 @@ export function insertInboundLead(entry: InboundLeadEntry): void {
     email: encryptNullable(entry.email ?? null),
     message: encryptNullable(entry.message ?? null),
     rawPayloadJson: encryptField(entry.rawPayloadJson),
+    callerIdChecked: entry.callerIdChecked ? 1 : 0,
   };
   if (entry.externalId) {
     insertWithExternalIdStmt.run({ ...params, externalId: entry.externalId });
   } else {
     insertWithoutExternalIdStmt.run(params);
   }
+}
+
+// The set of external_ids (for a business+source) that have already had a
+// Caller ID lookup attempted, ever — computed once per poll and passed into
+// fetchRecentLsaLeads so it never re-attempts a lead that's already been
+// checked, regardless of whether that check found anything. This is the
+// actual fix for the incident described in schema.ts's comment.
+export function getCallerIdCheckedExternalIds(businessId: number, source: string): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT external_id FROM inbound_leads WHERE business_id = ? AND source = ? AND caller_id_checked = 1 AND external_id IS NOT NULL`,
+    )
+    .all(businessId, source) as { external_id: string }[];
+  return new Set(rows.map((r) => r.external_id));
 }
 
 export interface InboundLeadCursor {

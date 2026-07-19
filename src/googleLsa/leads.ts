@@ -64,6 +64,11 @@ export interface LsaLeadResult {
   email: string | null;
   message: string | null;
   rawPayloadJson: string;
+  // Whether a Caller ID (Twilio CNAM) lookup was attempted this pass — see
+  // pollLeads.ts, which only persists this as true on a lead's first ever
+  // insert; a lead already marked checked in the DB never reaches this
+  // branch again (see the alreadyCheckedExternalIds gate below).
+  callerIdChecked: boolean;
 }
 
 // Confirmed via two real GAQL errors (2026-07-17) that GAQL's selectable-
@@ -163,7 +168,16 @@ function buildMessage(
   return fallbackLines.length > 0 ? fallbackLines.join("\n") : null;
 }
 
-export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: number): Promise<LsaLeadResult[]> {
+export async function fetchRecentLsaLeads(
+  config: GoogleLsaConfig,
+  businessId: number,
+  // externalIds (Google resourceNames) that have already had a Caller ID
+  // lookup attempted, ever — see db/inboundLeads.ts's
+  // getCallerIdCheckedExternalIds. Passed in rather than queried here so
+  // this function stays a pure Google-facing fetch with no DB dependency;
+  // pollLeads.ts (which already talks to the DB) computes it once per poll.
+  alreadyCheckedExternalIds: Set<string>,
+): Promise<LsaLeadResult[]> {
   const [leadRows, conversationRows] = await Promise.all([
     gaqlSearch<LocalServicesLeadRow>(config, LEADS_QUERY),
     gaqlSearch<LocalServicesLeadConversationRow>(config, CONVERSATIONS_QUERY),
@@ -206,6 +220,7 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
     // contactDetails.consumerName already had it (MESSAGE leads) or when
     // nothing resolved a name at all.
     let nameSource: "servicetitan" | "caller_id" | null = null;
+    let callerIdChecked = false;
 
     // Google's API never returns a caller name or email for a PHONE_CALL
     // lead — confirmed against real data (2026-07-18): contactDetails only
@@ -215,22 +230,24 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
     //   1. This business's own ServiceTitan CRM, if the caller already
     //      exists there by phone number (same lookup createLead.ts already
     //      uses for AI-handled calls; it fetches email alongside name in one
-    //      request, so both are backfilled for the cost of one lookup).
+    //      request, so both are backfilled for the cost of one lookup). Free
+    //      to retry every poll — no per-call cost, so an unresolved lead can
+    //      still pick up a match once a real ServiceTitan customer record
+    //      for that number eventually exists.
     //   2. Twilio's Caller ID (CNAM) lookup, name-only — a real phone
-    //      carrier record rather than this app's own data, so it's tried
-    //      whenever ServiceTitan didn't resolve a name. Known to be
-    //      unreliable for mobile numbers specifically (many carriers don't
-    //      populate CNAM), so this is a last-resort, not authoritative.
+    //      carrier record rather than this app's own data. UNLIKE
+    //      ServiceTitan above, this is a true one-shot-per-lead-ever
+    //      attempt, gated by alreadyCheckedExternalIds — a real incident
+    //      (2026-07-19) confirmed that retrying it every 5-minute poll for
+    //      every still-nameless lead drained a real Twilio account (9,717
+    //      lookups in under 24 hours), since CNAM genuinely has no data for
+    //      a large fraction of mobile numbers and those leads would
+    //      otherwise never stop being "still nameless." Known to be
+    //      unreliable for mobile numbers specifically, so this is a
+    //      last-resort, not authoritative, and worth spending at most once.
     // A caller that neither source resolves genuinely has no name/email
     // available from anywhere this app can reach, and keeps showing
     // "Unknown" / a blank email.
-    //
-    // Runs on every 5-minute poll for every PHONE_CALL lead still missing
-    // either field, in the last 50 (insertInboundLead's upsert means a later
-    // match correctly backfills a lead that had neither before) — an
-    // accepted, unbounded-retry tradeoff at today's lead volume; revisit if
-    // this ever grows enough to strain ServiceTitan's rate limits or run up
-    // Twilio's per-lookup CNAM cost.
     if ((!name || !email) && lead.leadType === "PHONE_CALL" && phone && serviceTitanConfigured) {
       try {
         const match = await lookupCustomerByPhone(businessId, phone);
@@ -246,7 +263,8 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
         // lead as it was, same as if it had no match at all.
       }
     }
-    if (!name && lead.leadType === "PHONE_CALL" && phone) {
+    if (!name && lead.leadType === "PHONE_CALL" && phone && !alreadyCheckedExternalIds.has(lead.resourceName)) {
+      callerIdChecked = true;
       try {
         const callerName = await lookupCallerName(phone);
         if (callerName) {
@@ -256,7 +274,9 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       } catch {
         // Best-effort — lookupCallerName already swallows its own errors
         // and returns null, but this guards against any future change to
-        // that contract.
+        // that contract. callerIdChecked is still true here on purpose:
+        // whether or not the lookup succeeded, it's been spent — this must
+        // never be attempted again for this lead.
       }
     }
 
@@ -275,6 +295,7 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       // the already-stored payload, extract at read time" pattern as
       // hasRecording/attachmentCount.
       rawPayloadJson: JSON.stringify({ lead, conversations, nameSource }),
+      callerIdChecked,
     });
   }
   return results;

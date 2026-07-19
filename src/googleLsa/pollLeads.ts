@@ -1,6 +1,6 @@
 import { listBusinesses } from "../db/businesses";
 import { getGoogleLsaConfig } from "../settings/store";
-import { insertInboundLead } from "../db/inboundLeads";
+import { insertInboundLead, getCallerIdCheckedExternalIds } from "../db/inboundLeads";
 import { fetchRecentLsaLeads } from "./leads";
 import { describeError } from "./httpClient";
 
@@ -20,7 +20,8 @@ export async function pollGoogleLsaLeads(): Promise<void> {
       if (!config) continue; // not configured for this business yet
 
       try {
-        const leads = await fetchRecentLsaLeads(config, business.id);
+        const alreadyCheckedExternalIds = getCallerIdCheckedExternalIds(business.id, "google_lsa");
+        const leads = await fetchRecentLsaLeads(config, business.id, alreadyCheckedExternalIds);
         for (const lead of leads) {
           insertInboundLead({
             businessId: business.id,
@@ -32,6 +33,7 @@ export async function pollGoogleLsaLeads(): Promise<void> {
             email: lead.email,
             message: lead.message,
             rawPayloadJson: lead.rawPayloadJson,
+            callerIdChecked: lead.callerIdChecked,
           });
         }
       } catch (error) {

@@ -165,7 +165,21 @@ export function bootstrapSchema(db: DatabaseSync): void {
       name_override TEXT,
       email_override TEXT,
       phone_override TEXT,
-      address_override TEXT
+      address_override TEXT,
+      -- Whether a Twilio Caller ID (CNAM) lookup has EVER been attempted for
+      -- this lead — not PII, so unencrypted. Set once, on first insert, and
+      -- never touched again by the poller's upsert (same exclusion-from-
+      -- DO-UPDATE-SET treatment as the override columns above). Confirmed
+      -- real incident (2026-07-19): without this, a still-nameless
+      -- PHONE_CALL lead with genuinely no CNAM data (common — CNAM coverage
+      -- for mobile numbers is spotty) got re-queried on every single
+      -- 5-minute poll forever, since the only original gate was "does this
+      -- lead have a name yet" — an unbounded, ever-repeating cost with no
+      -- ceiling. ~30 permanently-unresolved leads x 288 polls/day drained a
+      -- real Twilio account (9,717 lookups in under 24 hours). This column
+      -- makes the lookup a true one-shot-per-lead, ever, regardless of
+      -- whether it succeeded.
+      caller_id_checked INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_inbound_leads_business_received ON inbound_leads(business_id, received_at);
