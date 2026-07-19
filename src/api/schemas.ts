@@ -213,6 +213,7 @@ export const leadIntakeSchema = z.object({
   source: z.enum(["website_form", "website_chat"]),
   name: z.string().min(1).optional(),
   phone: z.string().min(1).optional(),
+  address: z.string().min(1).optional(),
   email: z.string().min(1).optional(),
   message: z.string().optional(),
   externalId: z.string().optional(),
@@ -223,12 +224,14 @@ export const patchLeadsSchema = z.object({
   isRead: z.boolean().optional(),
   status: z.enum(LEAD_STATUS_VALUES).optional(),
   internalNotes: z.string().nullable().optional(),
-  // Writes to name_override/email_override/phone_override (db/inboundLeads.ts),
-  // never the raw name/phone/email columns a polling source re-fetches —
-  // see schema.ts's comment on inbound_leads for why.
+  // Writes to name_override/email_override/phone_override/address_override
+  // (db/inboundLeads.ts), never the raw name/phone/email/address columns a
+  // polling source re-fetches — see schema.ts's comment on inbound_leads
+  // for why.
   name: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
 });
 
 // The master Twilio account this platform manages — global, not per-business

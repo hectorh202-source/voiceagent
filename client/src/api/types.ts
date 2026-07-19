@@ -289,6 +289,7 @@ export interface InboundLeadListRow {
   receivedAt: string;
   name: string | null;
   phone: string | null;
+  address: string | null;
   email: string | null;
   message: string | null;
   status: LeadStatus;

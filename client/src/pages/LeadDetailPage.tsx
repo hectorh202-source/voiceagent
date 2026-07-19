@@ -24,6 +24,7 @@ import {
   SaveIcon,
   CloseIcon,
   ChevronDownIcon,
+  MapPinIcon,
 } from "../components/icons";
 import { EditLeadContactModal } from "../components/EditLeadContactModal";
 
@@ -72,6 +73,7 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
       name?: string | null;
       email?: string | null;
       phone?: string | null;
+      address?: string | null;
     }) => api.patch(`/api/businesses/${businessId}/leads`, { ids: [Number(leadId)], ...body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lead", businessId, leadId] });
@@ -219,6 +221,13 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             </div>
           </div>
           <div className="info-row">
+            <MapPinIcon />
+            <div className="info-body">
+              <div className="info-label">Address</div>
+              <div className="info-value">{data.address ?? "—"}</div>
+            </div>
+          </div>
+          <div className="info-row">
             <CalendarIcon />
             <div className="info-body">
               <div className="info-label">Received</div>
@@ -335,6 +344,7 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
           name={data.name}
           email={data.email}
           phone={data.phone}
+          address={data.address}
           isSaving={patchMutation.isPending}
           onClose={() => setIsEditingContact(false)}
           onSave={(values) => {

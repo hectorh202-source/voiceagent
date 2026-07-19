@@ -279,6 +279,7 @@ function parseLeadRow(record: ReturnType<typeof listInboundLeads>[number]) {
     // re-fetched — see schema.ts's comment on inbound_leads.
     name: record.name_override ?? record.name,
     phone: record.phone_override ?? record.phone,
+    address: record.address_override ?? record.address,
     email: record.email_override ?? record.email,
     message: record.message,
     status: record.status,
@@ -318,8 +319,8 @@ apiBusinessRouter.patch("/leads", (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { ids, isRead, status, internalNotes, name, email, phone } = parsed.data;
-  updateInboundLead(business.id, ids, { isRead, status, internalNotes, name, email, phone });
+  const { ids, isRead, status, internalNotes, name, email, phone, address } = parsed.data;
+  updateInboundLead(business.id, ids, { isRead, status, internalNotes, name, email, phone, address });
   res.json({ success: true });
 });
 

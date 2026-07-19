@@ -54,9 +54,9 @@ function paramsFromFilters(filters: LeadListFilters): URLSearchParams {
 }
 
 function toCsv(rows: InboundLeadListRow[]): string {
-  const header = ["Date", "Status", "Source", "Name", "Phone", "Email", "Message"];
+  const header = ["Date", "Status", "Source", "Name", "Phone", "Address", "Email", "Message"];
   const lines = rows.map((r) =>
-    [r.receivedAt, r.status, r.source, r.name ?? "", r.phone ?? "", r.email ?? "", r.message ?? ""]
+    [r.receivedAt, r.status, r.source, r.name ?? "", r.phone ?? "", r.address ?? "", r.email ?? "", r.message ?? ""]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(","),
   );

@@ -5,7 +5,8 @@ interface EditLeadContactModalProps {
   name: string | null;
   email: string | null;
   phone: string | null;
-  onSave: (values: { name: string | null; email: string | null; phone: string | null }) => void;
+  address: string | null;
+  onSave: (values: { name: string | null; email: string | null; phone: string | null; address: string | null }) => void;
   onClose: () => void;
   isSaving: boolean;
 }
@@ -15,16 +16,18 @@ interface EditLeadContactModalProps {
 // one), since LeadDetailPage.tsx's patchMutation/PATCH /leads treats a
 // present-but-null field as "clear the override," distinct from omitting
 // the field entirely (see db/inboundLeads.ts's InboundLeadPatch).
-export function EditLeadContactModal({ name, email, phone, onSave, onClose, isSaving }: EditLeadContactModalProps) {
+export function EditLeadContactModal({ name, email, phone, address, onSave, onClose, isSaving }: EditLeadContactModalProps) {
   const [nameDraft, setNameDraft] = useState(name ?? "");
   const [emailDraft, setEmailDraft] = useState(email ?? "");
   const [phoneDraft, setPhoneDraft] = useState(phone ?? "");
+  const [addressDraft, setAddressDraft] = useState(address ?? "");
 
   function handleSave() {
     onSave({
       name: nameDraft.trim() === "" ? null : nameDraft.trim(),
       email: emailDraft.trim() === "" ? null : emailDraft.trim(),
       phone: phoneDraft.trim() === "" ? null : phoneDraft.trim(),
+      address: addressDraft.trim() === "" ? null : addressDraft.trim(),
     });
   }
 
@@ -49,6 +52,10 @@ export function EditLeadContactModal({ name, email, phone, onSave, onClose, isSa
           <div className="form-row">
             <label>Phone</label>
             <input value={phoneDraft} onChange={(e) => setPhoneDraft(e.target.value)} placeholder="+1 (555) 555-5555" />
+          </div>
+          <div className="form-row">
+            <label>Address</label>
+            <input value={addressDraft} onChange={(e) => setAddressDraft(e.target.value)} placeholder="123 Main St, City, State" />
           </div>
         </div>
         <div className="modal-footer">

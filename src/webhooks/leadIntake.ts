@@ -13,6 +13,7 @@ import { formatKeyValueDump } from "../lib/format";
 // a lead's contact info outright, which is the worse failure mode here.
 const FIELD_SUBSTRINGS = {
   phone: ["phone", "mobile", "cell"],
+  address: ["address", "street"],
   email: ["mail"],
   message: ["message", "comment", "note", "detail", "inquiry", "enquiry"],
   name: ["name"],
@@ -73,19 +74,27 @@ function extractName(body: Record<string, unknown>, usedKeys: Set<string>): stri
   return extractField(body, "name", usedKeys);
 }
 
-// When nothing in the body looks like a "message" field, every remaining
-// field (whatever wasn't already claimed as name/phone/email) becomes the
-// message instead of being silently dropped — so a business's own staff can
-// still read exactly what a differently-labeled, unrecognized form
-// submitted directly in the inbox, without anyone needing a database script
-// to go dig through the raw payload.
+// Every field not already claimed as name/phone/email/address becomes part
+// of the visible message — appended after a direct "message"-like field if
+// one exists, not instead of it. A form with both a "Comments" field and a
+// one-off custom question (e.g. "Are you a new customer?") used to lose
+// that second field entirely from the lead's visible details the moment a
+// direct message match existed, even though it was still sitting in
+// raw_payload_json all along — confirmed as a real bug (2026-07-19), not
+// just a hypothetical. Appending the leftover dump unconditionally means a
+// business's own staff can always read exactly what a differently-labeled,
+// unrecognized field submitted directly in the inbox, without anyone
+// needing a database script to go dig through the raw payload — this is
+// the one place this endpoint can compensate for a client's form asking a
+// question this app has no dedicated column for, current or future.
 function extractMessageOrDump(body: Record<string, unknown>, usedKeys: Set<string>): string | undefined {
   const direct = extractField(body, "message", usedKeys);
-  if (direct) return direct;
 
   const leftover = Object.fromEntries(Object.entries(body).filter(([key]) => !usedKeys.has(key) && !IGNORED_KEYS.has(key)));
   const dump = formatKeyValueDump(leftover);
-  return dump || undefined;
+
+  if (direct && dump) return `${direct}\n\n${dump}`;
+  return direct || dump || undefined;
 }
 
 // Generic intake for the two lead sources that don't need their own
@@ -106,13 +115,18 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
   // Elementor's Webhook action has no field for a fixed extra value like
   // "source" — defaulting to "website_form" here means it doesn't need one;
   // a tool that genuinely is a chat widget can still send an explicit
-  // source to override this. Extraction order matters: name/phone/email
-  // each claim their own field before message's fallback dump runs, so
-  // whatever they found is excluded from that dump rather than duplicated.
+  // source to override this. Extraction order matters: name/phone/address/
+  // email each claim their own field before message's fallback dump runs,
+  // so whatever they found is excluded from that dump rather than
+  // duplicated — and address is deliberately extracted *before* email
+  // specifically, since "Mailing Address" contains "mail" and would
+  // otherwise get misclaimed by email's own (deliberately broad) substring
+  // match before address ever got a turn.
   const normalized = {
     source: typeof body.source === "string" ? body.source : "website_form",
     name: extractName(body, usedKeys),
     phone: extractField(body, "phone", usedKeys),
+    address: extractField(body, "address", usedKeys),
     email: extractField(body, "email", usedKeys),
     message: extractMessageOrDump(body, usedKeys),
     externalId: typeof body.externalId === "string" ? body.externalId : undefined,
@@ -128,13 +142,14 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const { source, name, phone, email, message, externalId } = parsed.data;
+  const { source, name, phone, address, email, message, externalId } = parsed.data;
   insertInboundLead({
     businessId: business.id,
     source,
     externalId,
     name,
     phone,
+    address,
     email,
     message,
     rawPayloadJson: JSON.stringify(req.body),

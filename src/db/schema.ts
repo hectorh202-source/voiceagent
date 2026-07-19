@@ -142,6 +142,7 @@ export function bootstrapSchema(db: DatabaseSync): void {
       received_at TEXT NOT NULL DEFAULT (datetime('now')),
       name TEXT,
       phone TEXT,
+      address TEXT,
       email TEXT,
       message TEXT,
       raw_payload_json TEXT NOT NULL,
@@ -152,16 +153,19 @@ export function bootstrapSchema(db: DatabaseSync): void {
       -- same reasoning as elevenlabs_calls' status_override/auto_status
       -- split. A Google LSA lead gets re-upserted from scratch on every
       -- poll (googleLsa/leads.ts + insertInboundLead's ON CONFLICT DO
-      -- UPDATE), so a manual edit written straight into name/phone/email
-      -- would silently get overwritten (even wiped to NULL) the next time
-      -- that lead is re-fetched. These always win over the auto-derived
-      -- columns at read time (see businessRouter.ts's parseLeadRow) and are
-      -- never touched by the poller, so an edit survives every future
-      -- re-poll. Unused by one-shot webhook sources (website_form/chat),
-      -- which never get re-touched after insert in the first place.
+      -- UPDATE), so a manual edit written straight into name/phone/email/
+      -- address would silently get overwritten (even wiped to NULL) the
+      -- next time that lead is re-fetched. These always win over the
+      -- auto-derived columns at read time (see businessRouter.ts's
+      -- parseLeadRow) and are never touched by the poller, so an edit
+      -- survives every future re-poll. Unused by one-shot webhook sources
+      -- (website_form/chat), which never get re-touched after insert in
+      -- the first place — but kept consistent across all four fields
+      -- anyway, since the edit modal is shared by every lead source.
       name_override TEXT,
       email_override TEXT,
-      phone_override TEXT
+      phone_override TEXT,
+      address_override TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_inbound_leads_business_received ON inbound_leads(business_id, received_at);

@@ -10,6 +10,7 @@ export interface InboundLeadRecord {
   received_at: string;
   name: string | null;
   phone: string | null;
+  address: string | null;
   email: string | null;
   message: string | null;
   raw_payload_json: string;
@@ -18,23 +19,25 @@ export interface InboundLeadRecord {
   internal_notes: string | null;
   // Staff-set overrides — see schema.ts's comment on inbound_leads for why
   // these exist (a polling source's re-fetch would otherwise silently
-  // clobber a manual edit). Always take precedence over name/phone/email at
-  // read time (see businessRouter.ts's parseLeadRow), never written by
-  // insertInboundLead's poll-driven upsert.
+  // clobber a manual edit). Always take precedence over name/phone/email/
+  // address at read time (see businessRouter.ts's parseLeadRow), never
+  // written by insertInboundLead's poll-driven upsert.
   name_override: string | null;
   email_override: string | null;
   phone_override: string | null;
+  address_override: string | null;
 }
 
-// name/phone/email/message/internal_notes/*_override carry customer PII,
-// same treatment call_log/elevenlabs_calls already give equivalent fields.
-// raw_payload_json is NOT NULL and always encrypted (full original payload,
-// kept for audit — same reasoning as elevenlabs_calls.raw_payload_json).
+// name/phone/address/email/message/internal_notes/*_override carry customer
+// PII, same treatment call_log/elevenlabs_calls already give equivalent
+// fields. raw_payload_json is NOT NULL and always encrypted (full original
+// payload, kept for audit — same reasoning as elevenlabs_calls.raw_payload_json).
 function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
   return {
     ...record,
     name: decryptNullable(record.name),
     phone: decryptNullable(record.phone),
+    address: decryptNullable(record.address),
     email: decryptNullable(record.email),
     message: decryptNullable(record.message),
     raw_payload_json: decryptField(record.raw_payload_json),
@@ -42,6 +45,7 @@ function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
     name_override: decryptNullable(record.name_override),
     email_override: decryptNullable(record.email_override),
     phone_override: decryptNullable(record.phone_override),
+    address_override: decryptNullable(record.address_override),
   };
 }
 
@@ -56,6 +60,7 @@ export interface InboundLeadEntry {
   externalId?: string | null;
   name?: string | null;
   phone?: string | null;
+  address?: string | null;
   email?: string | null;
   message?: string | null;
   rawPayloadJson: string;
@@ -74,20 +79,21 @@ export interface InboundLeadEntry {
 // clobber a human's triage work. Must repeat the partial index's WHERE
 // clause in the conflict target for SQLite to match it.
 const insertWithExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, address, email, message, raw_payload_json)
+  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @address, @email, @message, @rawPayloadJson)
   ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
     source_detail = excluded.source_detail,
     name = excluded.name,
     phone = excluded.phone,
+    address = excluded.address,
     email = excluded.email,
     message = excluded.message,
     raw_payload_json = excluded.raw_payload_json
 `);
 
 const insertWithoutExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, email, message, raw_payload_json)
-  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @email, @message, @rawPayloadJson)
+  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, address, email, message, raw_payload_json)
+  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @rawPayloadJson)
 `);
 
 export function insertInboundLead(entry: InboundLeadEntry): void {
@@ -97,6 +103,7 @@ export function insertInboundLead(entry: InboundLeadEntry): void {
     sourceDetail: entry.sourceDetail ?? null,
     name: encryptNullable(entry.name ?? null),
     phone: encryptNullable(entry.phone ?? null),
+    address: encryptNullable(entry.address ?? null),
     email: encryptNullable(entry.email ?? null),
     message: encryptNullable(entry.message ?? null),
     rawPayloadJson: encryptField(entry.rawPayloadJson),
@@ -185,14 +192,16 @@ export interface InboundLeadPatch {
   isRead?: boolean;
   status?: string;
   internalNotes?: string | null;
-  // Write to name_override/email_override/phone_override, never the raw
-  // name/phone/email columns — see schema.ts's comment on why. Passing null
-  // is a real, meaningful clear-the-override action (revert to whatever the
-  // source itself provides), not "leave unchanged" — omitting the field
-  // entirely is how a caller leaves it unchanged.
+  // Write to name_override/email_override/phone_override/address_override,
+  // never the raw name/phone/email/address columns — see schema.ts's
+  // comment on why. Passing null is a real, meaningful clear-the-override
+  // action (revert to whatever the source itself provides), not "leave
+  // unchanged" — omitting the field entirely is how a caller leaves it
+  // unchanged.
   name?: string | null;
   email?: string | null;
   phone?: string | null;
+  address?: string | null;
 }
 
 const setIsReadStmt = db.prepare(`UPDATE inbound_leads SET is_read = @isRead WHERE id = @id AND business_id = @businessId`);
@@ -208,6 +217,9 @@ const setEmailOverrideStmt = db.prepare(
 );
 const setPhoneOverrideStmt = db.prepare(
   `UPDATE inbound_leads SET phone_override = @phoneOverride WHERE id = @id AND business_id = @businessId`,
+);
+const setAddressOverrideStmt = db.prepare(
+  `UPDATE inbound_leads SET address_override = @addressOverride WHERE id = @id AND business_id = @businessId`,
 );
 
 export function updateInboundLead(businessId: number, ids: number[], patch: InboundLeadPatch): void {
@@ -229,6 +241,9 @@ export function updateInboundLead(businessId: number, ids: number[], patch: Inbo
     }
     if (patch.phone !== undefined) {
       setPhoneOverrideStmt.run({ id, businessId, phoneOverride: encryptNullable(patch.phone) });
+    }
+    if (patch.address !== undefined) {
+      setAddressOverrideStmt.run({ id, businessId, addressOverride: encryptNullable(patch.address) });
     }
   }
 }
