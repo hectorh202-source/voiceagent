@@ -147,7 +147,21 @@ export function bootstrapSchema(db: DatabaseSync): void {
       raw_payload_json TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'new',
       is_read INTEGER NOT NULL DEFAULT 0,
-      internal_notes TEXT
+      internal_notes TEXT,
+      -- Staff-set overrides for a polling source's re-fetched content —
+      -- same reasoning as elevenlabs_calls' status_override/auto_status
+      -- split. A Google LSA lead gets re-upserted from scratch on every
+      -- poll (googleLsa/leads.ts + insertInboundLead's ON CONFLICT DO
+      -- UPDATE), so a manual edit written straight into name/phone/email
+      -- would silently get overwritten (even wiped to NULL) the next time
+      -- that lead is re-fetched. These always win over the auto-derived
+      -- columns at read time (see businessRouter.ts's parseLeadRow) and are
+      -- never touched by the poller, so an edit survives every future
+      -- re-poll. Unused by one-shot webhook sources (website_form/chat),
+      -- which never get re-touched after insert in the first place.
+      name_override TEXT,
+      email_override TEXT,
+      phone_override TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_inbound_leads_business_received ON inbound_leads(business_id, received_at);

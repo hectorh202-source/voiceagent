@@ -16,10 +16,18 @@ export interface InboundLeadRecord {
   status: string;
   is_read: number;
   internal_notes: string | null;
+  // Staff-set overrides — see schema.ts's comment on inbound_leads for why
+  // these exist (a polling source's re-fetch would otherwise silently
+  // clobber a manual edit). Always take precedence over name/phone/email at
+  // read time (see businessRouter.ts's parseLeadRow), never written by
+  // insertInboundLead's poll-driven upsert.
+  name_override: string | null;
+  email_override: string | null;
+  phone_override: string | null;
 }
 
-// name/phone/email/message/internal_notes carry customer PII, same
-// treatment call_log/elevenlabs_calls already give equivalent fields.
+// name/phone/email/message/internal_notes/*_override carry customer PII,
+// same treatment call_log/elevenlabs_calls already give equivalent fields.
 // raw_payload_json is NOT NULL and always encrypted (full original payload,
 // kept for audit — same reasoning as elevenlabs_calls.raw_payload_json).
 function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
@@ -31,6 +39,9 @@ function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
     message: decryptNullable(record.message),
     raw_payload_json: decryptField(record.raw_payload_json),
     internal_notes: decryptNullable(record.internal_notes),
+    name_override: decryptNullable(record.name_override),
+    email_override: decryptNullable(record.email_override),
+    phone_override: decryptNullable(record.phone_override),
   };
 }
 
@@ -174,12 +185,29 @@ export interface InboundLeadPatch {
   isRead?: boolean;
   status?: string;
   internalNotes?: string | null;
+  // Write to name_override/email_override/phone_override, never the raw
+  // name/phone/email columns — see schema.ts's comment on why. Passing null
+  // is a real, meaningful clear-the-override action (revert to whatever the
+  // source itself provides), not "leave unchanged" — omitting the field
+  // entirely is how a caller leaves it unchanged.
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 const setIsReadStmt = db.prepare(`UPDATE inbound_leads SET is_read = @isRead WHERE id = @id AND business_id = @businessId`);
 const setStatusStmt = db.prepare(`UPDATE inbound_leads SET status = @status WHERE id = @id AND business_id = @businessId`);
 const setInternalNotesStmt = db.prepare(
   `UPDATE inbound_leads SET internal_notes = @internalNotes WHERE id = @id AND business_id = @businessId`,
+);
+const setNameOverrideStmt = db.prepare(
+  `UPDATE inbound_leads SET name_override = @nameOverride WHERE id = @id AND business_id = @businessId`,
+);
+const setEmailOverrideStmt = db.prepare(
+  `UPDATE inbound_leads SET email_override = @emailOverride WHERE id = @id AND business_id = @businessId`,
+);
+const setPhoneOverrideStmt = db.prepare(
+  `UPDATE inbound_leads SET phone_override = @phoneOverride WHERE id = @id AND business_id = @businessId`,
 );
 
 export function updateInboundLead(businessId: number, ids: number[], patch: InboundLeadPatch): void {
@@ -192,6 +220,15 @@ export function updateInboundLead(businessId: number, ids: number[], patch: Inbo
     }
     if (patch.internalNotes !== undefined) {
       setInternalNotesStmt.run({ id, businessId, internalNotes: encryptNullable(patch.internalNotes) });
+    }
+    if (patch.name !== undefined) {
+      setNameOverrideStmt.run({ id, businessId, nameOverride: encryptNullable(patch.name) });
+    }
+    if (patch.email !== undefined) {
+      setEmailOverrideStmt.run({ id, businessId, emailOverride: encryptNullable(patch.email) });
+    }
+    if (patch.phone !== undefined) {
+      setPhoneOverrideStmt.run({ id, businessId, phoneOverride: encryptNullable(patch.phone) });
     }
   }
 }

@@ -275,9 +275,11 @@ function parseLeadRow(record: ReturnType<typeof listInboundLeads>[number]) {
     source: record.source,
     sourceDetail: record.source_detail,
     receivedAt: record.received_at,
-    name: record.name,
-    phone: record.phone,
-    email: record.email,
+    // A staff-set override always wins over whatever a polling source last
+    // re-fetched — see schema.ts's comment on inbound_leads.
+    name: record.name_override ?? record.name,
+    phone: record.phone_override ?? record.phone,
+    email: record.email_override ?? record.email,
     message: record.message,
     status: record.status,
     isRead: !!record.is_read,
@@ -316,8 +318,8 @@ apiBusinessRouter.patch("/leads", (req, res) => {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  const { ids, isRead, status, internalNotes } = parsed.data;
-  updateInboundLead(business.id, ids, { isRead, status, internalNotes });
+  const { ids, isRead, status, internalNotes, name, email, phone } = parsed.data;
+  updateInboundLead(business.id, ids, { isRead, status, internalNotes, name, email, phone });
   res.json({ success: true });
 });
 
@@ -351,7 +353,10 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     rawDump,
     hasRecording: extractRecordingUrl(record.raw_payload_json) !== null,
     attachmentCount: extractAttachmentUrls(record.raw_payload_json).length,
-    nameSource: extractNameSource(record.raw_payload_json),
+    // Stale once a staff override is in effect — the badge is about where
+    // the *auto* value came from, which no longer matters once a human's
+    // own edit is what's actually displayed.
+    nameSource: record.name_override ? null : extractNameSource(record.raw_payload_json),
   });
 });
 

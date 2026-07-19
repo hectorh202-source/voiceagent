@@ -25,6 +25,7 @@ import {
   CloseIcon,
   ChevronDownIcon,
 } from "../components/icons";
+import { EditLeadContactModal } from "../components/EditLeadContactModal";
 
 // Google's MessageDetails.attachment_urls doesn't say what file type each
 // attachment actually is (could be a photo, could be some other file) and
@@ -64,8 +65,14 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
   });
 
   const patchMutation = useMutation({
-    mutationFn: (body: { status?: LeadStatus; internalNotes?: string | null; isRead?: boolean }) =>
-      api.patch(`/api/businesses/${businessId}/leads`, { ids: [Number(leadId)], ...body }),
+    mutationFn: (body: {
+      status?: LeadStatus;
+      internalNotes?: string | null;
+      isRead?: boolean;
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    }) => api.patch(`/api/businesses/${businessId}/leads`, { ids: [Number(leadId)], ...body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lead", businessId, leadId] });
       queryClient.invalidateQueries({ queryKey: ["leads", businessId] });
@@ -75,6 +82,7 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
 
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
+  const [isEditingContact, setIsEditingContact] = useState(false);
 
   // Viewing a lead marks it read, same as opening an email — the unread dot
   // in LeadsPage.tsx's list otherwise never clears on its own, since nothing
@@ -113,7 +121,17 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             {getInitials(data.name)}
           </div>
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 19 }}>{data.name ?? "Unknown Lead"}</h2>
+            <h2 style={{ margin: 0, fontSize: 19, display: "flex", alignItems: "center", gap: 8 }}>
+              {data.name ?? "Unknown Lead"}
+              <button
+                type="button"
+                className="link-btn"
+                style={{ fontSize: 13, fontWeight: 400 }}
+                onClick={() => setIsEditingContact(true)}
+              >
+                (Edit)
+              </button>
+            </h2>
             <div className="muted" style={{ fontSize: 12.5 }}>
               {getLeadSourceLabel(data.source, data.sourceDetail)} · {formatDateTime(data.receivedAt)}
             </div>
@@ -311,6 +329,19 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
           <div className="raw-dump">{data.rawDump || "(empty submission)"}</div>
         </div>
       </div>
+
+      {isEditingContact && (
+        <EditLeadContactModal
+          name={data.name}
+          email={data.email}
+          phone={data.phone}
+          isSaving={patchMutation.isPending}
+          onClose={() => setIsEditingContact(false)}
+          onSave={(values) => {
+            patchMutation.mutate(values, { onSuccess: () => setIsEditingContact(false) });
+          }}
+        />
+      )}
     </div>
   );
 }

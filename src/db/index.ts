@@ -15,6 +15,7 @@ import { migrateCallFlagsColumns } from "./migrateCallFlagsColumns";
 import { migrateAutoStatusColumn } from "./migrateAutoStatusColumn";
 import { migrateTwilioCallSidColumn } from "./migrateTwilioCallSidColumn";
 import { migrateInboundLeadSourceDetailColumn } from "./migrateInboundLeadSourceDetailColumn";
+import { migrateInboundLeadOverrideColumns } from "./migrateInboundLeadOverrideColumns";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -36,3 +37,4 @@ migrateCallFlagsColumns(db);
 migrateAutoStatusColumn(db);
 migrateTwilioCallSidColumn(db);
 migrateInboundLeadSourceDetailColumn(db);
+migrateInboundLeadOverrideColumns(db);
