@@ -31,8 +31,11 @@ const FIELD_SUBSTRINGS = {
 // Elementor's own fixed system fields (present on every submission
 // regardless of what the business's form actually asks) — "form_name"
 // would otherwise false-match the "name" substring above, misreading the
-// form's own title as the lead's name.
-const IGNORED_KEYS = new Set(["form_id", "form_name"]);
+// form's own title as the lead's name. "source"/"sourceDetail"/"externalId"
+// are this endpoint's own meta fields (read explicitly below) — excluded so a
+// caller that sends them as body keys (e.g. the chat-widget service) doesn't
+// get them appended into the visible message dump.
+const IGNORED_KEYS = new Set(["form_id", "form_name", "source", "sourceDetail", "externalId"]);
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
@@ -133,6 +136,10 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
   // match before address ever got a turn.
   const normalized = {
     source: typeof body.source === "string" ? body.source : "website_form",
+    // A plain sub-classification (not PII) — the chat-widget service sends
+    // "booked"/"lead"; form builders never set it. Read explicitly, not
+    // fuzzy-matched.
+    sourceDetail: typeof body.sourceDetail === "string" ? body.sourceDetail : undefined,
     name: extractName(body, usedKeys),
     phone: extractField(body, "phone", usedKeys),
     address: extractField(body, "address", usedKeys),
@@ -151,10 +158,11 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const { source, name, phone, address, email, message, externalId } = parsed.data;
+  const { source, sourceDetail, name, phone, address, email, message, externalId } = parsed.data;
   insertInboundLead({
     businessId: business.id,
     source,
+    sourceDetail,
     externalId,
     name,
     phone,

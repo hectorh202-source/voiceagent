@@ -15,6 +15,29 @@ services:
     expose:
       - "3000"
 
+  # The standalone chat-widget service (separate repo: ../chat-widget, cloned
+  # as a sibling of this repo on the VPS). Shares this stack's Caddy for HTTPS
+  # and reaches the dashboard over the internal network as http://app:3000, so
+  # its config/tool/lead calls never leave the host. See ../chat-widget/README.
+  widget:
+    build: ../chat-widget
+    restart: unless-stopped
+    environment:
+      - PORT=3020
+      - DATABASE_PATH=/data/widget.db
+      - DASHBOARD_URL=http://app:3000
+      # Must match the secret generated in the dashboard's Admin Settings →
+      # Chat Widget Service. Sourced from the same gitignored .env as
+      # ENCRYPTION_KEY above.
+      - WIDGET_SERVICE_SECRET=${WIDGET_SERVICE_SECRET:-}
+      - ENCRYPTION_KEY=${WIDGET_ENCRYPTION_KEY:-}
+    volumes:
+      - widget-data:/data
+    expose:
+      - "3020"
+    depends_on:
+      - app
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -27,8 +50,10 @@ services:
       - caddy-config:/config
     depends_on:
       - app
+      - widget
 
 volumes:
   app-data:
+  widget-data:
   caddy-data:
   caddy-config:

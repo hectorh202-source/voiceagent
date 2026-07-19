@@ -70,6 +70,10 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
 const SOURCE_DETAIL_LABEL: Record<string, string> = {
   PHONE_CALL: "Phone Call",
   MESSAGE: "Message",
+  // website_chat sub-detail: whether the widget booked a real appointment or
+  // just forwarded a lead for staff to schedule (see src/chat/engine.ts).
+  booked: "Booked",
+  lead: "Lead",
 };
 
 // Single shared source label, used by LeadsPage/LeadsFiltersPanel/

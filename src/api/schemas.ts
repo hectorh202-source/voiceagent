@@ -211,6 +211,9 @@ export const LEAD_STATUS_VALUES = [
 // `message` instead of their own column.
 export const leadIntakeSchema = z.object({
   source: z.enum(["website_form", "website_chat"]),
+  // Plain sub-classification (e.g. the chat widget's "booked"/"lead") — not
+  // validated against a fixed set, same as inbound_leads.source_detail itself.
+  sourceDetail: z.string().optional(),
   name: z.string().min(1).optional(),
   phone: z.string().min(1).optional(),
   address: z.string().min(1).optional(),
@@ -243,6 +246,14 @@ export const twilioSettingsSchema = z.object({
   authToken: z.string().optional(),
 });
 
+// Global config for the standalone chat-widget service (separate repo). The
+// apiSecret is the shared service-to-service credential; baseUrl is where the
+// service is hosted (used to build the install snippet). Global, like the
+// Twilio/Google-Ads platform config above.
+export const widgetServiceSettingsSchema = z.object({
+  baseUrl: z.string().optional(),
+});
+
 // Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly — kept as a literal
 // tuple here (rather than importing it) since schemas.ts is shared by every
 // API route and shouldn't pull in the ElevenLabs client module just for an
@@ -264,6 +275,23 @@ export const voiceConfigSchema = z.object({
       name: z.string().min(1),
     })
     .optional(),
+});
+
+// Website chat widget config (see src/chat/* and src/widget/*). Model enum is
+// a literal tuple mirroring settings/store.ts's CHAT_WIDGET_MODELS — same
+// reasoning as voiceConfigSchema above (schemas.ts avoids importing the
+// feature modules); keep the two lists in sync. All fields optional so a PUT
+// can patch a subset; secrets (anthropicApiKey) follow the shared "blank = keep
+// current" convention via maybeSetBusinessSetting.
+export const chatWidgetSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  anthropicApiKey: z.string().optional(),
+  model: z.enum(["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"]).optional(),
+  agentName: z.string().optional(),
+  accentColor: z.string().optional(),
+  greeting: z.string().optional(),
+  allowedOrigins: z.array(z.string()).optional(),
+  systemPromptExtras: z.string().optional(),
 });
 
 export const kbTextSchema = z.object({

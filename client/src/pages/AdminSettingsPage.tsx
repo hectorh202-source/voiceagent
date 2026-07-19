@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSettings } from "../api/types";
+import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSettings, WidgetServiceSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
 import { GeneralSettingsPage } from "./GeneralSettingsPage";
+import { ChatWidgetSettingsPage } from "./ChatWidgetSettingsPage";
 import { MASKED_SECRET_PLACEHOLDER } from "../lib/format";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SecretRevealModal } from "../components/SecretRevealModal";
 
 function EmailSettingsSection() {
   const queryClient = useQueryClient();
@@ -290,6 +292,81 @@ function GoogleAdsSettingsSection() {
   );
 }
 
+// The standalone chat-widget service (separate repo) that serves the
+// embeddable widget and runs the AI conversation, talking back to this
+// dashboard. Global config: the service's base URL (used to build each
+// business's install snippet) + a shared service secret.
+function WidgetServiceSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin-widget-service-settings"],
+    queryFn: () => api.get<WidgetServiceSettings>("/api/admin/widget-service-settings"),
+  });
+
+  const [baseUrl, setBaseUrl] = useState("");
+  const [message, setMessage] = useState("");
+  const [revealed, setRevealed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data) setBaseUrl(data.baseUrl);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.put("/api/admin/widget-service-settings", { baseUrl }),
+    onSuccess: () => {
+      setMessage("Settings saved.");
+      queryClient.invalidateQueries({ queryKey: ["admin-widget-service-settings"] });
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => api.post<{ secret: string }>("/api/admin/widget-service-settings/generate-secret"),
+    onSuccess: (res) => {
+      setRevealed(res.secret);
+      queryClient.invalidateQueries({ queryKey: ["admin-widget-service-settings"] });
+    },
+  });
+
+  return (
+    <div className="card">
+      <h2>Chat Widget Service</h2>
+      <p className="form-hint">
+        The standalone chat-widget service (a separate app) serves the embeddable widget and runs the AI conversation,
+        calling back to this dashboard for config, ServiceTitan actions, and leads. Set these here, then set the matching
+        values in that service's environment.
+      </p>
+      <div className="form-row">
+        <label>Service base URL</label>
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://chat.yourdomain.com" />
+        <div className="form-hint">Where the widget service is hosted. Each business's install snippet points here.</div>
+      </div>
+      <div className="form-row">
+        <label>Service secret {data?.apiSecretSet && <span className="muted">(set)</span>}</label>
+        <div className="form-hint">
+          <button className="link-btn" onClick={() => generateMutation.mutate()}>
+            Generate a new secret
+          </button>{" "}
+          — paste it into the widget service's <code>WIDGET_SERVICE_SECRET</code>. Generating a new one invalidates the
+          old immediately.
+        </div>
+      </div>
+      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+        Save
+      </button>
+      {message && <span className="muted" style={{ marginLeft: 8 }}>{message}</span>}
+
+      {revealed && (
+        <SecretRevealModal
+          title="New widget service secret"
+          secret={revealed}
+          description="Paste this into the widget service's WIDGET_SERVICE_SECRET now — it will be masked after you leave this page."
+          onClose={() => setRevealed(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUserId: number }) {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(user.isPlatformAdmin);
@@ -401,6 +478,7 @@ const BUSINESS_SETTINGS_SECTIONS = [
   { id: "elevenlabs", label: "ElevenLabs" },
   { id: "servicetitan", label: "ServiceTitan" },
   { id: "operational", label: "Operational" },
+  { id: "chat-widget", label: "Chat Widget" },
   { id: "google-ads", label: "Google Ads" },
 ] as const;
 
@@ -493,7 +571,11 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
             </div>
           )}
 
-          {activeSection !== "users" && <GeneralSettingsPage activeSection={activeSection} />}
+          {activeSection === "chat-widget" && <ChatWidgetSettingsPage />}
+
+          {activeSection !== "users" && activeSection !== "chat-widget" && (
+            <GeneralSettingsPage activeSection={activeSection} />
+          )}
         </div>
       </div>
     </div>
@@ -505,6 +587,7 @@ const GLOBAL_SETTINGS_SECTIONS = [
   { id: "email", label: "Email (SMTP)" },
   { id: "twilio", label: "Twilio" },
   { id: "google-ads", label: "Google Ads" },
+  { id: "widget-service", label: "Chat Widget Service" },
   { id: "platform-admins", label: "Platform Admins" },
 ] as const;
 
@@ -603,6 +686,8 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
           {activeSection === "twilio" && <TwilioSettingsSection />}
 
           {activeSection === "google-ads" && <GoogleAdsSettingsSection />}
+
+          {activeSection === "widget-service" && <WidgetServiceSettingsSection />}
 
           {activeSection === "platform-admins" && (
             <>
