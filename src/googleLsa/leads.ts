@@ -197,29 +197,35 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
 
     const phone = lead.contactDetails?.phoneNumber ?? null;
     let name = lead.contactDetails?.consumerName ?? null;
+    let email = lead.contactDetails?.email ?? null;
 
-    // Google's API never returns a caller name for a PHONE_CALL lead —
-    // confirmed against real data (2026-07-18): contactDetails only ever
-    // has phoneNumber for that lead type, no consumerName, and there's no
-    // transcript field to extract one from either. The only other place a
-    // name could come from is this business's own ServiceTitan CRM, if the
-    // caller already exists there by phone number — same lookup createLead.ts
-    // already uses for AI-handled calls. A caller with no existing
-    // ServiceTitan customer record genuinely has no name available from any
-    // source this app has, and keeps showing "Unknown".
+    // Google's API never returns a caller name or email for a PHONE_CALL
+    // lead — confirmed against real data (2026-07-18): contactDetails only
+    // ever has phoneNumber for that lead type, and there's no transcript
+    // field to extract either from. The only other place either could come
+    // from is this business's own ServiceTitan CRM, if the caller already
+    // exists there by phone number — same lookup createLead.ts already uses
+    // for AI-handled calls, and it already fetches email alongside name in
+    // the same request, so backfilling both here costs nothing extra beyond
+    // the one lookup already added for the name. A caller with no existing
+    // ServiceTitan customer record genuinely has neither available from any
+    // source this app has, and keeps showing "Unknown" / a blank email.
     //
-    // Runs on every 5-minute poll for every still-nameless PHONE_CALL lead
-    // in the last 50 (insertInboundLead's upsert means a later match
-    // correctly backfills a lead that had none before) — an accepted,
-    // unbounded-retry tradeoff at today's lead volume; revisit if this ever
-    // grows enough to strain ServiceTitan's rate limits.
-    if (!name && lead.leadType === "PHONE_CALL" && phone && serviceTitanConfigured) {
+    // Runs on every 5-minute poll for every PHONE_CALL lead still missing
+    // either field, in the last 50 (insertInboundLead's upsert means a later
+    // match correctly backfills a lead that had neither before) — an
+    // accepted, unbounded-retry tradeoff at today's lead volume; revisit if
+    // this ever grows enough to strain ServiceTitan's rate limits.
+    if ((!name || !email) && lead.leadType === "PHONE_CALL" && phone && serviceTitanConfigured) {
       try {
         const match = await lookupCustomerByPhone(businessId, phone);
-        if (match.found && match.name) name = match.name;
+        if (match.found) {
+          if (!name && match.name) name = match.name;
+          if (!email && match.email) email = match.email;
+        }
       } catch {
         // Best-effort — a transient ServiceTitan failure just leaves this
-        // lead nameless for this poll, same as if it had no match at all.
+        // lead as it was, same as if it had no match at all.
       }
     }
 
@@ -228,7 +234,7 @@ export async function fetchRecentLsaLeads(config: GoogleLsaConfig, businessId: n
       sourceDetail: lead.leadType ?? null,
       name,
       phone,
-      email: lead.contactDetails?.email ?? null,
+      email,
       message: buildMessage(lead, conversations),
       // Always the full retrieved data, regardless of how the mapping above
       // went — same "store everything, map best-effort" precedent as the
