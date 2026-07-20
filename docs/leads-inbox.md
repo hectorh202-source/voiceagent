@@ -46,10 +46,16 @@ The only source with real ingestion built so far. A business's website contact f
 ```
 POST /b/:businessId/webhooks/leads/inbound
 Header: X-Lead-Intake-Secret: <secret from that business's General Settings>
-Body:   { "source": "website_form" | "website_chat", "name"?, "phone"?, "email"?, "message"?, "externalId"? }
+Body:   { "source": "website_form" | "website_chat",
+          "name"?, "phone"?, "email"?, "address"?, "message"?,
+          "sourceDetail"?, "externalId"? }
 ```
 
-At least one of `name`/`phone`/`email` is required; everything else optional. The body can be JSON **or** `application/x-www-form-urlencoded` — both already work, since `express.urlencoded()` is mounted globally alongside `express.json()` (confirmed via a real test POST of each shape), which matters because not every form tool sends JSON.
+At least one of `name`/`phone`/`email` is required; everything else optional.
+
+`source`, `sourceDetail`, and `externalId` are this endpoint's own meta fields: they're read explicitly rather than fuzzy-matched, and are listed in `IGNORED_KEYS` so they never leak into the visible message dump described below. (They did, briefly, the first time a caller sent them as real body fields.)
+
+**`website_chat` now has a real producer**: the [AI chat widget](chat-widget.md), which runs as a separate service and POSTs here at the end of a conversation with `sourceDetail` of `booked` or `lead`, the full readable transcript as `message`, and the conversation id as `externalId` so a re-post updates rather than duplicating. It still goes through this same generic endpoint rather than getting its own — nothing about it needed a dedicated ingestion path. The body can be JSON **or** `application/x-www-form-urlencoded` — both already work, since `express.urlencoded()` is mounted globally alongside `express.json()` (confirmed via a real test POST of each shape), which matters because not every form tool sends JSON.
 
 **Success responds `200`, not the more conventional `201` for a created resource** — confirmed necessary, not stylistic: Elementor Pro Forms' Webhook action only treats a literal `200` as success and throws a "Webhook Error" for anything else (`201`, `204`, etc. all fail it — a real, documented Elementor limitation, not a guess). Since this endpoint's whole purpose is compatibility with whatever third-party tool a business already uses, matching what those tools actually expect wins over REST convention here.
 
