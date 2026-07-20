@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { AgentVoiceConfig, TtsModelId, VoiceSettingsResponse, VoiceSummary } from "../api/types";
+import type { AgentVoiceConfig, TtsModelId, VoiceDefaultSettings, VoiceSettingsResponse, VoiceSummary } from "../api/types";
 import { VoiceSelectorModal } from "../components/VoiceSelectorModal";
 import { ChevronDownIcon, PlayIcon, PauseIcon } from "../components/icons";
 
@@ -29,6 +29,13 @@ const DEFAULT_STABILITY = 0.5;
 const DEFAULT_SPEED = 1;
 const DEFAULT_SIMILARITY_BOOST = 0.8;
 
+// ElevenLabs' own documented defaults for the raw TTS voice_settings fields
+// that only ever apply to Test Audio (see AgentVoiceConfig's comment) —
+// used when resetting, and as a last-resort fallback before the voice's own
+// real default-settings response (below) loads.
+const DEFAULT_STYLE = 0;
+const DEFAULT_USE_SPEAKER_BOOST = true;
+
 export function VoiceSettingsPage() {
   const { businessId } = useParams();
   const queryClient = useQueryClient();
@@ -44,6 +51,8 @@ export function VoiceSettingsPage() {
   const [stability, setStability] = useState(0.5);
   const [speed, setSpeed] = useState(1);
   const [similarityBoost, setSimilarityBoost] = useState(0.8);
+  const [style, setStyle] = useState(DEFAULT_STYLE);
+  const [useSpeakerBoost, setUseSpeakerBoost] = useState(DEFAULT_USE_SPEAKER_BOOST);
   const [savedMessage, setSavedMessage] = useState("");
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -66,6 +75,25 @@ export function VoiceSettingsPage() {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
   }, []);
+
+  // Style/Speaker Boost never come from the agent's own saved config (it has
+  // no such fields — see AgentVoiceConfig's comment), so instead seed them
+  // from this voice's own real ElevenLabs default settings whenever the
+  // selected voice changes, matching what ElevenLabs' own dashboard would
+  // show for that voice.
+  const { data: voiceDefaults } = useQuery({
+    queryKey: ["voice-default-settings", businessId, selectedVoice?.voiceId],
+    queryFn: () =>
+      api.get<VoiceDefaultSettings>(`/api/businesses/${businessId}/settings/voices/${selectedVoice!.voiceId}/default-settings`),
+    enabled: !!selectedVoice?.voiceId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!voiceDefaults) return;
+    setStyle(voiceDefaults.style);
+    setUseSpeakerBoost(voiceDefaults.useSpeakerBoost);
+  }, [voiceDefaults]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -97,7 +125,15 @@ export function VoiceSettingsPage() {
   // automatically as the sliders move.
   const testAudioMutation = useMutation({
     mutationFn: async () => {
-      const voiceConfig: AgentVoiceConfig = { modelId, voiceId: selectedVoice!.voiceId, stability, speed, similarityBoost };
+      const voiceConfig: AgentVoiceConfig = {
+        modelId,
+        voiceId: selectedVoice!.voiceId,
+        stability,
+        speed,
+        similarityBoost,
+        style,
+        useSpeakerBoost,
+      };
       const res = await fetch(`/api/businesses/${businessId}/settings/voice/test-audio`, {
         method: "POST",
         credentials: "same-origin",
@@ -141,6 +177,8 @@ export function VoiceSettingsPage() {
     setStability(DEFAULT_STABILITY);
     setSpeed(DEFAULT_SPEED);
     setSimilarityBoost(DEFAULT_SIMILARITY_BOOST);
+    setStyle(DEFAULT_STYLE);
+    setUseSpeakerBoost(DEFAULT_USE_SPEAKER_BOOST);
     setSavedMessage("");
   }
 
@@ -210,6 +248,25 @@ export function VoiceSettingsPage() {
             onChange={(e) => setSimilarityBoost(Number(e.target.value))}
           />
           <div className="form-hint">How closely the voice matches the original recording.</div>
+        </div>
+
+        <div className="form-row">
+          <label>Style ({style.toFixed(2)})</label>
+          <input type="range" min={0} max={1} step={0.05} value={style} onChange={(e) => setStyle(Number(e.target.value))} />
+          <div className="form-hint">
+            Style exaggeration — ElevenLabs recommends keeping this at 0 for most cases. Test Audio only; never saved to the live phone
+            agent, which has no such setting.
+          </div>
+        </div>
+
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input type="checkbox" checked={useSpeakerBoost} onChange={(e) => setUseSpeakerBoost(e.target.checked)} />
+            Speaker boost
+          </label>
+          <div className="form-hint">
+            Boosts similarity to the original speaker. Test Audio only; never saved to the live phone agent, which has no such setting.
+          </div>
         </div>
 
         <div className="form-row">

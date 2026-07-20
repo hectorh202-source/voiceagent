@@ -164,10 +164,28 @@ export interface AgentVoiceConfig {
   stability: number;
   speed: number;
   similarityBoost: number;
+  // Real ElevenLabs voice_settings fields the raw TTS endpoint (Test Audio)
+  // supports but a Conversational AI agent's own conversation_config.tts
+  // does not — see elevenlabs/agents.ts's AgentVoiceConfig comment. Only
+  // ever sent by the Test Audio request, never by the save-voice PUT.
+  style?: number;
+  useSpeakerBoost?: boolean;
   // Only sent when voiceId came from the Explore tab — see schemas.ts's
   // voiceConfigSchema for why this is required before ElevenLabs will
   // accept the voiceId at all.
   addFromExplore?: { publicOwnerId: string; name: string };
+}
+
+// This voice's own saved default voice_settings — what ElevenLabs' own
+// dashboard pre-populates a voice's Test/Preview panel with. Used to seed
+// VoiceSettingsPage.tsx's Style/Speaker Boost controls whenever the selected
+// voice changes. See elevenlabs/voices.ts's getVoiceDefaultSettings.
+export interface VoiceDefaultSettings {
+  stability: number;
+  similarityBoost: number;
+  style: number;
+  useSpeakerBoost: boolean;
+  speed: number;
 }
 
 export interface VoiceSummary {

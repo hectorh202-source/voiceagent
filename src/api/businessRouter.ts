@@ -45,7 +45,7 @@ import {
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
-import { searchVoices, exploreVoices, addSharedVoice, getVoice } from "../elevenlabs/voices";
+import { searchVoices, exploreVoices, addSharedVoice, getVoice, getVoiceDefaultSettings } from "../elevenlabs/voices";
 import { getAgentVoiceConfig, updateAgentVoiceConfig, generateTestAudio, TTS_MODEL_IDS } from "../elevenlabs/agents";
 import {
   listKnowledgeDocuments,
@@ -528,6 +528,23 @@ apiBusinessRouter.get("/settings/voices/explore", async (req, res) => {
   try {
     const result = await exploreVoices(business.id, search);
     res.json(result);
+  } catch (error) {
+    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
+    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
+    res.status(status).json({ error: message });
+  }
+});
+
+// Seeds VoiceSettingsPage.tsx's Test Audio-only Style/Speaker Boost
+// controls with this voice's own real default settings (see
+// voices.ts's getVoiceDefaultSettings) whenever the selected voice changes —
+// the same starting point ElevenLabs' own dashboard would show for that
+// voice, rather than a blind hardcoded guess.
+apiBusinessRouter.get("/settings/voices/:voiceId/default-settings", async (req, res) => {
+  const business = req.business!;
+  try {
+    const settings = await getVoiceDefaultSettings(business.id, req.params.voiceId);
+    res.json(settings);
   } catch (error) {
     const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
     const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);

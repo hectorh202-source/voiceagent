@@ -267,6 +267,13 @@ export const voiceConfigSchema = z.object({
   stability: z.number().min(0).max(1),
   speed: z.number(),
   similarityBoost: z.number().min(0).max(1),
+  // Real ElevenLabs voice_settings fields the raw TTS endpoint (Test Audio,
+  // generateTestAudio) supports but a Conversational AI agent's own
+  // conversation_config.tts does NOT (confirmed against ElevenLabs' real API
+  // reference, 2026-07-19 — see elevenlabs/agents.ts's AgentVoiceConfig).
+  // Optional since updateAgentVoiceConfig's PUT never sends or needs them.
+  style: z.number().min(0).max(1).optional(),
+  useSpeakerBoost: z.boolean().optional(),
   // Present only when voiceId came from the Explore tab (ElevenLabs' full
   // shared-voice library) rather than this account's own saved voices —
   // confirmed setting voiceId directly without adding it first fails with

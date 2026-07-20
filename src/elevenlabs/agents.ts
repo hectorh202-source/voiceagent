@@ -20,6 +20,20 @@ export interface AgentVoiceConfig {
   stability: number;
   speed: number;
   similarityBoost: number;
+  // Real ElevenLabs voice_settings fields confirmed to exist on the raw
+  // Text-to-Speech API (used by generateTestAudio below) but NOT on a
+  // Conversational AI agent's own conversation_config.tts — confirmed
+  // against ElevenLabs' real API reference for GET /v1/convai/agents/{id}
+  // (2026-07-19): that object only ever has stability/speed/similarity_boost,
+  // no style or use_speaker_boost field at all. So these two are only ever
+  // read/sent by generateTestAudio, never by updateAgentVoiceConfig's PATCH —
+  // a real live call can never be affected by them, only the in-app Test
+  // Audio preview. This split explains a real reported bug (2026-07-19):
+  // the Test Audio button used to omit both entirely, so it wasn't a true
+  // apples-to-apples comparison against ElevenLabs' own TTS playground for
+  // the same voice, even with identical stability/speed/similarity.
+  style?: number;
+  useSpeakerBoost?: boolean;
 }
 
 interface AgentResponse {
@@ -84,6 +98,13 @@ export async function generateTestAudio(businessId: number, voiceConfig: AgentVo
         stability: voiceConfig.stability,
         similarity_boost: voiceConfig.similarityBoost,
         speed: voiceConfig.speed,
+        // Always sent explicitly now, never omitted — see AgentVoiceConfig's
+        // comment for the real bug this fixes. Falls back to ElevenLabs' own
+        // documented API defaults only if a caller genuinely didn't supply
+        // one; the client normally seeds these from the voice's own real
+        // default settings (voices.ts's getVoiceDefaultSettings) instead.
+        style: voiceConfig.style ?? 0,
+        use_speaker_boost: voiceConfig.useSpeakerBoost ?? true,
       },
     },
     responseType: "arraybuffer",
