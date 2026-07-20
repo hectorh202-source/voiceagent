@@ -308,6 +308,7 @@ function WidgetServiceSettingsSection() {
   const [poweredByUrl, setPoweredByUrl] = useState("");
   const [message, setMessage] = useState("");
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -367,7 +368,22 @@ function WidgetServiceSettingsSection() {
       <div className="form-row">
         <label>Service secret {data?.apiSecretSet && <span className="muted">(set)</span>}</label>
         <div className="form-hint">
-          <button className="link-btn" onClick={() => generateMutation.mutate()}>
+          <button
+            className="link-btn"
+            onClick={() => {
+              // Same guardrail as the tool/lead-intake secrets in
+              // GeneralSettingsPage: rotating this instantly cuts the widget
+              // service off from this dashboard, so every client's chat widget
+              // goes dark until the server's .env is updated and restarted.
+              // Only warn if one is already set — the first generation has
+              // nothing live to break yet.
+              if (data?.apiSecretSet) {
+                setConfirmRegenerate(true);
+              } else {
+                generateMutation.mutate();
+              }
+            }}
+          >
             Generate a new secret
           </button>{" "}
           — paste it into the widget service's <code>WIDGET_SERVICE_SECRET</code>. Generating a new one invalidates the
@@ -379,6 +395,18 @@ function WidgetServiceSettingsSection() {
       </button>
       {message && <span className="muted" style={{ marginLeft: 8 }}>{message}</span>}
 
+      {confirmRegenerate && (
+        <ConfirmDialog
+          title="Replace the widget service secret?"
+          message="This is the shared secret the chat widget service uses to reach this dashboard. Replacing it takes effect immediately, so EVERY client's chat widget will stop working until you set the new value as WIDGET_SERVICE_SECRET on the server and restart it (docker compose up -d). Only do this if you intend to rotate it."
+          confirmLabel="Generate new secret"
+          onCancel={() => setConfirmRegenerate(false)}
+          onConfirm={() => {
+            setConfirmRegenerate(false);
+            generateMutation.mutate();
+          }}
+        />
+      )}
       {revealed && (
         <SecretRevealModal
           title="New widget service secret"
