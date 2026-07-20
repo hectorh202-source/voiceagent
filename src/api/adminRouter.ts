@@ -260,6 +260,10 @@ adminRouter.put("/widget-service-settings", (req, res) => {
     return;
   }
   maybeSetSetting("widgetService.baseUrl", parsed.data.baseUrl?.replace(/\/+$/, ""));
+  // Non-secret and shown pre-filled, so write exactly what was sent (allowing
+  // the operator to clear them) rather than the blank-means-keep maybeSet.
+  if (parsed.data.name !== undefined) setSetting("widgetService.poweredByName", parsed.data.name.trim());
+  if (parsed.data.url !== undefined) setSetting("widgetService.poweredByUrl", parsed.data.url.trim());
   res.json({ success: true });
 });
 

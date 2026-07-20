@@ -252,6 +252,9 @@ export const twilioSettingsSchema = z.object({
 // Twilio/Google-Ads platform config above.
 export const widgetServiceSettingsSchema = z.object({
   baseUrl: z.string().optional(),
+  // The operator's own "Powered by" attribution shown in every widget footer.
+  name: z.string().optional(),
+  url: z.string().optional(),
 });
 
 // Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly — kept as a literal

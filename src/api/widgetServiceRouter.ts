@@ -7,6 +7,7 @@ import {
   getBookingMode,
   getAgentTimezone,
   getWidgetServiceApiSecret,
+  getWidgetPoweredBy,
 } from "../settings/store";
 
 // Service-to-service endpoint for the standalone chat-widget service (separate
@@ -55,6 +56,8 @@ widgetServiceRouter.get("/businesses/:businessId/config", (req, res) => {
     embedKey: config.embedKey,
     bookingMode: getBookingMode(id),
     timezone: getAgentTimezone(id),
+    // Platform-level operator attribution shown in the widget footer.
+    poweredBy: getWidgetPoweredBy(),
     // The secrets the service uses to authenticate its calls back here.
     toolWebhookSecret: getBusinessSetting(id, "operational.toolWebhookSecret") ?? "",
     leadIntakeWebhookSecret: getBusinessSetting(id, "operational.leadIntakeWebhookSecret") ?? "",

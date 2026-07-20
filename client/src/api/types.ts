@@ -276,6 +276,9 @@ export interface ChatWidgetSettings {
 export interface WidgetServiceSettings {
   apiSecretSet: boolean;
   baseUrl: string;
+  // The operator's own "Powered by" attribution shown in every widget footer.
+  name: string;
+  url: string;
 }
 
 // The OAuth Client ID/Secret + Developer Token this platform's Google Ads

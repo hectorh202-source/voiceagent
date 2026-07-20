@@ -582,9 +582,25 @@ export function getWidgetServiceBaseUrl(): string {
   return getSetting("widgetService.baseUrl") ?? "";
 }
 
+// The platform operator's own "Powered by" attribution, shown in the footer of
+// every business's widget. Global, not per-business: it's the agency's brand,
+// identical across every client site, and doubles as a referral link back.
+export interface WidgetPoweredBy {
+  name: string;
+  url: string;
+}
+
+export function getWidgetPoweredBy(): WidgetPoweredBy {
+  return {
+    name: getSetting("widgetService.poweredByName") ?? "",
+    url: getSetting("widgetService.poweredByUrl") ?? "",
+  };
+}
+
 export function getRawWidgetServiceSettings() {
   return {
     apiSecretSet: !!getSetting("widgetService.apiSecret"),
     baseUrl: getSetting("widgetService.baseUrl") ?? "",
+    ...getWidgetPoweredBy(),
   };
 }

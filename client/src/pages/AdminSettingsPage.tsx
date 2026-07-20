@@ -304,15 +304,21 @@ function WidgetServiceSettingsSection() {
   });
 
   const [baseUrl, setBaseUrl] = useState("");
+  const [poweredByName, setPoweredByName] = useState("");
+  const [poweredByUrl, setPoweredByUrl] = useState("");
   const [message, setMessage] = useState("");
   const [revealed, setRevealed] = useState<string | null>(null);
 
   useEffect(() => {
-    if (data) setBaseUrl(data.baseUrl);
+    if (!data) return;
+    setBaseUrl(data.baseUrl);
+    setPoweredByName(data.name);
+    setPoweredByUrl(data.url);
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: () => api.put("/api/admin/widget-service-settings", { baseUrl }),
+    mutationFn: () =>
+      api.put("/api/admin/widget-service-settings", { baseUrl, name: poweredByName, url: poweredByUrl }),
     onSuccess: () => {
       setMessage("Settings saved.");
       queryClient.invalidateQueries({ queryKey: ["admin-widget-service-settings"] });
@@ -339,6 +345,24 @@ function WidgetServiceSettingsSection() {
         <label>Service base URL</label>
         <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://chat.yourdomain.com" />
         <div className="form-hint">Where the widget service is hosted. Each business's install snippet points here.</div>
+      </div>
+      <div className="form-row">
+        <label>Your company name</label>
+        <input
+          value={poweredByName}
+          onChange={(e) => setPoweredByName(e.target.value)}
+          placeholder="Acme AI"
+        />
+        <div className="form-hint">
+          Shown as "Powered by …" in the footer of every client's chat widget. Leave blank to show no attribution.
+        </div>
+      </div>
+      <div className="form-row">
+        <label>Your website</label>
+        <input value={poweredByUrl} onChange={(e) => setPoweredByUrl(e.target.value)} placeholder="https://youragency.com" />
+        <div className="form-hint">
+          Where that footer link points, so people who see the widget on a client's site can find you.
+        </div>
       </div>
       <div className="form-row">
         <label>Service secret {data?.apiSecretSet && <span className="muted">(set)</span>}</label>
