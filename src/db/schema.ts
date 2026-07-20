@@ -221,5 +221,70 @@ export function bootstrapSchema(db: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_call_memory_business ON call_memory(business_id);
+
+    -- The shared knowledge base (see docs/chat-widget.md + knowledge-base.md).
+    -- This app is the source of truth for the text; ElevenLabs holds a pushed
+    -- copy for the voice agent (elevenlabs_document_id), and the chat widget
+    -- retrieves from the chunks below. source_type is text|url|file, and
+    -- source_ref keeps the original URL/filename for display — whatever the
+    -- source, the content column always holds the extracted plain text.
+    --
+    -- DELIBERATELY NOT ENCRYPTED, unlike every other content column in this
+    -- database. FTS5 cannot index ciphertext (AES-GCM's random IV means the
+    -- same text encrypts differently every time), and searchable knowledge is
+    -- the entire point of this table. Judged acceptable because this holds
+    -- business reference material (services, hours, policies, FAQ), never
+    -- customer PII or credentials — the UI says so explicitly.
+    CREATE TABLE IF NOT EXISTS knowledge_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      title TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_ref TEXT,
+      content TEXT NOT NULL,
+      elevenlabs_document_id TEXT,
+      synced_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_knowledge_documents_business ON knowledge_documents(business_id, updated_at);
+
+    -- business_id is denormalized onto the chunk so a search can filter by
+    -- business in the same query as the FTS MATCH, without a second join.
+    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_id INTEGER NOT NULL REFERENCES knowledge_documents(id),
+      business_id INTEGER NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document ON knowledge_chunks(document_id);
+
+    -- External-content FTS5 index over knowledge_chunks.content: the text is
+    -- stored once (in knowledge_chunks) and the index references it by rowid,
+    -- rather than keeping a second copy. The triggers below are what keep it
+    -- in sync — without them an external-content index silently goes stale.
+    -- No UPDATE trigger is needed: a document edit always deletes and
+    -- reinserts its chunks wholesale (see replaceDocumentChunks).
+    --
+    -- tokenize='porter unicode61' matters more than it looks. The default
+    -- tokenizer does no stemming, so a visitor asking "are you open on sunday"
+    -- would NOT match a document saying "closed Sundays" — confirmed by a real
+    -- failing test before this was added. Porter stems both to the same root,
+    -- which is what makes natural phrasing work against documents written in
+    -- whatever tense/plurality the business happened to use.
+    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts
+      USING fts5(content, content='knowledge_chunks', content_rowid='id', tokenize='porter unicode61');
+
+    CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ai AFTER INSERT ON knowledge_chunks BEGIN
+      INSERT INTO knowledge_chunks_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ad AFTER DELETE ON knowledge_chunks BEGIN
+      INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts, rowid, content)
+        VALUES ('delete', old.id, old.content);
+    END;
   `);
 }

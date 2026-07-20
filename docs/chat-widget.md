@@ -58,7 +58,10 @@ Both follow the standard credential handling in [settings-app.md](settings-app.m
 
 **The service itself holds only bootstrap config**, via environment variables — `DASHBOARD_URL`, `WIDGET_SERVICE_SECRET`, `PORT`, `DATABASE_PATH`, and optionally its own `ENCRYPTION_KEY` for conversations at rest. This is the one credential in the system that must exist outside this app's encrypted store, because a separate process needs *something* to authenticate its very first call. It's also why rotating that secret is the only rotation requiring an SSH trip rather than a form (see the confirm dialog on that button — rotating it takes every client's widget offline until the server's `.env` is updated and restarted).
 
-**`chatWidget.systemPromptExtras`** is the per-business knowledge surface: free text appended to the assistant's system prompt on every message. For most home-services businesses (services, service area, hours, policies, common questions) this is sufficient and needs no redeploy — it takes effect on the next message. The widget does **not** read the ElevenLabs [Knowledge Base](knowledge-base.md); those documents belong to the voice agent only.
+**Two knowledge surfaces, for different jobs:**
+
+- **`chatWidget.systemPromptExtras`** — free text appended to the system prompt on every message. Best for short, always-relevant instructions: tone, a catchphrase, "always mention the seasonal promo".
+- **The shared [knowledge base](knowledge-base.md)** — documents (typed text, URLs, PDFs) retrieved on demand via the `search_knowledge_base` tool, and **shared with the voice agent**. This is where the substantive material goes: services, pricing, service area, policies, FAQ. It's retrieved per question rather than riding in every prompt, so it scales past what's sensible to inline.
 
 ## Security model
 
@@ -75,7 +78,7 @@ The widget runs in a stranger's browser on someone else's website, so its threat
 
 Claude (Anthropic Messages API) via plain `axios`, matching this codebase's no-SDK convention. Adaptive thinking with `effort: low`, chosen because a website chat turn is latency-sensitive and interactive, not a long-horizon agentic task. Model is per-business (`claude-opus-4-8` default; Sonnet 5 / Haiku 4.5 selectable to cut cost on a high-traffic site).
 
-Its four tools map one-to-one onto the dashboard's tool webhooks. **The booking guardrails are the same ones the voice agent relies on**, because both paths run through the same `runBookJobFlow` in [`src/tools/bookJob.ts`](../src/tools/bookJob.ts) (extracted for exactly this reason):
+`search_knowledge_base` queries the shared [knowledge base](knowledge-base.md) through a dedicated service-to-service endpoint, and the prompt requires it before answering anything about services, pricing, hours, coverage or policies — the failure mode being an assistant that answers from general knowledge about the trade instead of this business's actual documents. Its remaining four tools map one-to-one onto the dashboard's tool webhooks. **The booking guardrails are the same ones the voice agent relies on**, because both paths run through the same `runBookJobFlow` in [`src/tools/bookJob.ts`](../src/tools/bookJob.ts) (extracted for exactly this reason):
 
 - Only books a slot that `check_availability` actually returned, after the visitor explicitly confirms it.
 - Respects the business's `bookingMode` — in the default `lead` mode `book_job` isn't even offered to the model, so it structurally cannot book.
@@ -131,6 +134,5 @@ Each of these cost real debugging time:
 
 - Streaming replies (the reply currently arrives in one piece after the tool loop finishes).
 - Bot/spam hardening beyond rate limiting (e.g. hCaptcha).
-- Sharing the ElevenLabs Knowledge Base with the widget, or a dedicated retrieval-backed knowledge base for content too large to sit in the prompt.
 - A per-business toggle to hide the operator's "Powered by" footer (white-label as an upsell).
 - WordPress.org listing + auto-updates; the plugin is self-hosted only.

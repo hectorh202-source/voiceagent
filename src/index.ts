@@ -11,6 +11,7 @@ import { settingsRouter } from "./settings/routes";
 import { resolveBusiness } from "./middleware/resolveBusiness";
 import { toolsRouter } from "./tools/router";
 import { webhooksRouter } from "./webhooks/router";
+import { widgetServiceRouter } from "./api/widgetServiceRouter";
 import { dashboardRouter } from "./dashboard/routes";
 import { apiRouter } from "./api/router";
 import { SqliteSessionStore } from "./settings/sessionStore";
@@ -63,6 +64,15 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/settings", verifyOrigin, noStore, settingsRouter);
+
+// Mounted BEFORE (and outside) the verifyOrigin-guarded /api below, on
+// purpose. This router is server-to-server — the standalone chat widget
+// service calling in with a shared secret — so it carries no Origin/Referer
+// at all, exactly like /b/:businessId/tools and /webhooks. verifyOrigin
+// rejects any non-GET request without a matching Origin, which would 403
+// every POST here (the config endpoint only escapes that by being a GET).
+app.use("/api/widget-service", noStore, widgetServiceRouter);
+
 app.use("/api", verifyOrigin, noStore, apiRouter);
 
 // Every business-scoped concern (ElevenLabs tool webhooks, the post-call

@@ -301,21 +301,30 @@ export const chatWidgetSettingsSchema = z.object({
   systemPromptExtras: z.string().optional(),
 });
 
-export const kbTextSchema = z.object({
-  text: z.string().min(1),
-  name: z.string().optional(),
+// The shared knowledge base (docs/knowledge-base.md). Documents are stored
+// locally as plain text whatever their original source, so create/update take
+// the same shape — the client sends already-extracted text it has had a chance
+// to review, rather than the server ingesting a URL/file straight to storage.
+export const knowledgeDocumentSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  content: z.string().trim().min(1),
+  sourceType: z.enum(["text", "url", "file"]).optional().default("text"),
+  sourceRef: z.string().trim().optional(),
 });
 
-export const kbUrlSchema = z.object({
-  url: z.string().url(),
-  name: z.string().optional(),
+export const knowledgeDocumentUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  content: z.string().trim().min(1),
 });
 
-// Sent by the client alongside the document id in the URL when attaching —
-// the agent's knowledge_base array entry needs a name/type, and the client
-// already has both from the list view it's attaching from, so there's no
-// need for the server to re-fetch the document just to attach it.
-export const kbAttachSchema = z.object({
-  name: z.string().min(1),
-  type: z.enum(["file", "url", "text", "folder"]),
+// Extraction is a separate step from saving: the client posts a URL here,
+// gets plain text back, and the operator reviews/edits it before it's stored.
+export const knowledgeExtractUrlSchema = z.object({
+  url: z.string().trim().url(),
+});
+
+// What the chat widget service sends when its search_knowledge_base tool runs.
+export const knowledgeSearchSchema = z.object({
+  query: z.string().trim().min(1),
+  limit: z.number().int().min(1).max(10).optional(),
 });

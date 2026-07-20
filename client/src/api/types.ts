@@ -191,32 +191,43 @@ export interface VoicesSearchResponse {
   hasMore: boolean;
 }
 
-export type KnowledgeBaseDocumentType = "file" | "url" | "text" | "folder";
+// The shared knowledge base. This app stores the canonical text (whatever the
+// original source), the chat widget retrieves from it, and a copy is pushed to
+// ElevenLabs for the voice agent. See docs/knowledge-base.md.
+export type KnowledgeSourceType = "text" | "url" | "file";
 
-export interface KnowledgeBaseDocument {
-  id: string;
-  name: string;
-  type: KnowledgeBaseDocumentType;
-  createdAtUnixSecs: number | null;
-  updatedAtUnixSecs: number | null;
-  sizeBytes: number | null;
-  // Whether this document is currently referenced in this business's own
-  // agent's conversation_config.agent.prompt.knowledge_base array — not an
-  // ElevenLabs field, computed server-side by cross-referencing the
-  // account-wide document list against that one array.
-  attached: boolean;
+// Whether the ElevenLabs push succeeded. "not_configured" is a normal outcome,
+// not a failure — a chat-only business has no voice agent to sync to.
+export type VoiceSyncResult = "synced" | "not_configured" | "failed";
+
+export interface KnowledgeDocumentSummary {
+  id: number;
+  title: string;
+  sourceType: KnowledgeSourceType;
+  sourceRef: string | null;
+  chunkCount: number;
+  syncedToVoice: boolean;
+  syncedAt: string | null;
+  updatedAt: string;
 }
 
-export interface KnowledgeBaseListResponse {
-  documents: KnowledgeBaseDocument[];
-  hasMore: boolean;
-  nextCursor: string | null;
+// The list endpoint omits content (documents can be long); this is what
+// GET /knowledge-base/:id adds for editing.
+export interface KnowledgeDocumentDetail extends KnowledgeDocumentSummary {
+  content: string;
 }
 
-export interface KnowledgeBaseDependentAgent {
-  type: "available" | "unknown";
-  id?: string;
-  name?: string;
+export interface KnowledgeDocumentListResponse {
+  documents: KnowledgeDocumentSummary[];
+}
+
+// Returned by the extract-url / extract-file endpoints for the operator to
+// review and edit before anything is stored.
+export interface ExtractedContent {
+  title: string;
+  content: string;
+  sourceRef: string;
+  truncated: boolean;
 }
 
 export interface GeneralSettings {

@@ -48,19 +48,28 @@ import {
 import { searchVoices, exploreVoices, addSharedVoice, getVoice } from "../elevenlabs/voices";
 import { getAgentVoiceConfig, updateAgentVoiceConfig, generateTestAudio, TTS_MODEL_IDS } from "../elevenlabs/agents";
 import {
-  listKnowledgeBaseDocuments,
-  getDependentAgents,
-  createTextDocument,
-  createUrlDocument,
-  createFileDocument,
-  deleteKnowledgeBaseDocument,
-  getAgentKnowledgeBase,
-  attachDocumentToAgent,
-  detachDocumentFromAgent,
-} from "../elevenlabs/knowledgeBase";
+  listKnowledgeDocuments,
+  getKnowledgeDocument,
+  createKnowledgeDocument,
+  updateKnowledgeDocument,
+  deleteKnowledgeDocument,
+  countDocumentChunks,
+} from "../db/knowledgeBase";
+import { syncDocumentToElevenLabs, unsyncDocumentFromElevenLabs } from "../knowledge/elevenLabsSync";
+import {
+  extractFromUrl,
+  extractFromFile,
+  ExtractionFailedError,
+  UnsupportedFileTypeError,
+} from "../knowledge/extract";
 import { ElevenLabsNotConfiguredError } from "../elevenlabs/httpClient";
 import { describeError } from "../servicetitan/httpClient";
-import { voiceConfigSchema, kbTextSchema, kbUrlSchema, kbAttachSchema } from "./schemas";
+import {
+  voiceConfigSchema,
+  knowledgeDocumentSchema,
+  knowledgeDocumentUpdateSchema,
+  knowledgeExtractUrlSchema,
+} from "./schemas";
 
 export const apiBusinessRouter = Router({ mergeParams: true });
 
@@ -594,138 +603,149 @@ apiBusinessRouter.post("/settings/voice/test-audio", async (req, res) => {
 // than the requireApiPlatformAdmin gate General Settings uses below (the
 // ElevenLabs API key itself stays admin-only there; this only manages
 // documents on top of it). See docs/knowledge-base.md.
-apiBusinessRouter.get("/settings/knowledge-base", async (req, res) => {
+function parseDocId(req: { params: Record<string, string> }): number | null {
+  const id = Number(req.params.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+apiBusinessRouter.get("/settings/knowledge-base", (req, res) => {
   const business = req.business!;
-  const search = typeof req.query.search === "string" ? req.query.search : undefined;
-  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
-  try {
-    const [list, attached] = await Promise.all([
-      listKnowledgeBaseDocuments(business.id, { search, cursor }),
-      getAgentKnowledgeBase(business.id),
-    ]);
-    const attachedIds = new Set(attached.map((entry) => entry.id));
-    res.json({
-      documents: list.documents.map((doc) => ({ ...doc, attached: attachedIds.has(doc.id) })),
-      hasMore: list.hasMore,
-      nextCursor: list.nextCursor,
-    });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
+  // Content is deliberately omitted from the list — a document can be long,
+  // and the list only needs to summarize. GET /:id returns the full text.
+  res.json({
+    documents: listKnowledgeDocuments(business.id).map((doc) => ({
+      id: doc.id,
+      title: doc.title,
+      sourceType: doc.source_type,
+      sourceRef: doc.source_ref,
+      chunkCount: countDocumentChunks(doc.id),
+      syncedToVoice: !!doc.elevenlabs_document_id,
+      syncedAt: doc.synced_at,
+      updatedAt: doc.updated_at,
+    })),
+  });
 });
 
-// Combined with dependent-agents so the client can show a real warning
-// ("also used by 2 other agents") before a delete, in one request.
-apiBusinessRouter.get("/settings/knowledge-base/:id/dependent-agents", async (req, res) => {
+apiBusinessRouter.get("/settings/knowledge-base/:id", (req, res) => {
   const business = req.business!;
-  try {
-    const dependentAgents = await getDependentAgents(business.id, req.params.id);
-    res.json({ dependentAgents });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
+  const id = parseDocId(req);
+  const doc = id ? getKnowledgeDocument(business.id, id) : undefined;
+  if (!doc) {
+    res.status(404).json({ error: "Document not found" });
+    return;
   }
+  res.json({
+    id: doc.id,
+    title: doc.title,
+    sourceType: doc.source_type,
+    sourceRef: doc.source_ref,
+    content: doc.content,
+    chunkCount: countDocumentChunks(doc.id),
+    syncedToVoice: !!doc.elevenlabs_document_id,
+    syncedAt: doc.synced_at,
+    updatedAt: doc.updated_at,
+  });
 });
 
-apiBusinessRouter.post("/settings/knowledge-base/text", async (req, res) => {
+// The local write is what matters and happens first; the ElevenLabs push is
+// then attempted and its outcome reported back, but a sync failure never
+// fails the save — the document is already live for the chat widget, and a
+// chat-only business has no ElevenLabs agent to push to at all.
+apiBusinessRouter.post("/settings/knowledge-base", async (req, res) => {
   const business = req.business!;
-  const parsed = kbTextSchema.safeParse(req.body);
+  const parsed = knowledgeDocumentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  try {
-    const document = await createTextDocument(business.id, parsed.data);
-    res.json({ document });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
+  const { title, content, sourceType, sourceRef } = parsed.data;
+  const id = createKnowledgeDocument(business.id, { title, content, sourceType, sourceRef });
+  const voiceSync = await syncDocumentToElevenLabs(business.id, id);
+  res.json({ id, chunkCount: countDocumentChunks(id), voiceSync });
 });
 
-apiBusinessRouter.post("/settings/knowledge-base/url", async (req, res) => {
+apiBusinessRouter.put("/settings/knowledge-base/:id", async (req, res) => {
   const business = req.business!;
-  const parsed = kbUrlSchema.safeParse(req.body);
+  const id = parseDocId(req);
+  if (!id || !getKnowledgeDocument(business.id, id)) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+  const parsed = knowledgeDocumentUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     return;
   }
-  try {
-    const document = await createUrlDocument(business.id, parsed.data);
-    res.json({ document });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
-});
-
-apiBusinessRouter.post("/settings/knowledge-base/file", knowledgeBaseUpload.single("file"), async (req, res) => {
-  const business = req.business!;
-  if (!req.file) {
-    res.status(400).json({ error: "No file uploaded" });
-    return;
-  }
-  try {
-    const name = typeof req.body.name === "string" && req.body.name.trim() ? req.body.name.trim() : undefined;
-    const document = await createFileDocument(business.id, {
-      buffer: req.file.buffer,
-      filename: req.file.originalname,
-      mimeType: req.file.mimetype,
-      name,
-    });
-    res.json({ document });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
+  updateKnowledgeDocument(business.id, id, parsed.data);
+  const voiceSync = await syncDocumentToElevenLabs(business.id, id);
+  res.json({ success: true, chunkCount: countDocumentChunks(id), voiceSync });
 });
 
 apiBusinessRouter.delete("/settings/knowledge-base/:id", async (req, res) => {
   const business = req.business!;
-  const force = req.query.force === "1";
-  try {
-    await deleteKnowledgeBaseDocument(business.id, req.params.id, force);
-    res.json({ success: true });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
+  const id = parseDocId(req);
+  const doc = id ? getKnowledgeDocument(business.id, id) : undefined;
+  if (!id || !doc) {
+    res.status(404).json({ error: "Document not found" });
+    return;
   }
+  await unsyncDocumentFromElevenLabs(business.id, doc.elevenlabs_document_id);
+  deleteKnowledgeDocument(business.id, id);
+  res.json({ success: true });
 });
 
-apiBusinessRouter.put("/settings/knowledge-base/:id/attach", async (req, res) => {
-  const business = req.business!;
-  const parsed = kbAttachSchema.safeParse(req.body);
+// Extraction is deliberately separate from saving: these return plain text for
+// the operator to review and edit, and nothing is stored until they POST it
+// back to /knowledge-base above. That's what lets imperfect PDF/page
+// extraction be fixed by hand instead of by heuristics.
+apiBusinessRouter.post("/settings/knowledge-base/extract-url", async (req, res) => {
+  const parsed = knowledgeExtractUrlSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    res.status(400).json({ error: "Enter a valid URL." });
     return;
   }
   try {
-    await attachDocumentToAgent(business.id, { id: req.params.id, ...parsed.data, createdAtUnixSecs: null, updatedAtUnixSecs: null, sizeBytes: null });
-    res.json({ success: true });
+    res.json(await extractFromUrl(parsed.data.url));
   } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
+    if (error instanceof ExtractionFailedError || error instanceof UnsupportedFileTypeError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    res.status(502).json({ error: describeError(error) });
   }
 });
 
-apiBusinessRouter.delete("/settings/knowledge-base/:id/attach", async (req, res) => {
+apiBusinessRouter.post(
+  "/settings/knowledge-base/extract-file",
+  knowledgeBaseUpload.single("file"),
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
+    }
+    try {
+      res.json(await extractFromFile(req.file.buffer, req.file.originalname, req.file.mimetype));
+    } catch (error) {
+      if (error instanceof ExtractionFailedError || error instanceof UnsupportedFileTypeError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      res.status(502).json({ error: describeError(error) });
+    }
+  },
+);
+
+// Re-pushes a document to ElevenLabs — the fix for drift if someone edits or
+// deletes the copy directly in the ElevenLabs dashboard.
+apiBusinessRouter.post("/settings/knowledge-base/:id/resync", async (req, res) => {
   const business = req.business!;
-  try {
-    await detachDocumentFromAgent(business.id, req.params.id);
-    res.json({ success: true });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
+  const id = parseDocId(req);
+  if (!id || !getKnowledgeDocument(business.id, id)) {
+    res.status(404).json({ error: "Document not found" });
+    return;
   }
+  const voiceSync = await syncDocumentToElevenLabs(business.id, id);
+  res.json({ voiceSync });
 });
 
 // Credentials and secrets, not operational metadata like Business Info —

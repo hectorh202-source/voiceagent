@@ -4,7 +4,6 @@ import { listBusinessesForUser } from "../db/userBusinesses";
 import { apiBusinessRouter } from "./businessRouter";
 import { adminRouter } from "./adminRouter";
 import { authRouter } from "./authRouter";
-import { widgetServiceRouter } from "./widgetServiceRouter";
 
 export const apiRouter = Router();
 
@@ -35,7 +34,6 @@ apiRouter.get("/businesses", requireApiSession, (req, res) => {
 apiRouter.use("/businesses/:businessId", apiBusinessRouter);
 apiRouter.use("/admin", adminRouter);
 
-// Service-to-service (the standalone chat-widget service) — authenticates with
-// a shared secret, not a browser session, so it's mounted here rather than
-// under the session-gated adminRouter.
-apiRouter.use("/widget-service", widgetServiceRouter);
+// NOTE: the service-to-service widget router is deliberately NOT mounted here.
+// It lives in index.ts, mounted before /api so it sits outside verifyOrigin —
+// see the comment there.
