@@ -262,6 +262,9 @@ export interface ChatWidgetSettings {
   agentName: string;
   accentColor: string;
   greeting: string;
+  logoUrl: string;
+  tagline: string;
+  quickPrompts: string[];
   systemPromptExtras: string;
   // Where the standalone chat-widget service is hosted (global; set in Admin
   // Settings). The install snippet points here. Empty until configured.

@@ -481,6 +481,12 @@ export interface ChatWidgetBranding {
   agentName: string;
   accentColor: string;
   greeting: string;
+  // Image URL shown in the widget's header (and as the assistant's avatar).
+  // A URL rather than an upload: businesses already host a logo on their own
+  // site, and this avoids adding file storage/serving to the platform.
+  logoUrl: string;
+  // Short line under the header title, e.g. "Typically replies in a minute".
+  tagline: string;
 }
 
 export function getChatWidgetBranding(businessId: number): ChatWidgetBranding {
@@ -490,7 +496,24 @@ export function getChatWidgetBranding(businessId: number): ChatWidgetBranding {
     greeting:
       getBusinessSetting(businessId, "chatWidget.greeting") ??
       "Hi! I can help you book a service or answer questions. How can I help?",
+    logoUrl: getBusinessSetting(businessId, "chatWidget.logoUrl") ?? "",
+    tagline: getBusinessSetting(businessId, "chatWidget.tagline") ?? "",
   };
+}
+
+// Clickable starter prompts shown under the greeting (e.g. "Book a service").
+// Clicking one sends it as the visitor's first message, so a visitor never
+// faces a blank box. Stored as a JSON array of short labels; malformed storage
+// degrades to [] rather than throwing.
+export function getChatWidgetQuickPrompts(businessId: number): string[] {
+  const raw = getBusinessSetting(businessId, "chatWidget.quickPrompts");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 // Free-text business context the operator adds to the widget's system prompt
@@ -505,6 +528,7 @@ export interface ChatWidgetConfig {
   allowedOrigins: string[];
   model: ChatWidgetModel;
   branding: ChatWidgetBranding;
+  quickPrompts: string[];
   systemPromptExtras: string;
   anthropicApiKey: string;
 }
@@ -523,6 +547,7 @@ export function getChatWidgetConfig(businessId: number): ChatWidgetConfig | null
     allowedOrigins: getWidgetAllowedOrigins(businessId),
     model: getChatWidgetModel(businessId),
     branding: getChatWidgetBranding(businessId),
+    quickPrompts: getChatWidgetQuickPrompts(businessId),
     systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
     anthropicApiKey,
   };
@@ -539,6 +564,7 @@ export function getRawChatWidgetSettings(businessId: number) {
     allowedOrigins: getWidgetAllowedOrigins(businessId),
     model: getChatWidgetModel(businessId),
     ...getChatWidgetBranding(businessId),
+    quickPrompts: getChatWidgetQuickPrompts(businessId),
     systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
   };
 }

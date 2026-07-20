@@ -29,6 +29,9 @@ export function ChatWidgetSettingsPage() {
   const [agentName, setAgentName] = useState("");
   const [accentColor, setAccentColor] = useState("#2563eb");
   const [greeting, setGreeting] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [quickPrompts, setQuickPrompts] = useState("");
   const [allowedOrigins, setAllowedOrigins] = useState("");
   const [systemPromptExtras, setSystemPromptExtras] = useState("");
   const [message, setMessage] = useState("");
@@ -42,6 +45,9 @@ export function ChatWidgetSettingsPage() {
     setAgentName(data.agentName);
     setAccentColor(data.accentColor);
     setGreeting(data.greeting);
+    setLogoUrl(data.logoUrl);
+    setTagline(data.tagline);
+    setQuickPrompts(data.quickPrompts.join("\n"));
     setAllowedOrigins(data.allowedOrigins.join("\n"));
     setSystemPromptExtras(data.systemPromptExtras);
   }, [data]);
@@ -55,6 +61,12 @@ export function ChatWidgetSettingsPage() {
         agentName,
         accentColor,
         greeting,
+        logoUrl,
+        tagline,
+        quickPrompts: quickPrompts
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
         systemPromptExtras,
         allowedOrigins: allowedOrigins
           .split("\n")
@@ -135,8 +147,47 @@ export function ChatWidgetSettingsPage() {
           <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} style={{ width: 60, height: 34, padding: 2 }} />
         </div>
         <div className="form-row">
+          <label>Tagline</label>
+          <input
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+            placeholder="Typically replies in a few minutes"
+          />
+          <div className="form-hint">Small line under the name in the widget header.</div>
+        </div>
+        <div className="form-row">
+          <label>Logo URL</label>
+          <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://clientsite.com/logo.png" />
+          <div className="form-hint">
+            Shown in the widget header and as the assistant's avatar. Use a direct link to an image (PNG/SVG, square or
+            wide both work). Leave blank to show the assistant's initial instead.
+          </div>
+          {logoUrl.trim() && (
+            <div style={{ marginTop: 8 }}>
+              <img
+                src={logoUrl}
+                alt="Logo preview"
+                style={{ maxHeight: 40, maxWidth: 180, objectFit: "contain", background: "#fff", borderRadius: 6 }}
+              />
+            </div>
+          )}
+        </div>
+        <div className="form-row">
           <label>Greeting</label>
           <textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={2} placeholder="Hi! How can I help?" />
+        </div>
+        <div className="form-row">
+          <label>Quick prompts</label>
+          <textarea
+            value={quickPrompts}
+            onChange={(e) => setQuickPrompts(e.target.value)}
+            rows={4}
+            placeholder={"Book a service\nGet a quote\nEmergency help\nAsk a question"}
+          />
+          <div className="form-hint">
+            Clickable buttons shown under the greeting so visitors don't face a blank box. One per line, keep them
+            short. Clicking one sends it as their first message. Max 6.
+          </div>
         </div>
       </div>
 

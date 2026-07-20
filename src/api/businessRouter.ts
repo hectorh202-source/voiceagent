@@ -854,6 +854,12 @@ apiBusinessRouter.put("/settings/chat-widget", requireApiPlatformAdmin, (req, re
   if (body.agentName !== undefined) setBusinessSetting(business.id, "chatWidget.agentName", body.agentName);
   if (body.accentColor !== undefined) setBusinessSetting(business.id, "chatWidget.accentColor", body.accentColor);
   if (body.greeting !== undefined) setBusinessSetting(business.id, "chatWidget.greeting", body.greeting);
+  if (body.logoUrl !== undefined) setBusinessSetting(business.id, "chatWidget.logoUrl", body.logoUrl.trim());
+  if (body.tagline !== undefined) setBusinessSetting(business.id, "chatWidget.tagline", body.tagline);
+  if (body.quickPrompts) {
+    const prompts = body.quickPrompts.map((p) => p.trim()).filter(Boolean).slice(0, 6);
+    setBusinessSetting(business.id, "chatWidget.quickPrompts", JSON.stringify(prompts));
+  }
   if (body.systemPromptExtras !== undefined) {
     setBusinessSetting(business.id, "chatWidget.systemPromptExtras", body.systemPromptExtras);
   }

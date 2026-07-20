@@ -49,6 +49,7 @@ widgetServiceRouter.get("/businesses/:businessId/config", (req, res) => {
     anthropicApiKey: config.anthropicApiKey,
     model: config.model,
     branding: config.branding,
+    quickPrompts: config.quickPrompts,
     systemPromptExtras: config.systemPromptExtras,
     allowedOrigins: config.allowedOrigins,
     embedKey: config.embedKey,
