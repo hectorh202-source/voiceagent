@@ -290,6 +290,10 @@ export const chatWidgetSettingsSchema = z.object({
   agentName: z.string().optional(),
   accentColor: z.string().optional(),
   greeting: z.string().optional(),
+  logoUrl: z.string().optional(),
+  tagline: z.string().optional(),
+  // Clickable starter prompts shown under the greeting.
+  quickPrompts: z.array(z.string()).optional(),
   allowedOrigins: z.array(z.string()).optional(),
   systemPromptExtras: z.string().optional(),
 });
