@@ -45,8 +45,8 @@ import {
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
-import { searchVoices, exploreVoices, addSharedVoice, getVoice, getVoiceDefaultSettings } from "../elevenlabs/voices";
-import { getAgentVoiceConfig, updateAgentVoiceConfig, generateTestAudio, TTS_MODEL_IDS } from "../elevenlabs/agents";
+import { searchVoices, exploreVoices, addSharedVoice, getVoice } from "../elevenlabs/voices";
+import { getAgentVoiceConfig, updateAgentVoiceConfig } from "../elevenlabs/agents";
 import {
   listKnowledgeDocuments,
   getKnowledgeDocument,
@@ -535,29 +535,12 @@ apiBusinessRouter.get("/settings/voices/explore", async (req, res) => {
   }
 });
 
-// Seeds VoiceSettingsPage.tsx's Test Audio-only Style/Speaker Boost
-// controls with this voice's own real default settings (see
-// voices.ts's getVoiceDefaultSettings) whenever the selected voice changes —
-// the same starting point ElevenLabs' own dashboard would show for that
-// voice, rather than a blind hardcoded guess.
-apiBusinessRouter.get("/settings/voices/:voiceId/default-settings", async (req, res) => {
-  const business = req.business!;
-  try {
-    const settings = await getVoiceDefaultSettings(business.id, req.params.voiceId);
-    res.json(settings);
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
-});
-
 apiBusinessRouter.get("/settings/voice", async (req, res) => {
   const business = req.business!;
   try {
     const voiceConfig = await getAgentVoiceConfig(business.id);
     const currentVoice = voiceConfig ? await getVoice(business.id, voiceConfig.voiceId) : null;
-    res.json({ voiceConfig, currentVoice, availableModels: TTS_MODEL_IDS });
+    res.json({ voiceConfig, currentVoice });
   } catch (error) {
     const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
     const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
@@ -579,34 +562,6 @@ apiBusinessRouter.put("/settings/voice", async (req, res) => {
     }
     await updateAgentVoiceConfig(business.id, voiceConfig);
     res.json({ success: true });
-  } catch (error) {
-    const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
-    const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);
-    res.status(status).json({ error: message });
-  }
-});
-
-// Real speech synthesis with whatever stability/speed/similarity is
-// currently dialed in — unlike everything else on this page, this costs
-// real ElevenLabs credits per click (confirmed: ~72KB of audio for one
-// short line), so it's a deliberate button press, not something fetched
-// automatically. A voice's own preview clip (used in the picker modal)
-// can't show this at all, since it's always pre-rendered at that voice's
-// default settings, not whatever the user has currently dragged the
-// sliders to. Explore-only fields like addFromExplore are simply ignored
-// here — reusing voiceConfigSchema is fine since this never adds anything
-// to the account's library, just synthesizes one throwaway line.
-apiBusinessRouter.post("/settings/voice/test-audio", async (req, res) => {
-  const business = req.business!;
-  const parsed = voiceConfigSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
-    return;
-  }
-  try {
-    const audio = await generateTestAudio(business.id, parsed.data);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.send(audio);
   } catch (error) {
     const status = error instanceof ElevenLabsNotConfiguredError ? 503 : 502;
     const message = error instanceof ElevenLabsNotConfiguredError ? error.message : describeError(error);

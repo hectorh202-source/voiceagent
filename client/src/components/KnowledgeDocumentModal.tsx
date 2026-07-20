@@ -59,8 +59,8 @@ export function KnowledgeDocumentModal({
     onError: (e: Error) => setError(e.message),
   });
 
-  // Raw fetch rather than the shared `api` helper, which always JSON-encodes —
-  // same reasoning as the voice test-audio call.
+  // Raw fetch rather than the shared `api` helper, since this needs to send
+  // multipart form data, not JSON.
   const extractFileMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();

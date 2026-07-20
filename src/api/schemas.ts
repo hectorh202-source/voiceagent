@@ -261,19 +261,10 @@ export const widgetServiceSettingsSchema = z.object({
 // tuple here (rather than importing it) since schemas.ts is shared by every
 // API route and shouldn't pull in the ElevenLabs client module just for an
 // enum; the two lists must be kept in sync if ElevenLabs adds a new model.
+// Voice selection only — no stability/speed/similarity/style/speaker-boost
+// (removed 2026-07-20, see elevenlabs/agents.ts's AgentVoiceConfig comment).
 export const voiceConfigSchema = z.object({
-  modelId: z.enum(["eleven_turbo_v2", "eleven_turbo_v2_5", "eleven_flash_v2", "eleven_flash_v2_5", "eleven_multilingual_v2", "eleven_v3_conversational"]),
   voiceId: z.string().min(1),
-  stability: z.number().min(0).max(1),
-  speed: z.number(),
-  similarityBoost: z.number().min(0).max(1),
-  // Real ElevenLabs voice_settings fields the raw TTS endpoint (Test Audio,
-  // generateTestAudio) supports but a Conversational AI agent's own
-  // conversation_config.tts does NOT (confirmed against ElevenLabs' real API
-  // reference, 2026-07-19 — see elevenlabs/agents.ts's AgentVoiceConfig).
-  // Optional since updateAgentVoiceConfig's PUT never sends or needs them.
-  style: z.number().min(0).max(1).optional(),
-  useSpeakerBoost: z.boolean().optional(),
   // Present only when voiceId came from the Explore tab (ElevenLabs' full
   // shared-voice library) rather than this account's own saved voices —
   // confirmed setting voiceId directly without adding it first fails with

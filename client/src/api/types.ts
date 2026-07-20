@@ -149,43 +149,16 @@ export interface BusinessInfoSettings {
   serviceCategories: ServiceCategory[];
 }
 
-// Mirrors elevenlabs/agents.ts's TTS_MODEL_IDS exactly.
-export type TtsModelId =
-  | "eleven_turbo_v2"
-  | "eleven_turbo_v2_5"
-  | "eleven_flash_v2"
-  | "eleven_flash_v2_5"
-  | "eleven_multilingual_v2"
-  | "eleven_v3_conversational";
-
+// Voice selection only — no stability/speed/similarity/style/speaker-boost
+// (removed 2026-07-20: even with settings synced exactly, Test Audio never
+// sounded the same as ElevenLabs' own dashboard, so the app no longer
+// adjusts any of these — see elevenlabs/agents.ts's AgentVoiceConfig).
 export interface AgentVoiceConfig {
-  modelId: TtsModelId;
   voiceId: string;
-  stability: number;
-  speed: number;
-  similarityBoost: number;
-  // Real ElevenLabs voice_settings fields the raw TTS endpoint (Test Audio)
-  // supports but a Conversational AI agent's own conversation_config.tts
-  // does not — see elevenlabs/agents.ts's AgentVoiceConfig comment. Only
-  // ever sent by the Test Audio request, never by the save-voice PUT.
-  style?: number;
-  useSpeakerBoost?: boolean;
   // Only sent when voiceId came from the Explore tab — see schemas.ts's
   // voiceConfigSchema for why this is required before ElevenLabs will
   // accept the voiceId at all.
   addFromExplore?: { publicOwnerId: string; name: string };
-}
-
-// This voice's own saved default voice_settings — what ElevenLabs' own
-// dashboard pre-populates a voice's Test/Preview panel with. Used to seed
-// VoiceSettingsPage.tsx's Style/Speaker Boost controls whenever the selected
-// voice changes. See elevenlabs/voices.ts's getVoiceDefaultSettings.
-export interface VoiceDefaultSettings {
-  stability: number;
-  similarityBoost: number;
-  style: number;
-  useSpeakerBoost: boolean;
-  speed: number;
 }
 
 export interface VoiceSummary {
@@ -201,7 +174,6 @@ export interface VoiceSummary {
 export interface VoiceSettingsResponse {
   voiceConfig: AgentVoiceConfig | null;
   currentVoice: VoiceSummary | null;
-  availableModels: TtsModelId[];
 }
 
 export interface VoicesSearchResponse {

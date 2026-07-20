@@ -104,44 +104,6 @@ interface SingleVoiceResponse {
   labels?: Record<string, string>;
 }
 
-export interface VoiceDefaultSettings {
-  stability: number;
-  similarityBoost: number;
-  style: number;
-  useSpeakerBoost: boolean;
-  speed: number;
-}
-
-interface VoiceSettingsResponseRaw {
-  stability?: number;
-  similarity_boost?: number;
-  style?: number;
-  use_speaker_boost?: boolean;
-  speed?: number;
-}
-
-// GET /v1/voices/{id}/settings — this voice's own saved default
-// voice_settings, exactly what ElevenLabs' own dashboard pre-populates a
-// voice's Test/Preview panel with. Real, confirmed field list (2026-07-19):
-// stability, similarity_boost, style, use_speaker_boost, speed — the last
-// two (style/use_speaker_boost) exist on the raw TTS voice_settings object
-// but NOT on a Conversational AI agent's own conversation_config.tts (see
-// AgentVoiceConfig's comment), so this is only ever used to seed sensible
-// starting values for VoiceSettingsPage.tsx's Test Audio controls, never
-// sent to updateAgentVoiceConfig. Falls back to ElevenLabs' own documented
-// defaults for any field genuinely absent from the response.
-export async function getVoiceDefaultSettings(businessId: number, voiceId: string): Promise<VoiceDefaultSettings> {
-  const config = requireElevenLabsConfig(businessId);
-  const settings = await elRequest<VoiceSettingsResponseRaw>(config, "GET", `/v1/voices/${voiceId}/settings`);
-  return {
-    stability: settings.stability ?? 0.5,
-    similarityBoost: settings.similarity_boost ?? 0.75,
-    style: settings.style ?? 0,
-    useSpeakerBoost: settings.use_speaker_boost ?? true,
-    speed: settings.speed ?? 1,
-  };
-}
-
 // GET /v1/voices/{id} — confirmed against a real account (2026-07-15). Used
 // to resolve the agent's currently-configured voice_id into a display name,
 // since the agent config itself only ever stores the bare ID.
