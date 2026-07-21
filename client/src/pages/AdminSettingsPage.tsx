@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { AdminUser, Business, EmailSettings, TwilioSettings, GoogleAdsSettings, WidgetServiceSettings } from "../api/types";
 import { useAuthedUser } from "../auth/AuthGate";
@@ -549,8 +549,18 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
   // Same reasoning as GlobalAdminSettings' own sub-nav — this page
   // accumulates a new card every time a new per-business integration
   // ships, and showing one section at a time keeps it from becoming a
-  // long scroll.
-  const [activeSection, setActiveSection] = useState<BusinessSettingsSectionId>("users");
+  // long scroll. Synced to a URL search param (rather than plain
+  // useState) so refreshing the page — or bookmarking/sharing a link to
+  // a specific section — keeps you on the same section instead of
+  // silently bouncing back to the "users" default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionParam = searchParams.get("section");
+  const activeSection: BusinessSettingsSectionId = BUSINESS_SETTINGS_SECTIONS.some((s) => s.id === sectionParam)
+    ? (sectionParam as BusinessSettingsSectionId)
+    : "users";
+  function setActiveSection(id: BusinessSettingsSectionId) {
+    setSearchParams({ section: id });
+  }
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -659,8 +669,17 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
   // list — this page accumulates a new card every time a new global
   // integration ships (Twilio, then Google Ads, ...), and a long scroll
   // gets worse with each one; a sub-nav that shows one section at a time
-  // doesn't.
-  const [activeSection, setActiveSection] = useState<GlobalSettingsSectionId>("businesses");
+  // doesn't. Synced to a URL search param, same reasoning as
+  // BusinessAdminSettings' own activeSection — a refresh should never
+  // silently bounce you back to the "businesses" default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionParam = searchParams.get("section");
+  const activeSection: GlobalSettingsSectionId = GLOBAL_SETTINGS_SECTIONS.some((s) => s.id === sectionParam)
+    ? (sectionParam as GlobalSettingsSectionId)
+    : "businesses";
+  function setActiveSection(id: GlobalSettingsSectionId) {
+    setSearchParams({ section: id });
+  }
 
   const [businessName, setBusinessName] = useState("");
   const addBusinessMutation = useMutation({
