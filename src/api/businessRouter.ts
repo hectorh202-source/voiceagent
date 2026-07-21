@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
 import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
@@ -11,15 +12,17 @@ import {
   getCallRecord,
   updateCallStatus,
   countUnreadCalls,
+  deleteCallRecord,
 } from "../db/callRecords";
 import type { CallDateRange, CallCursor } from "../db/callRecords";
-import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads } from "../db/inboundLeads";
+import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads, deleteInboundLead } from "../db/inboundLeads";
 import { extractRecordingUrl, fetchRecordingAudio } from "../googleLsa/recordings";
 import { extractAttachmentUrls, fetchAttachment } from "../googleLsa/attachments";
 import { extractNameSource } from "../googleLsa/nameSource";
 import type { InboundLeadFilters, InboundLeadCursor } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
-import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
+import { findCreateLeadLogByConversationId, findBookJobLogByConversationId, deleteCallLogsForConversation } from "../db/callLog";
+import { getTwilioRecording, deleteTwilioRecording } from "../db/twilioRecordings";
 import {
   isEndedEarly,
   buildCallDetailViewModel,
@@ -258,6 +261,37 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
   });
 });
 
+// Platform-admin-only, hard delete — not a status/archive flag, since this
+// exists for removing genuinely unwanted data (test calls, mistakes), not a
+// routine triage action any business user should be able to do. Deletes the
+// call_log/twilio_recordings rows and unlinks the on-disk audio files too
+// (see db/callRecords.ts's deleteCallRecord comment for why those aren't
+// cleaned up by an FK constraint automatically), so nothing orphaned is left
+// behind.
+apiBusinessRouter.delete("/calls/:conversationId", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const { conversationId } = req.params;
+  const record = getCallRecord(business.id, conversationId);
+  if (!record) {
+    res.status(404).json({ error: "Call not found" });
+    return;
+  }
+  const recording = record.twilio_call_sid ? getTwilioRecording(business.id, record.twilio_call_sid) : undefined;
+
+  deleteCallLogsForConversation(business.id, conversationId);
+  if (record.twilio_call_sid) deleteTwilioRecording(business.id, record.twilio_call_sid);
+  deleteCallRecord(business.id, conversationId);
+
+  for (const filePath of [record.audio_path, recording?.recording_path]) {
+    if (!filePath) continue;
+    fs.unlink(filePath, (err) => {
+      if (err && err.code !== "ENOENT") console.error(`Failed to delete recording file ${filePath}:`, err);
+    });
+  }
+
+  res.json({ success: true });
+});
+
 // One page of the Leads inbox — same page size/keyset-pagination reasoning
 // as CALLS_PAGE_SIZE above.
 const LEADS_PAGE_SIZE = 50;
@@ -371,6 +405,21 @@ apiBusinessRouter.get("/leads/:id", (req, res) => {
     // own edit is what's actually displayed.
     nameSource: record.name_override ? null : extractNameSource(record.raw_payload_json),
   });
+});
+
+// Platform-admin-only, hard delete — same reasoning as DELETE
+// /calls/:conversationId above. No child table or on-disk file to clean up
+// here (see db/inboundLeads.ts's deleteInboundLead comment), so this is a
+// clean single-table delete.
+apiBusinessRouter.delete("/leads/:id", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || !getInboundLeadById(business.id, id)) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  deleteInboundLead(business.id, id);
+  res.json({ success: true });
 });
 
 // Proxies the actual recording audio (see googleLsa/recordings.ts for why

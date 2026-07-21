@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CallDetail, CallStatus, RecoveryStatus } from "../api/types";
 import { formatDateTime, formatDuration, formatDurationClock, formatPhoneNumber } from "../lib/format";
+import { useAuthedUser } from "../auth/AuthGate";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
   UserIcon,
   PhoneIcon,
@@ -174,6 +176,21 @@ export function CallDetailPage() {
 
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
+
+  const currentUser = useAuthedUser();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/businesses/${businessId}/calls/${conversationId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
+      if (isModal) {
+        closeModal();
+      } else {
+        navigate(`/${businessId}/calls`);
+      }
+    },
+  });
 
   // As a modal, this whole page renders inside a fixed-position overlay
   // (see App.tsx/CallsTable.tsx) instead of AppShell's padded .content
@@ -489,6 +506,11 @@ export function CallDetailPage() {
             <button className="btn" onClick={() => patchMutation.mutate({ recoveryStatus: "not_recovered" })}>
               Mark as not recovered
             </button>
+            {currentUser.isPlatformAdmin && (
+              <button className="btn btn-danger" onClick={() => setConfirmingDelete(true)}>
+                Delete
+              </button>
+            )}
           </div>
 
           {data.summary && (
@@ -551,6 +573,19 @@ export function CallDetailPage() {
 
         </main>
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete this call?"
+          message="This permanently deletes the call record, transcript, recordings, and any tool-call history for it. This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            deleteMutation.mutate();
+          }}
+        />
+      )}
     </div>
   );
 }

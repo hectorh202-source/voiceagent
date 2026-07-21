@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { InboundLeadDetail, LeadStatus } from "../api/types";
+import { useAuthedUser } from "../auth/AuthGate";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
   formatDateTime,
   formatPhoneNumber,
@@ -59,6 +62,8 @@ function AttachmentPreview({ url }: { url: string }) {
 // layout this lives in).
 export function LeadDetailPage({ businessId, leadId }: { businessId: string; leadId: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const currentUser = useAuthedUser();
 
   const { data, isLoading } = useQuery({
     queryKey: ["lead", businessId, leadId],
@@ -85,6 +90,18 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [isEditingContact, setIsEditingContact] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/businesses/${businessId}/leads/${leadId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
+      // No leadId in the URL — LeadsPage.tsx's own auto-select effect picks
+      // the next available lead once the list refetches, same as opening
+      // the page fresh with nothing selected yet.
+      navigate(`/${businessId}/leads`);
+    },
+  });
 
   // Viewing a lead marks it read, same as opening an email — the unread dot
   // in LeadsPage.tsx's list otherwise never clears on its own, since nothing
@@ -173,6 +190,11 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
             </select>
             <ChevronDownIcon width={13} height={13} style={{ color: getLeadStatusColors(data.status).fg }} />
           </div>
+          {currentUser.isPlatformAdmin && (
+            <button className="btn btn-danger" onClick={() => setConfirmingDelete(true)}>
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
@@ -349,6 +371,19 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
           onClose={() => setIsEditingContact(false)}
           onSave={(values) => {
             patchMutation.mutate(values, { onSuccess: () => setIsEditingContact(false) });
+          }}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete this lead?"
+          message="This permanently deletes the lead and its submission data. This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            deleteMutation.mutate();
           }}
         />
       )}

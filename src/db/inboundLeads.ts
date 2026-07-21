@@ -226,6 +226,18 @@ export function getInboundLeadById(businessId: number, id: number): InboundLeadR
   return record ? decryptInboundLead(record) : undefined;
 }
 
+// Platform-admin-only (see businessRouter.ts's DELETE /leads/:id). No child
+// table references inbound_leads.id (confirmed against schema.ts) and
+// nothing is cached to disk for a lead (Google LSA recordings/attachments
+// are proxied live from Google on every request, never stored locally — see
+// googleLsa/recordings.ts and googleLsa/attachments.ts), so this is a clean
+// single-table delete with no other cleanup needed.
+const deleteInboundLeadStmt = db.prepare(`DELETE FROM inbound_leads WHERE id = ? AND business_id = ?`);
+
+export function deleteInboundLead(businessId: number, id: number): void {
+  deleteInboundLeadStmt.run(id, businessId);
+}
+
 export interface InboundLeadPatch {
   isRead?: boolean;
   status?: string;

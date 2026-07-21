@@ -41,3 +41,12 @@ const getByCallSidStmt = db.prepare(`SELECT * FROM twilio_recordings WHERE busin
 export function getTwilioRecording(businessId: number, callSid: string): TwilioRecordingRow | undefined {
   return getByCallSidStmt.get(businessId, callSid) as TwilioRecordingRow | undefined;
 }
+
+// Platform-admin-only Call delete (see businessRouter.ts's DELETE
+// /calls/:conversationId) — callers fetch the row first (for its
+// recording_path, to unlink the on-disk file) before calling this.
+const deleteByCallSidStmt = db.prepare(`DELETE FROM twilio_recordings WHERE business_id = ? AND call_sid = ?`);
+
+export function deleteTwilioRecording(businessId: number, callSid: string): void {
+  deleteByCallSidStmt.run(businessId, callSid);
+}

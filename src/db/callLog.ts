@@ -43,6 +43,16 @@ export function logToolCall(entry: CallLogEntry): void {
   });
 }
 
+// Platform-admin-only Call delete (see businessRouter.ts's DELETE
+// /calls/:conversationId) cleans up these rows too, so a deleted call
+// doesn't leave orphaned create_lead/book_job tool-call logs still
+// pointing at a conversationId that no longer exists anywhere else.
+const deleteByConversationStmt = db.prepare(`DELETE FROM call_log WHERE business_id = ? AND conversation_id = ?`);
+
+export function deleteCallLogsForConversation(businessId: number, conversationId: string): void {
+  deleteByConversationStmt.run(businessId, conversationId);
+}
+
 export function getRecentCallLogs(businessId: number, limit = 50) {
   const rows = db
     .prepare(`SELECT * FROM call_log WHERE business_id = ? ORDER BY id DESC LIMIT ?`)

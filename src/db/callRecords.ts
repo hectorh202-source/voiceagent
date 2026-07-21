@@ -200,6 +200,20 @@ export function getCallRecord(businessId: number, conversationId: string): Eleve
   return record ? decryptCallRecord(record) : undefined;
 }
 
+const deleteCallRecordStmt = db.prepare(`DELETE FROM elevenlabs_calls WHERE conversation_id = ? AND business_id = ?`);
+
+// Platform-admin-only (see businessRouter.ts's DELETE /calls/:conversationId).
+// Deletes only this table's own row — neither call_log nor twilio_recordings
+// declare a FOREIGN KEY against elevenlabs_calls (confirmed against
+// schema.ts), so node:sqlite won't enforce cleaning those up, but the route
+// handler still does it explicitly (db/callLog.ts's
+// deleteCallLogsForConversation, db/twilioRecordings.ts's
+// deleteTwilioRecording) plus unlinking the on-disk audio files, so a
+// deleted call doesn't leave orphaned rows or recordings behind.
+export function deleteCallRecord(businessId: number, conversationId: string): void {
+  deleteCallRecordStmt.run(conversationId, businessId);
+}
+
 export interface CallCursor {
   receivedAt: string;
   conversationId: string;
