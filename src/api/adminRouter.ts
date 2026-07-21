@@ -196,7 +196,8 @@ adminRouter.post("/email-settings/test-email", async (req, res) => {
       return;
     }
     console.error("Test email failed to send:", err);
-    res.status(502).json({ error: "Failed to send — check your SMTP settings and try again." });
+    const detail = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: `Failed to send: ${detail}` });
   }
 });
 
