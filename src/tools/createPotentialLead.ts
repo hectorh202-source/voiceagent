@@ -2,31 +2,6 @@ import type { Request, Response } from "express";
 import { catchAllLeadSchema } from "../api/schemas";
 import { insertInboundLead } from "../db/inboundLeads";
 import { logToolCall } from "../db/callLog";
-import { isCatchAllLeadNotifyEnabled, getCatchAllLeadNotifyEmails, getCatchAllLeadNotifyCcEmails } from "../settings/store";
-import { sendCatchAllLeadNotificationEmail } from "../settings/email";
-
-// Fire-and-forget email alert, same reasoning as webhooks/leadIntake.ts's
-// notifyWidgetLead — never awaited by the caller and swallows its own
-// errors, since a missing SMTP config or a bad recipient must never delay
-// or fail the tool's response back to ElevenLabs (the agent is still live
-// on the call waiting for this).
-function notifyCatchAllLead(
-  businessId: number,
-  businessName: string,
-  leadsUrl: string,
-  lead: { name?: string; phone?: string; email?: string; reason?: string; message?: string },
-): void {
-  if (!isCatchAllLeadNotifyEnabled(businessId)) return;
-  const recipients = getCatchAllLeadNotifyEmails(businessId);
-  const cc = getCatchAllLeadNotifyCcEmails(businessId);
-  const to = recipients.length > 0 ? recipients : cc;
-  const ccFinal = recipients.length > 0 ? cc : [];
-  if (to.length === 0) return;
-
-  sendCatchAllLeadNotificationEmail(to, { businessName, leadsUrl, ...lead }, ccFinal).catch((error) => {
-    console.error("Catch-all lead notification email failed:", error instanceof Error ? error.message : error);
-  });
-}
 
 // The AI phone agent's safety net — called instead of (or after a failed)
 // create_lead/book_job, whenever a call can't produce a real ServiceTitan
@@ -52,6 +27,9 @@ export async function handleCreatePotentialLead(req: Request, res: Response): Pr
 
   const { name, phone, email, details, reason, conversationId } = parsed.data;
 
+  // Notification (if enabled — see General Settings -> Operational) fires
+  // centrally from insertInboundLead itself, same as every other Leads-inbox
+  // source; nothing to wire up here.
   insertInboundLead({
     businessId: business.id,
     source: "voice_agent",
@@ -62,9 +40,6 @@ export async function handleCreatePotentialLead(req: Request, res: Response): Pr
     message: [details, reason ? `(${reason})` : undefined].filter(Boolean).join(" ") || undefined,
     rawPayloadJson: JSON.stringify(req.body),
   });
-
-  const leadsUrl = `${req.protocol}://${req.get("host")}/app/${business.id}/leads`;
-  notifyCatchAllLead(business.id, business.name, leadsUrl, { name, phone, email, reason, message: details });
 
   const response = { success: true, confirmationMessage: "Got it — someone from our team will follow up with you." };
   logToolCall({ businessId: business.id, toolName: "create_potential_lead", phone, request: parsed.data, response, success: true });

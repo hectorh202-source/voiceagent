@@ -151,35 +151,45 @@ export async function sendWidgetLeadNotificationEmail(
   });
 }
 
-export interface CatchAllLeadNotification {
+export interface NewLeadNotification {
   businessName: string;
+  // Human-readable label for whatever produced this lead (e.g. "Website
+  // Form", "Google LSA", "AI Phone Agent") — see db/inboundLeads.ts's own
+  // small source-label map, kept in sync by hand with client/src/lib/
+  // format.ts's LEAD_SOURCE_LABEL.
+  sourceLabel: string;
   name?: string;
   phone?: string;
   email?: string;
-  // Why the call didn't produce a real ServiceTitan Lead/Job — surfaced so
-  // staff know what to do with this lead, not just that one exists.
+  address?: string;
+  // Why this didn't become a real ServiceTitan Lead/Job, when known (only
+  // ever populated by the AI phone agent's catch-all tool today) — surfaced
+  // so staff know what to do with this lead, not just that one exists.
   reason?: string;
   message?: string;
   leadsUrl?: string;
 }
 
-// Sent to a business each time its AI phone agent falls back to this
-// catch-all instead of successfully creating a ServiceTitan Lead/Job — see
-// tools/createPotentialLead.ts. Best-effort: callers wrap this in try/catch
-// so a mail failure never blocks recording the lead. Fields are caller-
-// supplied (via the LLM), so every one is HTML-escaped.
-export async function sendCatchAllLeadNotificationEmail(
+// Sent to a business every time a NEW row lands in its Leads inbox, from any
+// source except website_chat (which keeps its own separate, older
+// sendWidgetLeadNotificationEmail/notifyEnabled setting above — see
+// db/inboundLeads.ts's insertInboundLead for exactly where this fires and
+// why it's centralized there instead of once per lead source). Best-effort:
+// callers wrap this in try/catch so a mail failure never blocks recording
+// the lead. Fields are caller-supplied, so every one is HTML-escaped.
+export async function sendNewLeadNotificationEmail(
   toEmails: string[],
-  lead: CatchAllLeadNotification,
+  lead: NewLeadNotification,
   ccEmails: string[] = [],
 ): Promise<void> {
   const { transport, from } = getTransport();
 
-  const heading = "New lead from your AI phone agent";
+  const heading = `New lead — ${lead.sourceLabel}`;
   const rows: [string, string | undefined][] = [
     ["Name", lead.name],
     ["Phone", lead.phone],
     ["Email", lead.email],
+    ["Address", lead.address],
     ["Why no booking", lead.reason],
     ["Details", lead.message],
   ];
@@ -199,7 +209,7 @@ export async function sendCatchAllLeadNotificationEmail(
     heading,
     `
     <p style="color:#374151;font-size:14px;line-height:1.6;">
-      A caller couldn't be booked into a job or turned into a ServiceTitan lead during a call with your AI phone agent for <strong>${escapeHtml(lead.businessName)}</strong> — here's what was captured.
+      A new lead came in via <strong>${escapeHtml(lead.sourceLabel)}</strong> for <strong>${escapeHtml(lead.businessName)}</strong>.
     </p>
     <table style="border-collapse:collapse;margin:8px 0;">${rowsHtml || `<tr><td style="color:#6b7280;font-size:13px;">No contact details were captured.</td></tr>`}</table>
     ${linkHtml}
@@ -217,7 +227,7 @@ export async function sendCatchAllLeadNotificationEmail(
     from,
     to: toEmails.join(", "),
     ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
-    subject: `New AI phone agent lead — ${lead.businessName}`,
+    subject: `New lead — ${lead.sourceLabel} — ${lead.businessName}`,
     html,
     text: textLines.join("\n"),
   });

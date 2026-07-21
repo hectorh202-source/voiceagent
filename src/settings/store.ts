@@ -265,25 +265,31 @@ export function getRawOperationalSettings(businessId: number) {
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
     googleLeadFormWebhookSecretSet: !!getBusinessSetting(businessId, "operational.googleLeadFormWebhookSecret"),
     dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
-    catchAllLeadNotifyEnabled: isCatchAllLeadNotifyEnabled(businessId),
-    catchAllLeadNotifyEmail: getBusinessSetting(businessId, "operational.catchAllLeadNotifyEmail") ?? "",
-    catchAllLeadNotifyCc: getBusinessSetting(businessId, "operational.catchAllLeadNotifyCc") ?? "",
+    leadNotifyEnabled: isLeadNotifyEnabled(businessId),
+    leadNotifyEmail: getBusinessSetting(businessId, "operational.leadNotifyEmail") ?? "",
+    leadNotifyCc: getBusinessSetting(businessId, "operational.leadNotifyCc") ?? "",
   };
 }
 
-// Email alerting for the AI phone agent's catch-all lead tool (see
-// tools/createPotentialLead.ts) — off by default, same reasoning as the chat
-// widget's own notifyEnabled. Requires global SMTP to be configured.
-export function isCatchAllLeadNotifyEnabled(businessId: number): boolean {
-  return getBusinessSetting(businessId, "operational.catchAllLeadNotifyEnabled") === "true";
+// Email alerting for every Leads-inbox source EXCEPT website_chat, which
+// keeps its own separate, older notifyEnabled/notifyEmail/notifyCc setting
+// below (a business may already have that configured, and the two are
+// deliberately not merged — see the Leads-inbox notification design note).
+// Centralized in db/inboundLeads.ts's insertInboundLead() itself — every
+// source funnels through that one function, so a new lead always triggers
+// this regardless of which tool/webhook/poller created it, without every
+// call site needing to remember to wire it up individually. Off by default;
+// requires global SMTP to be configured.
+export function isLeadNotifyEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.leadNotifyEnabled") === "true";
 }
 
-export function getCatchAllLeadNotifyEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "operational.catchAllLeadNotifyEmail") ?? "");
+export function getLeadNotifyEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.leadNotifyEmail") ?? "");
 }
 
-export function getCatchAllLeadNotifyCcEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "operational.catchAllLeadNotifyCc") ?? "");
+export function getLeadNotifyCcEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.leadNotifyCc") ?? "");
 }
 
 // Cross-call memory by phone number (see docs/dynamic-memory.md) — default

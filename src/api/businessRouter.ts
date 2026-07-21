@@ -841,11 +841,11 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   if (body.dynamicMemoryEnabled !== undefined) {
     setBusinessSetting(business.id, "operational.dynamicMemoryEnabled", body.dynamicMemoryEnabled ? "true" : "false");
   }
-  if (body.catchAllLeadNotifyEnabled !== undefined) {
-    setBusinessSetting(business.id, "operational.catchAllLeadNotifyEnabled", body.catchAllLeadNotifyEnabled ? "true" : "false");
+  if (body.leadNotifyEnabled !== undefined) {
+    setBusinessSetting(business.id, "operational.leadNotifyEnabled", body.leadNotifyEnabled ? "true" : "false");
   }
-  maybeSetBusinessSetting(business.id, "operational.catchAllLeadNotifyEmail", body.catchAllLeadNotifyEmail);
-  maybeSetBusinessSetting(business.id, "operational.catchAllLeadNotifyCc", body.catchAllLeadNotifyCc);
+  maybeSetBusinessSetting(business.id, "operational.leadNotifyEmail", body.leadNotifyEmail);
+  maybeSetBusinessSetting(business.id, "operational.leadNotifyCc", body.leadNotifyCc);
 
   res.json({ success: true });
 });

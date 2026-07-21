@@ -103,6 +103,14 @@ This redesign also changed the app shell's own scrolling model (`client/src/inde
 
 All three write to `inbound_leads` via `insertInboundLead()` directly, not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
 
+## New-lead email notifications
+
+Every source above (plus `website_form`) shares one opt-in email alert, "Email me new leads" (`operational.leadNotifyEnabled`/`leadNotifyEmail`/`leadNotifyCc`, `/app/:businessId/settings/general` → Operational). It's centralized inside `db/inboundLeads.ts`'s `insertInboundLead()` itself, not called separately by each ingestion path — every call to that one function fires it (fire-and-forget, best-effort, never blocking the write or the caller's own response) whenever the lead is genuinely new. Concretely: a plain `INSERT` (no `external_id`, e.g. `website_form`/`voice_agent`) is always new; an upsert (`external_id` present, e.g. `google_lsa`'s poller) only counts as new the first time that `(business_id, source, external_id)` triple is ever seen — an existence check runs *before* the upsert specifically so a polling source's routine re-fetch of a lead it already recorded never re-sends the alert.
+
+**`website_chat` is the one deliberate exception** — it keeps its own older, separate `chatWidget.notifyEnabled`/`notifyEmail`/`notifyCc` setting (Chat Widget Settings page) and its own send call (`webhooks/leadIntake.ts`'s `notifyWidgetLead`), predating this shared design. `insertInboundLead()` explicitly skips its own alert for that one source so a chat-widget lead never double-emails.
+
+Centralizing this in the DB layer (rather than once per ingestion path) means a future new lead source gets this for free the moment it calls `insertInboundLead()` — no call site can forget to wire it up, the same reasoning that led `getLeadSourceLabel()` to become a single shared client-side helper instead of three separately-maintained copies.
+
 ## Deferred — Facebook Lead Ads
 
 Not fully designed here — the schema already accommodates it as a future `source` value with zero migration needed. Needs a Facebook App + Page connection per business, a `leadgen` webhook subscription, and a long-lived Page access token stored per business, plus Facebook App Review before it can run for real businesses. Would write to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`), same as the two sources above.

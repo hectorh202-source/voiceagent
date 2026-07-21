@@ -1,5 +1,20 @@
 import { db } from "./index";
 import { encryptField, encryptNullable, decryptField, decryptNullable } from "../lib/encryption";
+import { getBusinessById } from "./businesses";
+import { isLeadNotifyEnabled, getLeadNotifyEmails, getLeadNotifyCcEmails, getDashboardBaseUrl } from "../settings/store";
+import { sendNewLeadNotificationEmail } from "../settings/email";
+
+// Kept in sync by hand with client/src/lib/format.ts's own LEAD_SOURCE_LABEL —
+// this one only feeds the notification email's subject/heading, so a source
+// missing here just falls back to its raw value rather than breaking anything.
+const LEAD_SOURCE_LABEL: Record<string, string> = {
+  website_form: "Website Form",
+  website_chat: "Website Chat",
+  facebook_ads: "Facebook Ads",
+  google_ads: "Google Ads (Lead Form)",
+  google_lsa: "Google LSA",
+  voice_agent: "AI Phone Agent",
+};
 
 export interface InboundLeadRecord {
   id: number;
@@ -128,7 +143,58 @@ const insertWithoutExternalIdStmt = db.prepare(`
   VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @structuredFields, @rawPayloadJson, @callerIdChecked)
 `);
 
-export function insertInboundLead(entry: InboundLeadEntry): void {
+// Existence check for the externalId path, run BEFORE the upsert below —
+// this is what lets insertInboundLead tell a genuinely new lead apart from a
+// polling source (Google LSA) re-fetching one it's already recorded, so the
+// notification below only ever fires once per lead, not once per poll.
+const existsWithExternalIdStmt = db.prepare(
+  `SELECT 1 FROM inbound_leads WHERE business_id = ? AND source = ? AND external_id = ?`,
+);
+
+// Fire-and-forget — a mail failure (missing SMTP config, bad recipient, slow
+// server) must never affect recording the lead itself, which has already
+// happened by the time this is called.
+function notifyNewLead(entry: InboundLeadEntry): void {
+  if (entry.source === "website_chat") return; // has its own separate, older notify path — see webhooks/leadIntake.ts
+  if (!isLeadNotifyEnabled(entry.businessId)) return;
+  const recipients = getLeadNotifyEmails(entry.businessId);
+  const cc = getLeadNotifyCcEmails(entry.businessId);
+  const to = recipients.length > 0 ? recipients : cc;
+  const ccFinal = recipients.length > 0 ? cc : [];
+  if (to.length === 0) return;
+
+  const business = getBusinessById(entry.businessId);
+  if (!business) return;
+
+  const leadsUrl = `${getDashboardBaseUrl(entry.businessId)}/app/${entry.businessId}/leads`;
+  sendNewLeadNotificationEmail(
+    to,
+    {
+      businessName: business.name,
+      sourceLabel: LEAD_SOURCE_LABEL[entry.source] ?? entry.source,
+      name: entry.name ?? undefined,
+      phone: entry.phone ?? undefined,
+      email: entry.email ?? undefined,
+      address: entry.address ?? undefined,
+      message: entry.message ?? undefined,
+      leadsUrl,
+    },
+    ccFinal,
+  ).catch((error) => {
+    console.error("New lead notification email failed:", error instanceof Error ? error.message : error);
+  });
+}
+
+// Centralizing the notify-on-new-lead call here (rather than once per
+// ingestion path) means every current and future Leads-inbox source gets it
+// automatically just by calling this function — no call site can forget to
+// wire it up, the exact class of bug getLeadSourceLabel's own client-side
+// consolidation fixed for source labels.
+export function insertInboundLead(entry: InboundLeadEntry): { isNew: boolean } {
+  const isNew = entry.externalId
+    ? !existsWithExternalIdStmt.get(entry.businessId, entry.source, entry.externalId)
+    : true;
+
   const params = {
     businessId: entry.businessId,
     source: entry.source,
@@ -147,6 +213,9 @@ export function insertInboundLead(entry: InboundLeadEntry): void {
   } else {
     insertWithoutExternalIdStmt.run(params);
   }
+
+  if (isNew) notifyNewLead(entry);
+  return { isNew };
 }
 
 // The set of external_ids (for a business+source) that have already had a

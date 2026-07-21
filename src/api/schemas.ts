@@ -114,9 +114,9 @@ export const generalSettingsSchema = z.object({
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
   dynamicMemoryEnabled: z.boolean().optional(),
-  catchAllLeadNotifyEnabled: z.boolean().optional(),
-  catchAllLeadNotifyEmail: z.string().optional(),
-  catchAllLeadNotifyCc: z.string().optional(),
+  leadNotifyEnabled: z.boolean().optional(),
+  leadNotifyEmail: z.string().optional(),
+  leadNotifyCc: z.string().optional(),
 });
 
 // The OAuth Client ID/Secret and Developer Token this platform's Google Ads

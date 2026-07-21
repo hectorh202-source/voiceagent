@@ -245,9 +245,9 @@ export interface GeneralSettings {
     leadIntakeWebhookSecretSet: boolean;
     googleLeadFormWebhookSecretSet: boolean;
     dynamicMemoryEnabled: boolean;
-    catchAllLeadNotifyEnabled: boolean;
-    catchAllLeadNotifyEmail: string;
-    catchAllLeadNotifyCc: string;
+    leadNotifyEnabled: boolean;
+    leadNotifyEmail: string;
+    leadNotifyCc: string;
   };
   googleAds: {
     customerId: string;

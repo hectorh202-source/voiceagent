@@ -48,9 +48,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
   const [googleAdsRefreshToken, setGoogleAdsRefreshToken] = useState("");
   const [dynamicMemoryEnabled, setDynamicMemoryEnabled] = useState(false);
-  const [catchAllLeadNotifyEnabled, setCatchAllLeadNotifyEnabled] = useState(false);
-  const [catchAllLeadNotifyEmail, setCatchAllLeadNotifyEmail] = useState("");
-  const [catchAllLeadNotifyCc, setCatchAllLeadNotifyCc] = useState("");
+  const [leadNotifyEnabled, setLeadNotifyEnabled] = useState(false);
+  const [leadNotifyEmail, setLeadNotifyEmail] = useState("");
+  const [leadNotifyCc, setLeadNotifyCc] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -66,9 +66,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
     setTwilioPhoneNumber(data.operational.twilioPhoneNumber);
     setGoogleAdsCustomerId(data.googleAds.customerId);
     setDynamicMemoryEnabled(data.operational.dynamicMemoryEnabled);
-    setCatchAllLeadNotifyEnabled(data.operational.catchAllLeadNotifyEnabled);
-    setCatchAllLeadNotifyEmail(data.operational.catchAllLeadNotifyEmail);
-    setCatchAllLeadNotifyCc(data.operational.catchAllLeadNotifyCc);
+    setLeadNotifyEnabled(data.operational.leadNotifyEnabled);
+    setLeadNotifyEmail(data.operational.leadNotifyEmail);
+    setLeadNotifyCc(data.operational.leadNotifyCc);
   }, [data]);
 
   // A stray click on one of these silently breaks the integration rather
@@ -132,9 +132,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         googleAdsCustomerId: googleAdsCustomerId || undefined,
         googleAdsRefreshToken: googleAdsRefreshToken || undefined,
         dynamicMemoryEnabled,
-        catchAllLeadNotifyEnabled,
-        catchAllLeadNotifyEmail,
-        catchAllLeadNotifyCc,
+        leadNotifyEnabled,
+        leadNotifyEmail,
+        leadNotifyCc,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -445,23 +445,23 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
             <input
               type="checkbox"
-              checked={catchAllLeadNotifyEnabled}
-              onChange={(e) => setCatchAllLeadNotifyEnabled(e.target.checked)}
+              checked={leadNotifyEnabled}
+              onChange={(e) => setLeadNotifyEnabled(e.target.checked)}
             />
-            Email me AI phone agent catch-all leads
+            Email me new leads
           </label>
           <div className="form-hint">
-            When the agent's "create_potential_lead" tool is enabled and it fires — a call that couldn't produce a
-            ServiceTitan Lead/Job, for whatever reason — this business's Leads inbox gets a new entry regardless.
-            Turning this on also sends an email the moment it happens. Requires the platform's SMTP settings to be
-            configured in the global Admin Settings.
+            Fires for every new entry in this business's Leads inbox — website form, Facebook Ads, Google Ads Lead
+            Form, Google LSA, and the AI phone agent's catch-all tool — the moment it's created, regardless of which
+            of those produced it. Website chat keeps its own separate notification setting on the Chat Widget page.
+            Requires the platform's SMTP settings to be configured in the global Admin Settings.
           </div>
         </div>
         <div className="form-row">
           <label>Notification email</label>
           <input
-            value={catchAllLeadNotifyEmail}
-            onChange={(e) => setCatchAllLeadNotifyEmail(e.target.value)}
+            value={leadNotifyEmail}
+            onChange={(e) => setLeadNotifyEmail(e.target.value)}
             placeholder="leads@yourbusiness.com, owner@yourbusiness.com"
           />
           <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
@@ -469,8 +469,8 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         <div className="form-row">
           <label>CC (optional)</label>
           <input
-            value={catchAllLeadNotifyCc}
-            onChange={(e) => setCatchAllLeadNotifyCc(e.target.value)}
+            value={leadNotifyCc}
+            onChange={(e) => setLeadNotifyCc(e.target.value)}
             placeholder="office@yourbusiness.com"
           />
           <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
