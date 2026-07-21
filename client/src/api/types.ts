@@ -332,6 +332,10 @@ export interface InboundLeadListRow {
   address: string | null;
   email: string | null;
   message: string | null;
+  // Structured triage fields the chat widget's assistant recorded via its
+  // update_state tool (service type, urgency, preferred timing, etc.). Empty
+  // for every non-chat lead and for chat leads that recorded nothing.
+  structuredFields: { label: string; value: string }[];
   status: LeadStatus;
   isRead: boolean;
 }

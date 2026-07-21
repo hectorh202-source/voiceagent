@@ -328,9 +328,28 @@ function parseLeadRow(record: ReturnType<typeof listInboundLeads>[number]) {
     address: record.address_override ?? record.address,
     email: record.email_override ?? record.email,
     message: record.message,
+    // Structured triage fields the chat widget recorded (update_state). Stored
+    // as a JSON string; parsed to an array here, [] if absent or malformed so
+    // the client can render it uniformly.
+    structuredFields: parseStructuredFields(record.structured_fields),
     status: record.status,
     isRead: !!record.is_read,
   };
+}
+
+function parseStructuredFields(raw: string | null): { label: string; value: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (f): f is { label: string; value: string } =>
+            f && typeof f.label === "string" && typeof f.value === "string",
+        )
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 apiBusinessRouter.get("/leads", (req, res) => {

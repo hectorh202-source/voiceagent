@@ -260,6 +260,23 @@ export function LeadDetailPage({ businessId, leadId }: { businessId: string; lea
           </div>
         </div>
 
+        {data.structuredFields.length > 0 && (
+          <div className="info-section">
+            {/* Structured triage details the website chat assistant recorded
+                as the conversation went (its update_state tool), shown as a
+                clean list so staff don't have to read the whole transcript. */}
+            <div className="info-section-title">Details captured</div>
+            {data.structuredFields.map((field, i) => (
+              <div className="info-row" key={i}>
+                <div className="info-body">
+                  <div className="info-label">{field.label}</div>
+                  <div className="info-value">{field.value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {data.message && (
           <div className="info-section">
             <div className="info-section-title">Message</div>

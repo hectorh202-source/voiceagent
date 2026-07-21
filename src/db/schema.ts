@@ -179,7 +179,14 @@ export function bootstrapSchema(db: DatabaseSync): void {
       -- real Twilio account (9,717 lookups in under 24 hours). This column
       -- makes the lookup a true one-shot-per-lead, ever, regardless of
       -- whether it succeeded.
-      caller_id_checked INTEGER NOT NULL DEFAULT 0
+      caller_id_checked INTEGER NOT NULL DEFAULT 0,
+      -- Encrypted JSON array of {label, value} pairs the chat widget's
+      -- assistant recorded via its update_state tool (service type, urgency,
+      -- preferred timing, etc.) — structured triage data shown as a list in the
+      -- leads inbox, distinct from the free-text message column. Encrypted like
+      -- the other visitor-supplied columns since a value can carry PII. Null for
+      -- every non-chat lead and for chat leads that recorded nothing.
+      structured_fields TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_inbound_leads_business_received ON inbound_leads(business_id, received_at);

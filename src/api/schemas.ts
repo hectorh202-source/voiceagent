@@ -227,6 +227,18 @@ export const leadIntakeSchema = z.object({
   email: z.string().min(1).optional(),
   message: z.string().optional(),
   externalId: z.string().optional(),
+  // Structured label/value details the chat widget's assistant recorded via its
+  // update_state tool. Only website_chat sends these; form sources never do.
+  // Bounded so a malformed/oversized payload can't bloat a lead row.
+  structuredFields: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(80),
+        value: z.string().trim().min(1).max(2000),
+      }),
+    )
+    .max(40)
+    .optional(),
 });
 
 // The AI phone agent's catch-all: whenever a call can't produce a real

@@ -13,6 +13,10 @@ export interface InboundLeadRecord {
   address: string | null;
   email: string | null;
   message: string | null;
+  // Encrypted JSON array of {label, value} the chat widget recorded via its
+  // update_state tool. Null for non-chat leads. Decrypted to a string here;
+  // callers (businessRouter's parseLeadRow) JSON.parse it for display.
+  structured_fields: string | null;
   raw_payload_json: string;
   status: string;
   is_read: number;
@@ -45,6 +49,7 @@ function decryptInboundLead(record: InboundLeadRecord): InboundLeadRecord {
     address: decryptNullable(record.address),
     email: decryptNullable(record.email),
     message: decryptNullable(record.message),
+    structured_fields: decryptNullable(record.structured_fields),
     raw_payload_json: decryptField(record.raw_payload_json),
     internal_notes: decryptNullable(record.internal_notes),
     name_override: decryptNullable(record.name_override),
@@ -68,6 +73,9 @@ export interface InboundLeadEntry {
   address?: string | null;
   email?: string | null;
   message?: string | null;
+  // JSON string of the widget's update_state fields (already serialized by the
+  // caller). Encrypted at rest here. Omit/null for non-chat leads.
+  structuredFields?: string | null;
   rawPayloadJson: string;
   // Whether a Caller ID lookup was attempted for this lead on THIS
   // ingestion pass — only meaningful the first time a row is created (the
@@ -101,8 +109,8 @@ export interface InboundLeadEntry {
 // must never reset a real "already checked" back to 0. See schema.ts's
 // comment for the real incident this whole column exists to prevent.
 const insertWithExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, address, email, message, raw_payload_json, caller_id_checked)
-  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @address, @email, @message, @rawPayloadJson, @callerIdChecked)
+  INSERT INTO inbound_leads (business_id, source, source_detail, external_id, name, phone, address, email, message, structured_fields, raw_payload_json, caller_id_checked)
+  VALUES (@businessId, @source, @sourceDetail, @externalId, @name, @phone, @address, @email, @message, @structuredFields, @rawPayloadJson, @callerIdChecked)
   ON CONFLICT(business_id, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
     source_detail = excluded.source_detail,
     name = excluded.name,
@@ -110,13 +118,14 @@ const insertWithExternalIdStmt = db.prepare(`
     address = excluded.address,
     email = excluded.email,
     message = excluded.message,
+    structured_fields = excluded.structured_fields,
     raw_payload_json = excluded.raw_payload_json,
     caller_id_checked = MAX(inbound_leads.caller_id_checked, excluded.caller_id_checked)
 `);
 
 const insertWithoutExternalIdStmt = db.prepare(`
-  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, address, email, message, raw_payload_json, caller_id_checked)
-  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @rawPayloadJson, @callerIdChecked)
+  INSERT INTO inbound_leads (business_id, source, source_detail, name, phone, address, email, message, structured_fields, raw_payload_json, caller_id_checked)
+  VALUES (@businessId, @source, @sourceDetail, @name, @phone, @address, @email, @message, @structuredFields, @rawPayloadJson, @callerIdChecked)
 `);
 
 export function insertInboundLead(entry: InboundLeadEntry): void {
@@ -129,6 +138,7 @@ export function insertInboundLead(entry: InboundLeadEntry): void {
     address: encryptNullable(entry.address ?? null),
     email: encryptNullable(entry.email ?? null),
     message: encryptNullable(entry.message ?? null),
+    structuredFields: encryptNullable(entry.structuredFields ?? null),
     rawPayloadJson: encryptField(entry.rawPayloadJson),
     callerIdChecked: entry.callerIdChecked ? 1 : 0,
   };

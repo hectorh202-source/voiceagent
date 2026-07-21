@@ -82,6 +82,9 @@ export interface WidgetLeadNotification {
   email?: string;
   address?: string;
   message?: string;
+  // Structured triage details the widget's assistant recorded (service type,
+  // urgency, etc.). Rendered as extra rows above the free-text details.
+  structuredFields?: { label: string; value: string }[];
   // Deep link into the Leads inbox for this business, when known.
   leadsUrl?: string;
 }
@@ -98,11 +101,14 @@ export async function sendWidgetLeadNotificationEmail(
 
   const booked = lead.sourceDetail === "booked";
   const heading = booked ? "New appointment booked" : "New lead from your website chat";
+  // Contact fields first, then whatever structured fields the assistant
+  // recorded, then the free-text details/transcript last.
   const rows: [string, string | undefined][] = [
     ["Name", lead.name],
     ["Phone", lead.phone],
     ["Email", lead.email],
     ["Address", lead.address],
+    ...(lead.structuredFields ?? []).map(({ label, value }): [string, string | undefined] => [label, value]),
     ["Details", lead.message],
   ];
   const rowsHtml = rows

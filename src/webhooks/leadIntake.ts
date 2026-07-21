@@ -18,7 +18,15 @@ function notifyWidgetLead(
   businessId: number,
   businessName: string,
   leadsUrl: string,
-  lead: { sourceDetail?: string; name?: string; phone?: string; email?: string; address?: string; message?: string },
+  lead: {
+    sourceDetail?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    message?: string;
+    structuredFields?: { label: string; value: string }[];
+  },
 ): void {
   if (!isChatWidgetNotifyEnabled(businessId)) return;
   const recipients = getChatWidgetNotifyEmails(businessId);
@@ -69,7 +77,7 @@ const FIELD_SUBSTRINGS = {
 // are this endpoint's own meta fields (read explicitly below) — excluded so a
 // caller that sends them as body keys (e.g. the chat-widget service) doesn't
 // get them appended into the visible message dump.
-const IGNORED_KEYS = new Set(["form_id", "form_name", "source", "sourceDetail", "externalId"]);
+const IGNORED_KEYS = new Set(["form_id", "form_name", "source", "sourceDetail", "externalId", "structuredFields"]);
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
@@ -180,6 +188,10 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     email: extractField(body, "email", usedKeys),
     message: extractMessageOrDump(body, usedKeys),
     externalId: typeof body.externalId === "string" ? body.externalId : undefined,
+    // Structured triage fields from the chat widget's update_state tool — an
+    // array of {label, value}, read explicitly (never fuzzy-matched). Zod
+    // validates/bounds the shape; anything malformed is dropped by safeParse.
+    structuredFields: Array.isArray(body.structuredFields) ? body.structuredFields : undefined,
   };
 
   const parsed = leadIntakeSchema.safeParse(normalized);
@@ -192,7 +204,7 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const { source, sourceDetail, name, phone, address, email, message, externalId } = parsed.data;
+  const { source, sourceDetail, name, phone, address, email, message, externalId, structuredFields } = parsed.data;
   insertInboundLead({
     businessId: business.id,
     source,
@@ -203,6 +215,8 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     address,
     email,
     message,
+    // Stored as a JSON string; null when the widget recorded nothing.
+    structuredFields: structuredFields && structuredFields.length ? JSON.stringify(structuredFields) : null,
     rawPayloadJson: JSON.stringify(req.body),
   });
 
@@ -210,7 +224,15 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
   // (not awaited) so the webhook still responds immediately below.
   if (source === WIDGET_SOURCE) {
     const leadsUrl = `${req.protocol}://${req.get("host")}/app/${business.id}/leads`;
-    notifyWidgetLead(business.id, business.name, leadsUrl, { sourceDetail, name, phone, email, address, message });
+    notifyWidgetLead(business.id, business.name, leadsUrl, {
+      sourceDetail,
+      name,
+      phone,
+      email,
+      address,
+      message,
+      structuredFields,
+    });
   }
 
   // Deliberately 200, not the more conventional 201 for a created resource —
