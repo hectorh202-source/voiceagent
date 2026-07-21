@@ -2,6 +2,35 @@ import type { Request, Response } from "express";
 import { leadIntakeSchema } from "../api/schemas";
 import { insertInboundLead } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
+import { isChatWidgetNotifyEnabled, getChatWidgetNotifyEmails } from "../settings/store";
+import { sendWidgetLeadNotificationEmail } from "../settings/email";
+
+// The source value the chat-widget service tags its leads with (see the widget
+// repo's engine.ts). Email alerts are scoped to this source only — the operator
+// asked for "each request generated from this widget", not every form lead.
+const WIDGET_SOURCE = "website_chat";
+
+// Fire-and-forget email alert for a widget-generated request. Deliberately not
+// awaited by the caller and swallows its own errors: a missing SMTP config, a
+// bad recipient, or a slow mail server must never delay or fail the webhook
+// response that records the lead.
+function notifyWidgetLead(
+  businessId: number,
+  businessName: string,
+  leadsUrl: string,
+  lead: { sourceDetail?: string; name?: string; phone?: string; email?: string; address?: string; message?: string },
+): void {
+  if (!isChatWidgetNotifyEnabled(businessId)) return;
+  const recipients = getChatWidgetNotifyEmails(businessId);
+  if (recipients.length === 0) return;
+
+  sendWidgetLeadNotificationEmail(recipients, { businessName, leadsUrl, ...lead }).catch((error) => {
+    console.error(
+      "Widget lead notification email failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+}
 
 // Confirmed against a real Elementor Pro Forms submission: every client's
 // form is labeled differently, and there's no universal fixed field name to
@@ -171,6 +200,13 @@ export async function handleLeadIntake(req: Request, res: Response): Promise<voi
     message,
     rawPayloadJson: JSON.stringify(req.body),
   });
+
+  // Only widget-generated requests trigger the opt-in email alert. Fired here
+  // (not awaited) so the webhook still responds immediately below.
+  if (source === WIDGET_SOURCE) {
+    const leadsUrl = `${req.protocol}://${req.get("host")}/app/${business.id}/leads`;
+    notifyWidgetLead(business.id, business.name, leadsUrl, { sourceDetail, name, phone, email, address, message });
+  }
 
   // Deliberately 200, not the more conventional 201 for a created resource —
   // confirmed Elementor Pro Forms' Webhook action only treats a literal 200

@@ -523,6 +523,25 @@ export function getChatWidgetSystemPromptExtras(businessId: number): string {
   return getBusinessSetting(businessId, "chatWidget.systemPromptExtras") ?? "";
 }
 
+// Email alerting: when on, every request the widget generates (a booked job or
+// a forwarded lead) also emails the business. Off by default so an operator
+// opts in rather than being surprised by mail. Requires global SMTP to be
+// configured (Admin Settings) — the same transport used for password resets.
+export function isChatWidgetNotifyEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "chatWidget.notifyEnabled") === "true";
+}
+
+// One or more recipient addresses (comma-separated) for widget lead alerts.
+// A dedicated field rather than the login email, so a business can route
+// alerts to whoever actually handles new leads. "" when unset.
+export function getChatWidgetNotifyEmails(businessId: number): string[] {
+  const raw = getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "";
+  return raw
+    .split(/[,;\s]+/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+}
+
 export interface ChatWidgetConfig {
   enabled: boolean;
   embedKey: string;
@@ -567,6 +586,8 @@ export function getRawChatWidgetSettings(businessId: number) {
     ...getChatWidgetBranding(businessId),
     quickPrompts: getChatWidgetQuickPrompts(businessId),
     systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
+    notifyEnabled: isChatWidgetNotifyEnabled(businessId),
+    notifyEmail: getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "",
   };
 }
 

@@ -34,6 +34,8 @@ export function ChatWidgetSettingsPage() {
   const [quickPrompts, setQuickPrompts] = useState("");
   const [allowedOrigins, setAllowedOrigins] = useState("");
   const [systemPromptExtras, setSystemPromptExtras] = useState("");
+  const [notifyEnabled, setNotifyEnabled] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
@@ -50,6 +52,8 @@ export function ChatWidgetSettingsPage() {
     setQuickPrompts(data.quickPrompts.join("\n"));
     setAllowedOrigins(data.allowedOrigins.join("\n"));
     setSystemPromptExtras(data.systemPromptExtras);
+    setNotifyEnabled(data.notifyEnabled);
+    setNotifyEmail(data.notifyEmail);
   }, [data]);
 
   const saveMutation = useMutation({
@@ -72,6 +76,8 @@ export function ChatWidgetSettingsPage() {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean),
+        notifyEnabled,
+        notifyEmail,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -202,6 +208,29 @@ export function ChatWidgetSettingsPage() {
             placeholder="Services offered, service area, hours, tone, anything the assistant should know or say…"
           />
           <div className="form-hint">Added to the assistant's system prompt. Don't put secrets here.</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Email notifications</h2>
+        <p className="form-hint">
+          Get an email every time the widget generates a request, whether it books a job or forwards a lead. Requires
+          the platform's SMTP settings to be configured in the global Admin Settings.
+        </p>
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input type="checkbox" checked={notifyEnabled} onChange={(e) => setNotifyEnabled(e.target.checked)} />
+            Email me new widget requests
+          </label>
+        </div>
+        <div className="form-row">
+          <label>Notification email</label>
+          <input
+            value={notifyEmail}
+            onChange={(e) => setNotifyEmail(e.target.value)}
+            placeholder="leads@clientsite.com"
+          />
+          <div className="form-hint">Separate multiple addresses with commas. Leave blank to send nowhere.</div>
         </div>
       </div>
 

@@ -298,6 +298,11 @@ export const chatWidgetSettingsSchema = z.object({
   quickPrompts: z.array(z.string()).optional(),
   allowedOrigins: z.array(z.string()).optional(),
   systemPromptExtras: z.string().optional(),
+  // Email alerts for widget-generated requests. notifyEmail may hold several
+  // comma-separated addresses; validated loosely here (each recipient checked
+  // at send time) since it's a plain editable field, not a credential.
+  notifyEnabled: z.boolean().optional(),
+  notifyEmail: z.string().optional(),
 });
 
 // The shared knowledge base (docs/knowledge-base.md). Documents are stored

@@ -866,6 +866,12 @@ apiBusinessRouter.put("/settings/chat-widget", requireApiPlatformAdmin, (req, re
   if (body.allowedOrigins) {
     setBusinessSetting(business.id, "chatWidget.allowedOrigins", JSON.stringify(normalizeOrigins(body.allowedOrigins)));
   }
+  if (body.notifyEnabled !== undefined) {
+    setBusinessSetting(business.id, "chatWidget.notifyEnabled", body.notifyEnabled ? "true" : "false");
+  }
+  if (body.notifyEmail !== undefined) {
+    setBusinessSetting(business.id, "chatWidget.notifyEmail", body.notifyEmail.trim());
+  }
 
   res.json({ success: true });
 });

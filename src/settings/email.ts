@@ -64,6 +64,85 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string):
   await transport.sendMail({ from, to: toEmail, subject: "Reset your password", html, text });
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export interface WidgetLeadNotification {
+  businessName: string;
+  // "booked" when the widget booked a real appointment, "lead" when it
+  // forwarded the visitor for staff to follow up. Anything else renders plainly.
+  sourceDetail?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  message?: string;
+  // Deep link into the Leads inbox for this business, when known.
+  leadsUrl?: string;
+}
+
+// Sent to a business each time its chat widget produces a request. Best-effort:
+// callers wrap this in try/catch so a mail failure never blocks recording the
+// lead. Lead fields are visitor-supplied, so every one is HTML-escaped.
+export async function sendWidgetLeadNotificationEmail(
+  toEmails: string[],
+  lead: WidgetLeadNotification,
+): Promise<void> {
+  const { transport, from } = getTransport();
+
+  const booked = lead.sourceDetail === "booked";
+  const heading = booked ? "New appointment booked" : "New lead from your website chat";
+  const rows: [string, string | undefined][] = [
+    ["Name", lead.name],
+    ["Phone", lead.phone],
+    ["Email", lead.email],
+    ["Address", lead.address],
+    ["Details", lead.message],
+  ];
+  const rowsHtml = rows
+    .filter(([, value]) => value && value.trim())
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;color:#1a1d23;font-size:14px;">${escapeHtml(value!.trim())}</td></tr>`,
+    )
+    .join("");
+
+  const linkHtml = lead.leadsUrl
+    ? `<a href="${escapeHtml(lead.leadsUrl)}" style="display:inline-block;margin:16px 0 0;padding:12px 24px;background:#3b6ef6;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">View in Leads inbox</a>`
+    : "";
+
+  const html = wrapEmailHtml(
+    heading,
+    `
+    <p style="color:#374151;font-size:14px;line-height:1.6;">
+      ${booked ? "Your website chat assistant just booked an appointment" : "Your website chat assistant just captured a new lead"} for <strong>${escapeHtml(lead.businessName)}</strong>.
+    </p>
+    <table style="border-collapse:collapse;margin:8px 0;">${rowsHtml || `<tr><td style="color:#6b7280;font-size:13px;">No contact details were captured.</td></tr>`}</table>
+    ${linkHtml}
+    `,
+  );
+
+  const textLines = [
+    heading,
+    `Business: ${lead.businessName}`,
+    ...rows.filter(([, v]) => v && v.trim()).map(([label, v]) => `${label}: ${v!.trim()}`),
+    lead.leadsUrl ? `\nView in Leads inbox: ${lead.leadsUrl}` : "",
+  ].filter(Boolean);
+
+  await transport.sendMail({
+    from,
+    to: toEmails.join(", "),
+    subject: booked ? `New appointment booked — ${lead.businessName}` : `New website lead — ${lead.businessName}`,
+    html,
+    text: textLines.join("\n"),
+  });
+}
+
 export async function sendTestEmail(toEmail: string): Promise<void> {
   const { transport, from } = getTransport();
   const html = wrapEmailHtml(
