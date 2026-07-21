@@ -74,6 +74,11 @@ const SOURCE_DETAIL_LABEL: Record<string, string> = {
   // just forwarded a lead for staff to schedule (see src/chat/engine.ts).
   booked: "Booked",
   lead: "Lead",
+  // google_ads (Lead Form Extension) sub-detail: Google's own lead_source
+  // field — a form attached to a regular ad vs. a conversational (chat-style)
+  // ad experience, both delivered through the same webhook.
+  LEAD_FORM: "Lead Form",
+  CONVERSATIONAL_AGENT: "Conversational Agent",
 };
 
 // Single shared source label, used by LeadsPage/LeadsFiltersPanel/

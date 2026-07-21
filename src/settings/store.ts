@@ -263,6 +263,7 @@ export function getRawOperationalSettings(businessId: number) {
     // mapping stored anywhere.
     twilioPhoneNumber: getBusinessSetting(businessId, "operational.twilioPhoneNumber") ?? "",
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
+    googleLeadFormWebhookSecretSet: !!getBusinessSetting(businessId, "operational.googleLeadFormWebhookSecret"),
     dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
   };
 }

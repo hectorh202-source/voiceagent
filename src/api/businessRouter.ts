@@ -765,6 +765,7 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.postCallWebhookSecret", body.postCallWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.twilioPhoneNumber", body.twilioPhoneNumber);
   maybeSetBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", body.leadIntakeWebhookSecret);
+  maybeSetBusinessSetting(business.id, "operational.googleLeadFormWebhookSecret", body.googleLeadFormWebhookSecret);
   maybeSetBusinessSetting(business.id, "googleAds.customerId", body.googleAdsCustomerId);
   maybeSetBusinessSetting(business.id, "googleAds.refreshToken", body.googleAdsRefreshToken);
   // Checkbox-backed, not a secret — same "always write, no blank state to
@@ -787,6 +788,13 @@ apiBusinessRouter.post("/settings/general/generate-lead-intake-secret", requireA
   const business = req.business!;
   const secret = crypto.randomBytes(24).toString("hex");
   setBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", secret);
+  res.json({ secret });
+});
+
+apiBusinessRouter.post("/settings/general/generate-google-lead-form-secret", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const secret = crypto.randomBytes(24).toString("hex");
+  setBusinessSetting(business.id, "operational.googleLeadFormWebhookSecret", secret);
   res.json({ secret });
 });
 

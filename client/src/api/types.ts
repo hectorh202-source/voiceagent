@@ -243,6 +243,7 @@ export interface GeneralSettings {
     dashboardBaseUrl: string;
     twilioPhoneNumber: string;
     leadIntakeWebhookSecretSet: boolean;
+    googleLeadFormWebhookSecretSet: boolean;
     dynamicMemoryEnabled: boolean;
   };
   googleAds: {

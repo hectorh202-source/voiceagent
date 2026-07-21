@@ -44,6 +44,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [postCallWebhookSecret, setPostCallWebhookSecret] = useState("");
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("");
   const [leadIntakeWebhookSecret, setLeadIntakeWebhookSecret] = useState("");
+  const [googleLeadFormWebhookSecret, setGoogleLeadFormWebhookSecret] = useState("");
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
   const [googleAdsRefreshToken, setGoogleAdsRefreshToken] = useState("");
   const [dynamicMemoryEnabled, setDynamicMemoryEnabled] = useState(false);
@@ -121,6 +122,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         postCallWebhookSecret: postCallWebhookSecret || undefined,
         twilioPhoneNumber: twilioPhoneNumber || undefined,
         leadIntakeWebhookSecret: leadIntakeWebhookSecret || undefined,
+        googleLeadFormWebhookSecret: googleLeadFormWebhookSecret || undefined,
         googleAdsCustomerId: googleAdsCustomerId || undefined,
         googleAdsRefreshToken: googleAdsRefreshToken || undefined,
         dynamicMemoryEnabled,
@@ -134,6 +136,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
       setToolWebhookSecret("");
       setPostCallWebhookSecret("");
       setLeadIntakeWebhookSecret("");
+      setGoogleLeadFormWebhookSecret("");
       setGoogleAdsRefreshToken("");
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
@@ -143,7 +146,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   // and the just-generated secret (if any) waiting to be shown in
   // SecretRevealModal — both replace the old window.confirm()/inline-text
   // flow with in-app modals matching the rest of the design system.
-  const [confirmRegenerate, setConfirmRegenerate] = useState<"tool" | "leadIntake" | null>(null);
+  const [confirmRegenerate, setConfirmRegenerate] = useState<"tool" | "leadIntake" | "googleLeadForm" | null>(null);
   const [revealedSecret, setRevealedSecret] = useState<{ title: string; secret: string; description: string } | null>(null);
 
   const generateSecretMutation = useMutation({
@@ -166,6 +169,19 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         title: "New lead intake secret",
         secret: res.secret,
         description: "Copy this into whatever sends form/chat leads now — it will be masked after you leave this page.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
+    },
+  });
+
+  const generateGoogleLeadFormSecretMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ secret: string }>(`/api/businesses/${businessId}/settings/general/generate-google-lead-form-secret`),
+    onSuccess: (res) => {
+      setRevealedSecret({
+        title: "New Google Lead Form webhook key",
+        secret: res.secret,
+        description: "Paste this into Google Ads' \"Webhook key\" field now — it will be masked after you leave this page.",
       });
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
@@ -364,6 +380,43 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
           </div>
         </div>
         <div className="form-row">
+          <label>
+            Google Lead Form webhook key{" "}
+            {data.operational.googleLeadFormWebhookSecretSet && <span className="muted">(set — leave blank to keep)</span>}
+          </label>
+          <input
+            type="password"
+            value={googleLeadFormWebhookSecret}
+            onChange={(e) => setGoogleLeadFormWebhookSecret(e.target.value)}
+            placeholder={data.operational.googleLeadFormWebhookSecretSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+            autoComplete="off"
+          />
+          <div className="form-hint">
+            <button
+              className="link-btn"
+              onClick={() => {
+                if (data.operational.googleLeadFormWebhookSecretSet) {
+                  setConfirmRegenerate("googleLeadForm");
+                } else {
+                  generateGoogleLeadFormSecretMutation.mutate();
+                }
+              }}
+            >
+              Generate a new secret
+            </button>
+          </div>
+          <div className="form-hint">
+            For Google Ads Lead Form Extensions (a different product from Local Services Ads above) — this is a real
+            Google-side webhook, not a poller. In Google Ads, open the lead form asset → "Export leads" → "Other data
+            integration options" → "Webhook integration", and set:
+            <br />
+            Webhook URL: <code>{`${window.location.origin}/b/${businessId}/webhooks/google-lead-form`}</code>
+            <br />
+            Webhook key: the secret above. Google isn't guaranteed to deliver a lead exactly once, so re-deliveries of
+            the same lead are handled safely.
+          </div>
+        </div>
+        <div className="form-row">
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
             <input
               type="checkbox"
@@ -475,6 +528,18 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
           onConfirm={() => {
             setConfirmRegenerate(null);
             generateLeadIntakeSecretMutation.mutate();
+          }}
+        />
+      )}
+      {confirmRegenerate === "googleLeadForm" && (
+        <ConfirmDialog
+          title="Replace the Google Lead Form webhook key?"
+          message="Google Ads is currently configured with the existing key for this lead form's webhook. Replacing it now will immediately invalidate that key — Google will start getting rejected (and retrying) until you paste the new one into Google Ads' Webhook integration settings too."
+          confirmLabel="Generate new secret"
+          onCancel={() => setConfirmRegenerate(null)}
+          onConfirm={() => {
+            setConfirmRegenerate(null);
+            generateGoogleLeadFormSecretMutation.mutate();
           }}
         />
       )}

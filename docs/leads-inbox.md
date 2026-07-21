@@ -1,6 +1,6 @@
 # Leads inbox
 
-A unified inbox — `https://<your-domain>/app/:businessId/leads` — aggregating a business's raw inbound leads from every one of its own lead sources (website contact forms, website chat widgets, and eventually Facebook Lead Ads / Google Ads lead forms) into one place, with a manual triage pipeline (status stages, read/unread, internal notes).
+A unified inbox — `https://<your-domain>/app/:businessId/leads` — aggregating a business's raw inbound leads from every one of its own lead sources (website contact forms, website chat widgets, Google Local Services Ads, Google Ads Lead Form Extensions, and eventually Facebook Lead Ads) into one place, with a manual triage pipeline (status stages, read/unread, internal notes).
 
 Scoped to one business at a time, same as every other section of this app — see [architecture-overview.md](architecture-overview.md) for the platform's multi-business model.
 
@@ -95,15 +95,16 @@ The secret lives at `operational.leadIntakeWebhookSecret` (business-scoped, encr
 
 This redesign also changed the app shell's own scrolling model (`client/src/index.css`): `.content` is now the app's real scroll container (`flex:1; min-height:0; overflow-y:auto`) instead of the whole document/window scrolling, so the sidebar and topbar stay fixed while any page's content scrolls — needed so the Leads page's two panes can scroll independently (list scrolls, detail scrolls, each bounded to the pane's own height), the same trick `CallDetailPage.tsx`'s sidebar+main split already used inside its modal, just now available to a normal (non-modal) page too. Functionally invisible on every other page that doesn't overflow its viewport.
 
-## Deferred — Facebook Lead Ads, Google Local Services Ads, and Google Ads Lead Form Extension
+## Built — Google Local Services Ads and Google Ads Lead Form Extension
 
-Three real, separate integrations, not fully designed here — the schema already accommodates each as its own future `source` value with zero migration needed:
+- **Google Local Services Ads (`google_lsa`)** — live, a polling integration against Google's Ads API — see [google-lsa-leads.md](google-lsa-leads.md).
+- **Google Ads Lead Form Extension (`google_ads`)** — a *different* Google product from LSA (a lead-gen form attached to a regular search/display ad, not the Local Services Ads product), built as a real Google-side webhook rather than a poller — see [google-lead-form-leads.md](google-lead-form-leads.md).
 
-- **Facebook Lead Ads** — needs a Facebook App + Page connection per business, a `leadgen` webhook subscription, and a long-lived Page access token stored per business, plus Facebook App Review before it can run for real businesses.
-- **Google Local Services Ads (`google_lsa`)** — in progress; settings/schema plumbing (credential storage, the `google_lsa` source value, the upsert semantics a polling source needs) is built, real polling/ingestion is not yet — see [google-lsa-leads.md](google-lsa-leads.md) for the full design and what's still blocking it.
-- **Google Ads Lead Form Extension (`google_ads`)** — a *different* Google product from LSA (a lead-gen form attached to a regular search/display ad, not the Local Services Ads product), still fully deferred and not designed in any detail. Would need an OAuth client + per-business refresh token (likely reusable from the LSA credentials above, since both are the same underlying Google Ads account), then either a Lead Form webhook (Google-side push, requires linking the form) or its own GAQL polling query against a different resource than `local_services_lead`.
+Both write to `inbound_leads` via `insertInboundLead()` directly, not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
 
-Whenever any of these gets built, it writes to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`/`"google_lsa"`/`"google_ads"`), not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
+## Deferred — Facebook Lead Ads
+
+Not fully designed here — the schema already accommodates it as a future `source` value with zero migration needed. Needs a Facebook App + Page connection per business, a `leadgen` webhook subscription, and a long-lived Page access token stored per business, plus Facebook App Review before it can run for real businesses. Would write to `inbound_leads` via `insertInboundLead()` directly (`source: "facebook_ads"`), same as the two sources above.
 
 ## Verified
 

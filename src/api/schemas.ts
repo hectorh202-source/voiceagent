@@ -110,6 +110,7 @@ export const generalSettingsSchema = z.object({
   postCallWebhookSecret: z.string().optional(),
   twilioPhoneNumber: z.string().optional(),
   leadIntakeWebhookSecret: z.string().optional(),
+  googleLeadFormWebhookSecret: z.string().optional(),
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
   dynamicMemoryEnabled: z.boolean().optional(),
