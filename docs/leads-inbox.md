@@ -31,7 +31,7 @@ CREATE TABLE inbound_leads (
 );
 ```
 
-`source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads` | `google_lsa`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
+`source` (`website_form` | `website_chat` | `facebook_ads` | `google_ads` | `google_lsa` | `voice_agent`) and `status` (`new` | `contacted` | `qualified` | `won` | `lost`) are plain unconstrained `TEXT`, validated only at the Zod layer (`src/api/schemas.ts`'s `LEAD_SOURCE_VALUES`/`LEAD_STATUS_VALUES`) — same reasoning as `elevenlabs_calls.call_reason`/`status_override` elsewhere: a new value never needs a migration. Unlike Calls' Bookability, there's no auto-derived value to override here — every lead just starts at `new` and is progressed manually, so `status` is a single plain column, not an override/auto pair.
 
 `source_detail` is an optional, plain (unencrypted — not PII) sub-classification within a source, added once Google LSA leads shipped: it holds Google's real `lead_type` (`PHONE_CALL`/`MESSAGE`), null for every other source. Without it, the client had no way to distinguish a Google LSA phone-call lead from a Google LSA message lead in the Leads list — both would otherwise just show "Google LSA." Backfilled via `src/db/migrateInboundLeadSourceDetailColumn.ts` for databases that predate it; a fresh install gets the column from birth via `bootstrapSchema()`. Client-side, `getLeadSourceLabel(source, sourceDetail)` in `client/src/lib/format.ts` is the single shared place a source label gets built — used by `LeadsPage`/`LeadsFiltersPanel`/`LeadDetailPage` so a source added to the server (like `google_lsa` was) can't silently render blank in one of those three components because its label map wasn't updated there too — the exact bug this fixed.
 
@@ -99,8 +99,9 @@ This redesign also changed the app shell's own scrolling model (`client/src/inde
 
 - **Google Local Services Ads (`google_lsa`)** — live, a polling integration against Google's Ads API — see [google-lsa-leads.md](google-lsa-leads.md).
 - **Google Ads Lead Form Extension (`google_ads`)** — a *different* Google product from LSA (a lead-gen form attached to a regular search/display ad, not the Local Services Ads product), built as a real Google-side webhook rather than a poller — see [google-lead-form-leads.md](google-lead-form-leads.md).
+- **AI phone agent catch-all (`voice_agent`)** — live, a fifth tool (`create_potential_lead`) the agent itself can call mid-call whenever it can't produce a real ServiceTitan Lead/Job — see [elevenlabs-tools.md](elevenlabs-tools.md#create_potential_lead--toolscreatepotentiallead).
 
-Both write to `inbound_leads` via `insertInboundLead()` directly, not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
+All three write to `inbound_leads` via `insertInboundLead()` directly, not through the generic `/webhooks/leads/inbound` endpoint above, which deliberately only accepts `website_form`/`website_chat`.
 
 ## Deferred — Facebook Lead Ads
 

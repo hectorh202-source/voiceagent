@@ -114,6 +114,9 @@ export const generalSettingsSchema = z.object({
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
   dynamicMemoryEnabled: z.boolean().optional(),
+  catchAllLeadNotifyEnabled: z.boolean().optional(),
+  catchAllLeadNotifyEmail: z.string().optional(),
+  catchAllLeadNotifyCc: z.string().optional(),
 });
 
 // The OAuth Client ID/Secret and Developer Token this platform's Google Ads
@@ -144,7 +147,10 @@ export const googleAdsSettingsSchema = z.object({
 // by src/googleLsa/pollLeads.ts, not through the generic webhook —
 // leadIntakeSchema below deliberately only accepts the two sources that
 // webhook actually handles.
-export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads", "google_lsa"] as const;
+// voice_agent: written directly via insertInboundLead() by tools/createPotentialLead.ts,
+// not through the generic webhook — the AI phone agent's own catch-all tool for a call
+// that couldn't produce a ServiceTitan Lead/Job, for whatever reason. See docs/elevenlabs-tools.md.
+export const LEAD_SOURCE_VALUES = ["website_form", "website_chat", "facebook_ads", "google_ads", "google_lsa", "voice_agent"] as const;
 // Mirrors CallDetailPage.tsx's CALL_REASON_GROUPS taxonomy (client-side),
 // minus the "Outbound" group — leads are always inbound, so those options
 // don't apply. Replaced the original flat new/contacted/qualified/won/lost
@@ -222,6 +228,33 @@ export const leadIntakeSchema = z.object({
   message: z.string().optional(),
   externalId: z.string().optional(),
 });
+
+// The AI phone agent's catch-all: whenever a call can't produce a real
+// ServiceTitan Lead/Job (missing required fields, a ServiceTitan API error,
+// the caller wasn't ready to commit, an issue this business doesn't handle,
+// etc.), this captures whatever contact info was actually gathered instead
+// of losing it outright. Unlike create_lead's bodySchema (which requires a
+// full address/issue description to actually create a ServiceTitan Lead),
+// everything here is optional except needing at least one way to reach the
+// caller back — see tools/createPotentialLead.ts.
+export const catchAllLeadSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    phone: z.string().min(1).optional(),
+    email: z.string().min(1).optional(),
+    // Whatever the agent managed to gather about what the caller needed —
+    // becomes the lead's message.
+    details: z.string().optional(),
+    // Why this couldn't become a real Lead/Job — shown to staff alongside
+    // the lead so they know what to do with it (e.g. "ServiceTitan lookup
+    // failed", "caller wasn't ready to book", "asked about a service we
+    // don't offer").
+    reason: z.string().optional(),
+    conversationId: z.string().optional(),
+  })
+  .refine((body) => !!(body.name || body.phone || body.email), {
+    message: "At least one of name, phone, or email is required",
+  });
 
 export const patchLeadsSchema = z.object({
   ids: z.array(z.number().int()).min(1),

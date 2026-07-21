@@ -145,6 +145,78 @@ export async function sendWidgetLeadNotificationEmail(
   });
 }
 
+export interface CatchAllLeadNotification {
+  businessName: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  // Why the call didn't produce a real ServiceTitan Lead/Job — surfaced so
+  // staff know what to do with this lead, not just that one exists.
+  reason?: string;
+  message?: string;
+  leadsUrl?: string;
+}
+
+// Sent to a business each time its AI phone agent falls back to this
+// catch-all instead of successfully creating a ServiceTitan Lead/Job — see
+// tools/createPotentialLead.ts. Best-effort: callers wrap this in try/catch
+// so a mail failure never blocks recording the lead. Fields are caller-
+// supplied (via the LLM), so every one is HTML-escaped.
+export async function sendCatchAllLeadNotificationEmail(
+  toEmails: string[],
+  lead: CatchAllLeadNotification,
+  ccEmails: string[] = [],
+): Promise<void> {
+  const { transport, from } = getTransport();
+
+  const heading = "New lead from your AI phone agent";
+  const rows: [string, string | undefined][] = [
+    ["Name", lead.name],
+    ["Phone", lead.phone],
+    ["Email", lead.email],
+    ["Why no booking", lead.reason],
+    ["Details", lead.message],
+  ];
+  const rowsHtml = rows
+    .filter(([, value]) => value && value.trim())
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;color:#1a1d23;font-size:14px;">${escapeHtml(value!.trim())}</td></tr>`,
+    )
+    .join("");
+
+  const linkHtml = lead.leadsUrl
+    ? `<a href="${escapeHtml(lead.leadsUrl)}" style="display:inline-block;margin:16px 0 0;padding:12px 24px;background:#3b6ef6;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">View in Leads inbox</a>`
+    : "";
+
+  const html = wrapEmailHtml(
+    heading,
+    `
+    <p style="color:#374151;font-size:14px;line-height:1.6;">
+      A caller couldn't be booked into a job or turned into a ServiceTitan lead during a call with your AI phone agent for <strong>${escapeHtml(lead.businessName)}</strong> — here's what was captured.
+    </p>
+    <table style="border-collapse:collapse;margin:8px 0;">${rowsHtml || `<tr><td style="color:#6b7280;font-size:13px;">No contact details were captured.</td></tr>`}</table>
+    ${linkHtml}
+    `,
+  );
+
+  const textLines = [
+    heading,
+    `Business: ${lead.businessName}`,
+    ...rows.filter(([, v]) => v && v.trim()).map(([label, v]) => `${label}: ${v!.trim()}`),
+    lead.leadsUrl ? `\nView in Leads inbox: ${lead.leadsUrl}` : "",
+  ].filter(Boolean);
+
+  await transport.sendMail({
+    from,
+    to: toEmails.join(", "),
+    ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
+    subject: `New AI phone agent lead — ${lead.businessName}`,
+    html,
+    text: textLines.join("\n"),
+  });
+}
+
 export async function sendTestEmail(toEmail: string): Promise<void> {
   const { transport, from } = getTransport();
   const html = wrapEmailHtml(

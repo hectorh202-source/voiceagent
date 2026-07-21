@@ -26,9 +26,9 @@ This is deliberately decoupled from every other operational setting — it used 
 
 This middleware (`toolsRouter.use(verifyToolSecret)` in [`tools/router.ts`](../src/tools/router.ts)) runs in front of all four tool routes — no route-specific auth logic needed.
 
-## The four tools (server side)
+## The five tools (server side)
 
-All four: validate the request body with `zod`, do the work, log the attempt to `call_log` (success or failure), and respond. A `ServiceTitanNotConfiguredError` maps to `503`; any other ServiceTitan-side failure maps to `502`.
+All five: validate the request body with `zod`, log the attempt to `call_log` (success or failure), and respond. The first four also do ServiceTitan work, where a `ServiceTitanNotConfiguredError` maps to `503` and any other ServiceTitan-side failure maps to `502`; `create_potential_lead` never touches ServiceTitan at all (see below).
 
 ### `lookup_customer` — [`tools/lookupCustomer.ts`](../src/tools/lookupCustomer.ts)
 
@@ -84,13 +84,23 @@ Looks up the customer again (reusing `lookupCustomerByPhone`); if not found, cre
 
 **Address is 4 separate fields (`street`/`city`/`state`/`zip`), not one combined string.** This wasn't the original design — it started as a single `address` field, but ServiceTitan's customer-creation API requires city/state/zip individually (confirmed via a real `422`-style validation error: `"Locations.Address.City": ["The City field is required."]`, etc.), and reliably splitting a freeform address string like `"4844 Maple Street, Port Charlotte, FL 33950"` back into parts server-side turned out to be unreliable — real test calls produced inconsistent formats (sometimes `"FL 33950"` as one segment, sometimes `"Florida"` and `"33844"` as two separate segments). Having the LLM extract each part directly, with its own Identifier/Description per field in the ElevenLabs tool config, is far more reliable than parsing a combined string after the fact.
 
+### `create_potential_lead` — [`tools/createPotentialLead.ts`](../src/tools/createPotentialLead.ts)
+
+```
+POST /b/:businessId/tools/create-potential-lead
+Request:  { "name"?: string, "phone"?: string, "email"?: string, "details"?: string,
+            "reason"?: string, "conversationId"?: string }
+Response: { "success": boolean, "confirmationMessage": string }
+```
+The catch-all: whenever a call can't produce a real ServiceTitan Lead/Job — missing required info, a ServiceTitan API error, the caller wasn't ready to commit, the issue is outside what this business handles, anything else — this captures whatever contact info the agent actually gathered instead of losing it outright. Unlike the other four tools, this **never touches ServiceTitan at all** — it writes straight into this app's own Leads inbox (`inbound_leads`, `source: "voice_agent"`) via `insertInboundLead()`, the same table website-form/chat/Google leads land in. At least one of `name`/`phone`/`email` is required (enforced by `catchAllLeadSchema`'s `.refine`); everything else is optional. `reason` is shown to staff alongside the lead (e.g. *"ServiceTitan lookup failed"*, *"caller wasn't ready to book"*, *"asked about a service we don't offer"*) so they know what to do with it, not just that it exists. If that business has turned on "Email me AI phone agent catch-all leads" (`/app/:businessId/settings/general` → Operational), this also fires an email alert — same fire-and-forget pattern as the chat widget's own lead notifications (`webhooks/leadIntake.ts`'s `notifyWidgetLead`), never blocking or failing the tool's response back to ElevenLabs.
+
 ## Agent-side configuration (ElevenLabs dashboard)
 
 This part lives entirely in ElevenLabs' system — there's no code to read, so this section is the source of truth for how the agent is set up.
 
 ### Webhook tool definitions
 
-Each of the four tools above is registered on the agent as a **Webhook** tool with:
+Each of the five tools above is registered on the agent as a **Webhook** tool with:
 - Method `POST`, URL pointing at this server's public domain + **that business's own `/b/:businessId/` path** + the tool path above (e.g. `https://voiceagent.laughslapper.com/b/1/tools/lookup-customer` for business #1). Every business's ElevenLabs agent must be configured with its own `businessId` baked into these URLs — copying another business's agent config verbatim and forgetting to update this segment is the most likely way to accidentally point one client's agent at another client's data.
 - A header named `X-Tool-Secret`, whose value is a workspace **Secret** (created once in the ElevenLabs dashboard, value = that business's own tool webhook secret from its `/app/:businessId/settings/general` page) — not typed as a raw literal in the header field itself. **The header's Name field and the Secret's own label are two different things — don't confuse them.** Hit exactly this during setup: the header Name field ended up literally set to `New secret` (the dashboard's default label when you create a new secret), instead of `X-Tool-Secret` with the Secret dropdown separately pointing at that secret for its value. A header name containing a space isn't valid HTTP, so every call to that tool failed *before leaving ElevenLabs' servers* — nothing reached this app at all, which is why it showed zero trace in `call_log`/container logs despite genuinely being called. The tell-tale symptom was an error surfaced by ElevenLabs' own "test tool individually" button (see Debugging section below): `invalid header field name "New secret"`.
 - A body parameter schema matching the request shape above. Each property's **Identifier** must be the exact bare field name (e.g. `phone`, not `{ "phone": string }` — the data type is already declared by a separate dropdown; the Identifier field is only the JSON key name)
@@ -121,6 +131,14 @@ If you do configure categories, add `serviceCategory` as a parameter on **`check
 1. Identifier `serviceCategory`, **Value Type: LLM Prompt**.
 2. Description: list the exact category names you configured for that business, e.g. *"One of: Plumbing, HVAC. Pick whichever trade best matches the issue described. Use the exact name shown — it must match one of these two options exactly."* The exact names matter — `resolveServiceCategory()` does a case-insensitive match, but a category name the agent invents that doesn't match any configured row silently falls back to the single default, no error surfaced.
 3. A system-prompt instruction telling the agent to classify the issue into one of those categories once it knows the service type, before calling any of the three tools — e.g. "Once you know whether this is a plumbing or HVAC issue, include that in `serviceCategory` on every subsequent tool call for this conversation."
+
+### Catch-all lead setup (optional, any business)
+
+Registering `create_potential_lead` as a webhook tool (same auth/header pattern as the other four — method `POST`, URL `.../tools/create-potential-lead`, `X-Tool-Secret` header) isn't enough on its own — like `equipmentAge` above, a tool existing doesn't mean the agent knows *when* to reach for it. Add a system-prompt instruction along these lines:
+
+*"If you cannot successfully create a lead or book a job for any reason — the caller can't provide required information, `create_lead`/`book_job` fails, the caller isn't ready to commit, or the request is for something this business doesn't handle — call `create_potential_lead` with whatever contact information (name, phone, or email) and details you were able to gather, plus a short `reason` explaining why. Never end the call without at least attempting this if a real lead/job wasn't created."*
+
+This is deliberately the *last resort*, not a replacement for `create_lead`/`book_job` — the prompt should still try those first for anything that looks bookable, and only fall back to this when they genuinely don't apply or fail.
 
 ### Call Reason Data Collection setup (optional, any business)
 
@@ -159,6 +177,7 @@ Structured in five sections (Personality / Environment / Tone / Goal / call-endi
 - Call `create_lead` once enough info is gathered
 - Always close by saying a team member will confirm the exact appointment — **never** claim the job is booked/scheduled, since this integration only ever creates a Lead
 - On a `create_lead` failure, apologize, confirm the phone number, promise a human follow-up — never let a tool failure dead-end the call
+- If a real lead/job genuinely can't be created (see "Catch-all lead setup" above), call `create_potential_lead` with whatever was gathered instead of ending the call empty-handed
 
 The exact current prompt text lives only in the ElevenLabs dashboard (agent → prompt editor) — if it drifts from this description, the dashboard is the source of truth, and this doc should be updated to match.
 

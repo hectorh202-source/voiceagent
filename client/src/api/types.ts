@@ -245,6 +245,9 @@ export interface GeneralSettings {
     leadIntakeWebhookSecretSet: boolean;
     googleLeadFormWebhookSecretSet: boolean;
     dynamicMemoryEnabled: boolean;
+    catchAllLeadNotifyEnabled: boolean;
+    catchAllLeadNotifyEmail: string;
+    catchAllLeadNotifyCc: string;
   };
   googleAds: {
     customerId: string;
@@ -305,7 +308,7 @@ export interface GoogleAdsSettings {
 // Lead/Job links on the Calls pages) — these are a distinct concept, raw
 // inbound inquiries from a business's own lead sources, tracked in their
 // own inbox. See docs/leads-inbox.md.
-export type LeadSource = "website_form" | "website_chat" | "facebook_ads" | "google_ads" | "google_lsa";
+export type LeadSource = "website_form" | "website_chat" | "facebook_ads" | "google_ads" | "google_lsa" | "voice_agent";
 // Plain string, not a literal union — same reasoning as CallDetail's own
 // callReason/callReasonOverride fields. The real valid set (see lib/
 // format.ts's LEAD_STATUS_GROUPS) is large (~40 values, mirroring Call

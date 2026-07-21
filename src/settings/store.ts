@@ -265,7 +265,25 @@ export function getRawOperationalSettings(businessId: number) {
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
     googleLeadFormWebhookSecretSet: !!getBusinessSetting(businessId, "operational.googleLeadFormWebhookSecret"),
     dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
+    catchAllLeadNotifyEnabled: isCatchAllLeadNotifyEnabled(businessId),
+    catchAllLeadNotifyEmail: getBusinessSetting(businessId, "operational.catchAllLeadNotifyEmail") ?? "",
+    catchAllLeadNotifyCc: getBusinessSetting(businessId, "operational.catchAllLeadNotifyCc") ?? "",
   };
+}
+
+// Email alerting for the AI phone agent's catch-all lead tool (see
+// tools/createPotentialLead.ts) — off by default, same reasoning as the chat
+// widget's own notifyEnabled. Requires global SMTP to be configured.
+export function isCatchAllLeadNotifyEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.catchAllLeadNotifyEnabled") === "true";
+}
+
+export function getCatchAllLeadNotifyEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.catchAllLeadNotifyEmail") ?? "");
+}
+
+export function getCatchAllLeadNotifyCcEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.catchAllLeadNotifyCc") ?? "");
 }
 
 // Cross-call memory by phone number (see docs/dynamic-memory.md) — default

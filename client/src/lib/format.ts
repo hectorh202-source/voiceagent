@@ -61,6 +61,7 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
   facebook_ads: "Facebook Ads",
   google_ads: "Google Ads (Lead Form)",
   google_lsa: "Google LSA",
+  voice_agent: "AI Phone Agent",
 };
 
 // Google's own lead_type enum values, surfaced on source_detail — currently
