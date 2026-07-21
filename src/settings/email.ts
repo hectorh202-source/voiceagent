@@ -92,6 +92,7 @@ export interface WidgetLeadNotification {
 export async function sendWidgetLeadNotificationEmail(
   toEmails: string[],
   lead: WidgetLeadNotification,
+  ccEmails: string[] = [],
 ): Promise<void> {
   const { transport, from } = getTransport();
 
@@ -137,6 +138,7 @@ export async function sendWidgetLeadNotificationEmail(
   await transport.sendMail({
     from,
     to: toEmails.join(", "),
+    ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
     subject: booked ? `New appointment booked — ${lead.businessName}` : `New website lead — ${lead.businessName}`,
     html,
     text: textLines.join("\n"),

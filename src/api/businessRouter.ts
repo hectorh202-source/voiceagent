@@ -872,6 +872,9 @@ apiBusinessRouter.put("/settings/chat-widget", requireApiPlatformAdmin, (req, re
   if (body.notifyEmail !== undefined) {
     setBusinessSetting(business.id, "chatWidget.notifyEmail", body.notifyEmail.trim());
   }
+  if (body.notifyCc !== undefined) {
+    setBusinessSetting(business.id, "chatWidget.notifyCc", body.notifyCc.trim());
+  }
 
   res.json({ success: true });
 });

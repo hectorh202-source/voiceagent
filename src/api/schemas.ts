@@ -303,6 +303,7 @@ export const chatWidgetSettingsSchema = z.object({
   // at send time) since it's a plain editable field, not a credential.
   notifyEnabled: z.boolean().optional(),
   notifyEmail: z.string().optional(),
+  notifyCc: z.string().optional(),
 });
 
 // The shared knowledge base (docs/knowledge-base.md). Documents are stored

@@ -531,15 +531,26 @@ export function isChatWidgetNotifyEnabled(businessId: number): boolean {
   return getBusinessSetting(businessId, "chatWidget.notifyEnabled") === "true";
 }
 
-// One or more recipient addresses (comma-separated) for widget lead alerts.
-// A dedicated field rather than the login email, so a business can route
-// alerts to whoever actually handles new leads. "" when unset.
-export function getChatWidgetNotifyEmails(businessId: number): string[] {
-  const raw = getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "";
+// Splits a stored "a@x.com, b@y.com" field into individual addresses. Accepts
+// commas, semicolons, or whitespace as separators so an operator can't get it
+// subtly wrong.
+function splitEmailList(raw: string): string[] {
   return raw
     .split(/[,;\s]+/)
     .map((e) => e.trim())
     .filter(Boolean);
+}
+
+// Primary recipients (the To line) for widget lead alerts. A dedicated field
+// rather than the login email, so a business can route alerts to whoever
+// actually handles new leads. Multiple addresses allowed. [] when unset.
+export function getChatWidgetNotifyEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "");
+}
+
+// Additional addresses CC'd on every widget alert. [] when unset.
+export function getChatWidgetNotifyCcEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "");
 }
 
 export interface ChatWidgetConfig {
@@ -588,6 +599,7 @@ export function getRawChatWidgetSettings(businessId: number) {
     systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
     notifyEnabled: isChatWidgetNotifyEnabled(businessId),
     notifyEmail: getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "",
+    notifyCc: getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "",
   };
 }
 

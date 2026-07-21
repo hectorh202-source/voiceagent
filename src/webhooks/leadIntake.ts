@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { leadIntakeSchema } from "../api/schemas";
 import { insertInboundLead } from "../db/inboundLeads";
 import { formatKeyValueDump } from "../lib/format";
-import { isChatWidgetNotifyEnabled, getChatWidgetNotifyEmails } from "../settings/store";
+import { isChatWidgetNotifyEnabled, getChatWidgetNotifyEmails, getChatWidgetNotifyCcEmails } from "../settings/store";
 import { sendWidgetLeadNotificationEmail } from "../settings/email";
 
 // The source value the chat-widget service tags its leads with (see the widget
@@ -22,9 +22,14 @@ function notifyWidgetLead(
 ): void {
   if (!isChatWidgetNotifyEnabled(businessId)) return;
   const recipients = getChatWidgetNotifyEmails(businessId);
-  if (recipients.length === 0) return;
+  const cc = getChatWidgetNotifyCcEmails(businessId);
+  // Need at least one address somewhere. If only CC is filled, promote it to
+  // the To line so the message still has a primary recipient.
+  const to = recipients.length > 0 ? recipients : cc;
+  const ccFinal = recipients.length > 0 ? cc : [];
+  if (to.length === 0) return;
 
-  sendWidgetLeadNotificationEmail(recipients, { businessName, leadsUrl, ...lead }).catch((error) => {
+  sendWidgetLeadNotificationEmail(to, { businessName, leadsUrl, ...lead }, ccFinal).catch((error) => {
     console.error(
       "Widget lead notification email failed:",
       error instanceof Error ? error.message : error,

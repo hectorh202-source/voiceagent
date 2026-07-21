@@ -36,6 +36,7 @@ export function ChatWidgetSettingsPage() {
   const [systemPromptExtras, setSystemPromptExtras] = useState("");
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifyCc, setNotifyCc] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
@@ -54,6 +55,7 @@ export function ChatWidgetSettingsPage() {
     setSystemPromptExtras(data.systemPromptExtras);
     setNotifyEnabled(data.notifyEnabled);
     setNotifyEmail(data.notifyEmail);
+    setNotifyCc(data.notifyCc);
   }, [data]);
 
   const saveMutation = useMutation({
@@ -78,6 +80,7 @@ export function ChatWidgetSettingsPage() {
           .filter(Boolean),
         notifyEnabled,
         notifyEmail,
+        notifyCc,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -228,9 +231,18 @@ export function ChatWidgetSettingsPage() {
           <input
             value={notifyEmail}
             onChange={(e) => setNotifyEmail(e.target.value)}
-            placeholder="leads@clientsite.com"
+            placeholder="leads@clientsite.com, owner@clientsite.com"
           />
-          <div className="form-hint">Separate multiple addresses with commas. Leave blank to send nowhere.</div>
+          <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
+        </div>
+        <div className="form-row">
+          <label>CC (optional)</label>
+          <input
+            value={notifyCc}
+            onChange={(e) => setNotifyCc(e.target.value)}
+            placeholder="office@clientsite.com"
+          />
+          <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
         </div>
       </div>
 
