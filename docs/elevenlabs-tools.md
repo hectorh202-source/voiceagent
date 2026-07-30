@@ -174,6 +174,19 @@ A built-in **system tool**, `transfer_to_number` (labeled "Transfer to number" i
 
 This works because the number was imported via ElevenLabs' **native Twilio integration** (Phone Numbers tab → provide Twilio Account SID + Auth Token + the number) — that's what makes both Conference and Blind transfer types available; ElevenLabs configures the Twilio voice webhook automatically, no manual Twilio console changes needed.
 
+### Frustration/escalation transfer (optional, any business)
+
+`transfer_to_number` isn't limited to a single rule — the dashboard lets you add multiple rules to the same system tool, each with its own destination number and natural-language condition, and the LLM picks whichever (if any) matches. A second rule alongside the emergency one lets the agent hand an upset caller to a human without any new code, same mechanism, same tool.
+
+**Configured to transfer at the first sign of frustration, not after an escalation** — a deliberate choice made here, not the conservative default this section originally suggested. That intent has to be spelled out explicitly, since an LLM's default instinct is to try smoothing things over once before reaching for a tool:
+
+> *"The caller shows any sign of frustration, annoyance, or dissatisfaction — even mild or early — such as a sharper tone, a sigh, a complaint, impatience, or pushback on what the agent says. Transfer immediately at the first such sign, do not wait for it to escalate or attempt to resolve it first."*
+
+- Destination: same number as the emergency rule, or a separate escalation/manager line — a per-business choice, not something this app's code needs to know about.
+- Transfer type: Conference, same reasoning as the emergency rule.
+- **Trade-off, accepted deliberately**: this wording fires on mild/early signals by design, so it will transfer some calls a human might have handled fine without escalating — that's the intended behavior here, not a bug to tune away.
+- **Don't pair this with a "try to de-escalate first" system-prompt line** — that would directly contradict the condition above (prompt says wait, tool says don't). If [Expressive Mode](https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode) is enabled, its tone-adaptation still happens on every turn regardless, but no prompt instruction should tell the agent to delay the transfer to let it work first.
+
 ### Ending the call
 
 The system prompt (below) instructs the agent to call an `end_call` tool once the caller says goodbye. That's actually the built-in **"End conversation"** system tool, toggled in the same System tools panel as `transfer_to_number` — and it must be explicitly **enabled** there. Early testing hit exactly this: the prompt told the agent to always call `end_call`, but "End conversation" was toggled off, so the agent had no valid way to act on that instruction — the call just dropped abruptly with no spoken goodbye at all, instead of a clean acknowledge-then-hang-up. If a similar abrupt-ending symptom shows up again, check this toggle first before assuming it's a prompt-wording problem.
