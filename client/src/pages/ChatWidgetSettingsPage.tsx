@@ -34,9 +34,6 @@ export function ChatWidgetSettingsPage() {
   const [quickPrompts, setQuickPrompts] = useState("");
   const [allowedOrigins, setAllowedOrigins] = useState("");
   const [systemPromptExtras, setSystemPromptExtras] = useState("");
-  const [notifyEnabled, setNotifyEnabled] = useState(false);
-  const [notifyEmail, setNotifyEmail] = useState("");
-  const [notifyCc, setNotifyCc] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
@@ -53,9 +50,6 @@ export function ChatWidgetSettingsPage() {
     setQuickPrompts(data.quickPrompts.join("\n"));
     setAllowedOrigins(data.allowedOrigins.join("\n"));
     setSystemPromptExtras(data.systemPromptExtras);
-    setNotifyEnabled(data.notifyEnabled);
-    setNotifyEmail(data.notifyEmail);
-    setNotifyCc(data.notifyCc);
   }, [data]);
 
   const saveMutation = useMutation({
@@ -78,9 +72,6 @@ export function ChatWidgetSettingsPage() {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean),
-        notifyEnabled,
-        notifyEmail,
-        notifyCc,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -214,37 +205,10 @@ export function ChatWidgetSettingsPage() {
         </div>
       </div>
 
-      <div className="card">
-        <h2>Email notifications</h2>
-        <p className="form-hint">
-          Get an email every time the widget generates a request, whether it books a job or forwards a lead. Requires
-          the platform's SMTP settings to be configured in the global Admin Settings.
-        </p>
-        <div className="form-row">
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-            <input type="checkbox" checked={notifyEnabled} onChange={(e) => setNotifyEnabled(e.target.checked)} />
-            Email me new widget requests
-          </label>
-        </div>
-        <div className="form-row">
-          <label>Notification email</label>
-          <input
-            value={notifyEmail}
-            onChange={(e) => setNotifyEmail(e.target.value)}
-            placeholder="leads@clientsite.com, owner@clientsite.com"
-          />
-          <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
-        </div>
-        <div className="form-row">
-          <label>CC (optional)</label>
-          <input
-            value={notifyCc}
-            onChange={(e) => setNotifyCc(e.target.value)}
-            placeholder="office@clientsite.com"
-          />
-          <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
-        </div>
-      </div>
+      <p className="form-hint">
+        Looking for email alerts? "Email me new leads" now covers every lead source, including the chat widget — see
+        General Settings → Operational.
+      </p>
 
       <div className="card">
         <h2>Allowed website domains</h2>

@@ -154,8 +154,24 @@ const existsWithExternalIdStmt = db.prepare(
 // Fire-and-forget — a mail failure (missing SMTP config, bad recipient, slow
 // server) must never affect recording the lead itself, which has already
 // happened by the time this is called.
+// entry.structuredFields is already a JSON string by the time it reaches
+// here (callers stringify it before calling insertInboundLead, since that's
+// also the shape encryptNullable stores) — parsed back into the real array
+// only for the notification email, same defensive parse as
+// businessRouter.ts's own parseStructuredFields.
+function parseStructuredFields(raw: string | null | undefined): { label: string; value: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((f): f is { label: string; value: string } => f && typeof f.label === "string" && typeof f.value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function notifyNewLead(entry: InboundLeadEntry): void {
-  if (entry.source === "website_chat") return; // has its own separate, older notify path — see webhooks/leadIntake.ts
   if (!isLeadNotifyEnabled(entry.businessId)) return;
   const recipients = getLeadNotifyEmails(entry.businessId);
   const cc = getLeadNotifyCcEmails(entry.businessId);
@@ -172,11 +188,13 @@ function notifyNewLead(entry: InboundLeadEntry): void {
     {
       businessName: business.name,
       sourceLabel: LEAD_SOURCE_LABEL[entry.source] ?? entry.source,
+      sourceDetail: entry.sourceDetail ?? undefined,
       name: entry.name ?? undefined,
       phone: entry.phone ?? undefined,
       email: entry.email ?? undefined,
       address: entry.address ?? undefined,
       message: entry.message ?? undefined,
+      structuredFields: parseStructuredFields(entry.structuredFields),
       leadsUrl,
     },
     ccFinal,

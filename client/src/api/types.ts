@@ -271,10 +271,6 @@ export interface ChatWidgetSettings {
   tagline: string;
   quickPrompts: string[];
   systemPromptExtras: string;
-  // Email alerts for widget-generated requests (booked jobs + forwarded leads).
-  notifyEnabled: boolean;
-  notifyEmail: string;
-  notifyCc: string;
   // Where the standalone chat-widget service is hosted (global; set in Admin
   // Settings). The install snippet points here. Empty until configured.
   widgetServiceBaseUrl: string;

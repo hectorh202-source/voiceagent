@@ -451,10 +451,10 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
             Email me new leads
           </label>
           <div className="form-hint">
-            Fires for every new entry in this business's Leads inbox — website form, Facebook Ads, Google Ads Lead
-            Form, Google LSA, and the AI phone agent's catch-all tool — the moment it's created, regardless of which
-            of those produced it. Website chat keeps its own separate notification setting on the Chat Widget page.
-            Requires the platform's SMTP settings to be configured in the global Admin Settings.
+            Fires for every new entry in this business's Leads inbox — website form, website chat, Facebook Ads,
+            Google Ads Lead Form, Google LSA, and the AI phone agent's catch-all tool — the moment it's created,
+            regardless of which of those produced it. Requires the platform's SMTP settings to be configured in the
+            global Admin Settings.
           </div>
         </div>
         <div className="form-row">

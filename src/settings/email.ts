@@ -72,85 +72,6 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export interface WidgetLeadNotification {
-  businessName: string;
-  // "booked" when the widget booked a real appointment, "lead" when it
-  // forwarded the visitor for staff to follow up. Anything else renders plainly.
-  sourceDetail?: string;
-  name?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  message?: string;
-  // Structured triage details the widget's assistant recorded (service type,
-  // urgency, etc.). Rendered as extra rows above the free-text details.
-  structuredFields?: { label: string; value: string }[];
-  // Deep link into the Leads inbox for this business, when known.
-  leadsUrl?: string;
-}
-
-// Sent to a business each time its chat widget produces a request. Best-effort:
-// callers wrap this in try/catch so a mail failure never blocks recording the
-// lead. Lead fields are visitor-supplied, so every one is HTML-escaped.
-export async function sendWidgetLeadNotificationEmail(
-  toEmails: string[],
-  lead: WidgetLeadNotification,
-  ccEmails: string[] = [],
-): Promise<void> {
-  const { transport, from } = getTransport();
-
-  const booked = lead.sourceDetail === "booked";
-  const heading = booked ? "New appointment booked" : "New lead from your website chat";
-  // Contact fields first, then whatever structured fields the assistant
-  // recorded, then the free-text details/transcript last.
-  const rows: [string, string | undefined][] = [
-    ["Name", lead.name],
-    ["Phone", lead.phone],
-    ["Email", lead.email],
-    ["Address", lead.address],
-    ...(lead.structuredFields ?? []).map(({ label, value }): [string, string | undefined] => [label, value]),
-    ["Details", lead.message],
-  ];
-  const rowsHtml = rows
-    .filter(([, value]) => value && value.trim())
-    .map(
-      ([label, value]) =>
-        `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;color:#1a1d23;font-size:14px;">${escapeHtml(value!.trim())}</td></tr>`,
-    )
-    .join("");
-
-  const linkHtml = lead.leadsUrl
-    ? `<a href="${escapeHtml(lead.leadsUrl)}" style="display:inline-block;margin:16px 0 0;padding:12px 24px;background:#3b6ef6;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">View in Leads inbox</a>`
-    : "";
-
-  const html = wrapEmailHtml(
-    heading,
-    `
-    <p style="color:#374151;font-size:14px;line-height:1.6;">
-      ${booked ? "Your website chat assistant just booked an appointment" : "Your website chat assistant just captured a new lead"} for <strong>${escapeHtml(lead.businessName)}</strong>.
-    </p>
-    <table style="border-collapse:collapse;margin:8px 0;">${rowsHtml || `<tr><td style="color:#6b7280;font-size:13px;">No contact details were captured.</td></tr>`}</table>
-    ${linkHtml}
-    `,
-  );
-
-  const textLines = [
-    heading,
-    `Business: ${lead.businessName}`,
-    ...rows.filter(([, v]) => v && v.trim()).map(([label, v]) => `${label}: ${v!.trim()}`),
-    lead.leadsUrl ? `\nView in Leads inbox: ${lead.leadsUrl}` : "",
-  ].filter(Boolean);
-
-  await transport.sendMail({
-    from,
-    to: toEmails.join(", "),
-    ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
-    subject: booked ? `New appointment booked — ${lead.businessName}` : `New website lead — ${lead.businessName}`,
-    html,
-    text: textLines.join("\n"),
-  });
-}
-
 export interface NewLeadNotification {
   businessName: string;
   // Human-readable label for whatever produced this lead (e.g. "Website
@@ -158,6 +79,11 @@ export interface NewLeadNotification {
   // small source-label map, kept in sync by hand with client/src/lib/
   // format.ts's LEAD_SOURCE_LABEL.
   sourceLabel: string;
+  // "booked" when the website chat widget booked a real appointment rather
+  // than just forwarding a lead — the one source-specific wrinkle in an
+  // otherwise generic template, since a real appointment existing is worth
+  // saying up front. Anything else (including undefined) renders plainly.
+  sourceDetail?: string;
   name?: string;
   phone?: string;
   email?: string;
@@ -167,16 +93,19 @@ export interface NewLeadNotification {
   // so staff know what to do with this lead, not just that one exists.
   reason?: string;
   message?: string;
+  // Structured triage details the website chat widget's assistant recorded
+  // (service type, urgency, etc.) via its update_state tool. Rendered as
+  // extra rows above the free-text details. Empty/absent for every other
+  // source.
+  structuredFields?: { label: string; value: string }[];
   leadsUrl?: string;
 }
 
 // Sent to a business every time a NEW row lands in its Leads inbox, from any
-// source except website_chat (which keeps its own separate, older
-// sendWidgetLeadNotificationEmail/notifyEnabled setting above — see
-// db/inboundLeads.ts's insertInboundLead for exactly where this fires and
-// why it's centralized there instead of once per lead source). Best-effort:
-// callers wrap this in try/catch so a mail failure never blocks recording
-// the lead. Fields are caller-supplied, so every one is HTML-escaped.
+// source — see db/inboundLeads.ts's insertInboundLead for exactly where this
+// fires and why it's centralized there instead of once per lead source.
+// Best-effort: callers wrap this in try/catch so a mail failure never blocks
+// recording the lead. Fields are caller-supplied, so every one is HTML-escaped.
 export async function sendNewLeadNotificationEmail(
   toEmails: string[],
   lead: NewLeadNotification,
@@ -184,12 +113,16 @@ export async function sendNewLeadNotificationEmail(
 ): Promise<void> {
   const { transport, from } = getTransport();
 
-  const heading = `New lead — ${lead.sourceLabel}`;
+  const booked = lead.sourceDetail === "booked";
+  const heading = booked ? "New appointment booked" : `New lead — ${lead.sourceLabel}`;
+  // Contact fields first, then whatever structured fields the assistant
+  // recorded, then reason/free-text details last.
   const rows: [string, string | undefined][] = [
     ["Name", lead.name],
     ["Phone", lead.phone],
     ["Email", lead.email],
     ["Address", lead.address],
+    ...(lead.structuredFields ?? []).map(({ label, value }): [string, string | undefined] => [label, value]),
     ["Why no booking", lead.reason],
     ["Details", lead.message],
   ];
@@ -227,7 +160,7 @@ export async function sendNewLeadNotificationEmail(
     from,
     to: toEmails.join(", "),
     ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
-    subject: `New lead — ${lead.sourceLabel} — ${lead.businessName}`,
+    subject: `${heading} — ${lead.businessName}`,
     html,
     text: textLines.join("\n"),
   });

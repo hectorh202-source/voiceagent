@@ -271,25 +271,36 @@ export function getRawOperationalSettings(businessId: number) {
   };
 }
 
-// Email alerting for every Leads-inbox source EXCEPT website_chat, which
-// keeps its own separate, older notifyEnabled/notifyEmail/notifyCc setting
-// below (a business may already have that configured, and the two are
-// deliberately not merged — see the Leads-inbox notification design note).
-// Centralized in db/inboundLeads.ts's insertInboundLead() itself — every
-// source funnels through that one function, so a new lead always triggers
-// this regardless of which tool/webhook/poller created it, without every
-// call site needing to remember to wire it up individually. Off by default;
-// requires global SMTP to be configured.
+// Email alerting for every Leads-inbox source — one shared setting, not one
+// per source. Centralized in db/inboundLeads.ts's insertInboundLead() itself:
+// every source funnels through that one function, so a new lead always
+// triggers this regardless of which tool/webhook/poller created it, without
+// every call site needing to remember to wire it up individually. Off by
+// default; requires global SMTP to be configured.
+//
+// Falls back to the older, chat-widget-only chatWidget.notifyEnabled/
+// notifyEmail/notifyCc fields (now retired from the Chat Widget settings UI)
+// when the new operational.* fields haven't been set yet — a business that
+// had already opted into chat-lead emails keeps getting emailed (now for
+// every lead source, not just chat) without that preference silently
+// vanishing the moment this shipped. Only ever read as a fallback; saving
+// General Settings always writes the new operational.* keys going forward.
 export function isLeadNotifyEnabled(businessId: number): boolean {
-  return getBusinessSetting(businessId, "operational.leadNotifyEnabled") === "true";
+  const value = getBusinessSetting(businessId, "operational.leadNotifyEnabled");
+  if (value !== null) return value === "true";
+  return getBusinessSetting(businessId, "chatWidget.notifyEnabled") === "true";
 }
 
 export function getLeadNotifyEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "operational.leadNotifyEmail") ?? "");
+  const value = getBusinessSetting(businessId, "operational.leadNotifyEmail");
+  if (value) return splitEmailList(value);
+  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "");
 }
 
 export function getLeadNotifyCcEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "operational.leadNotifyCc") ?? "");
+  const value = getBusinessSetting(businessId, "operational.leadNotifyCc");
+  if (value) return splitEmailList(value);
+  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "");
 }
 
 // Cross-call memory by phone number (see docs/dynamic-memory.md) — default
@@ -547,14 +558,6 @@ export function getChatWidgetSystemPromptExtras(businessId: number): string {
   return getBusinessSetting(businessId, "chatWidget.systemPromptExtras") ?? "";
 }
 
-// Email alerting: when on, every request the widget generates (a booked job or
-// a forwarded lead) also emails the business. Off by default so an operator
-// opts in rather than being surprised by mail. Requires global SMTP to be
-// configured (Admin Settings) — the same transport used for password resets.
-export function isChatWidgetNotifyEnabled(businessId: number): boolean {
-  return getBusinessSetting(businessId, "chatWidget.notifyEnabled") === "true";
-}
-
 // Splits a stored "a@x.com, b@y.com" field into individual addresses. Accepts
 // commas, semicolons, or whitespace as separators so an operator can't get it
 // subtly wrong.
@@ -563,18 +566,6 @@ function splitEmailList(raw: string): string[] {
     .split(/[,;\s]+/)
     .map((e) => e.trim())
     .filter(Boolean);
-}
-
-// Primary recipients (the To line) for widget lead alerts. A dedicated field
-// rather than the login email, so a business can route alerts to whoever
-// actually handles new leads. Multiple addresses allowed. [] when unset.
-export function getChatWidgetNotifyEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "");
-}
-
-// Additional addresses CC'd on every widget alert. [] when unset.
-export function getChatWidgetNotifyCcEmails(businessId: number): string[] {
-  return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "");
 }
 
 export interface ChatWidgetConfig {
@@ -621,9 +612,6 @@ export function getRawChatWidgetSettings(businessId: number) {
     ...getChatWidgetBranding(businessId),
     quickPrompts: getChatWidgetQuickPrompts(businessId),
     systemPromptExtras: getChatWidgetSystemPromptExtras(businessId),
-    notifyEnabled: isChatWidgetNotifyEnabled(businessId),
-    notifyEmail: getBusinessSetting(businessId, "chatWidget.notifyEmail") ?? "",
-    notifyCc: getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "",
   };
 }
 

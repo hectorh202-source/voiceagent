@@ -419,6 +419,87 @@ function WidgetServiceSettingsSection() {
   );
 }
 
+// The one place every user account is visible, regardless of admin status
+// or business membership — including a business-scoped user whose access
+// to every business has been removed. That "Remove" action (see
+// BusinessUserRow below) only ever deletes the user_businesses link, never
+// the account itself, so an orphaned account like that stops showing up in
+// any business's own Users card (it filters to businessIds.includes(this
+// business)) and was never shown here either unless it happened to also be
+// a platform admin — silently blocking that email from ever being reused,
+// with no way to see or delete the leftover account from anywhere in the
+// UI. This section fixes that: every user, with which businesses (if any)
+// they belong to, and a real "Delete account" action wired to the same
+// DELETE /api/admin/users/:id endpoint PlatformAdminRow already uses.
+function AllUsersRow({
+  user,
+  businesses,
+  currentUserId,
+}: {
+  user: AdminUser;
+  businesses: Business[];
+  currentUserId: number;
+}) {
+  const queryClient = useQueryClient();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const isSelf = user.id === currentUserId;
+  const isLocked = !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
+  const businessNames = user.businessIds
+    .map((id) => businesses.find((b) => b.id === id)?.name)
+    .filter((name): name is string => !!name);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/admin/users/${user.id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+
+  return (
+    <div className="details-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+      <div>
+        <div>
+          <strong>{user.email}</strong>
+          {isSelf && <span className="muted"> (you)</span>}
+          {user.isPlatformAdmin && (
+            <span className="badge badge-neutral" style={{ marginLeft: 8 }}>
+              Platform admin
+            </span>
+          )}
+          {isLocked && (
+            <span className="badge badge-danger" style={{ marginLeft: 8 }}>
+              Locked
+            </span>
+          )}
+        </div>
+        <div className="muted" style={{ fontSize: 13 }}>
+          {user.isPlatformAdmin
+            ? "Full access to every business"
+            : businessNames.length > 0
+              ? businessNames.join(", ")
+              : "No businesses — orphaned, safe to delete if unexpected"}
+        </div>
+      </div>
+      {!isSelf && (
+        <button className="btn" onClick={() => setConfirmingDelete(true)}>
+          Delete account
+        </button>
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete this account?"
+          message={`Permanently delete ${user.email}? This removes the account entirely (not just business access) and can't be undone. They'll need a brand-new account, with this same email available again, to sign back in.`}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            deleteMutation.mutate();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function PlatformAdminRow({ user, currentUserId }: { user: AdminUser; currentUserId: number }) {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(user.isPlatformAdmin);
@@ -646,6 +727,7 @@ function BusinessAdminSettings({ businessId, businesses }: { businessId: number;
 
 const GLOBAL_SETTINGS_SECTIONS = [
   { id: "businesses", label: "Businesses" },
+  { id: "users", label: "All Users" },
   { id: "email", label: "Email (SMTP)" },
   { id: "twilio", label: "Twilio" },
   { id: "google-ads", label: "Google Ads" },
@@ -750,6 +832,23 @@ function GlobalAdminSettings({ businesses }: { businesses: Business[] }) {
                 Pick a business from the switcher above to manage its users and general settings.
               </div>
             </div>
+          )}
+
+          {activeSection === "users" && (
+            <>
+              <h2>All Users</h2>
+              <p className="form-hint">
+                Every account on the platform, regardless of business or admin status — the one place to find and
+                fully delete an account, including one that's been removed from every business (a business's own
+                Users card only shows accounts still assigned to it).
+              </p>
+              <div className="card">
+                {users.length === 0 && <p className="muted">No users yet.</p>}
+                {users.map((u) => (
+                  <AllUsersRow key={u.id} user={u} businesses={businesses} currentUserId={currentUser.id} />
+                ))}
+              </div>
+            </>
           )}
 
           {activeSection === "email" && <EmailSettingsSection />}
