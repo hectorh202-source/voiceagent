@@ -19,6 +19,7 @@ import { migrateInboundLeadOverrideColumns } from "./migrateInboundLeadOverrideC
 import { migrateInboundLeadAddressColumn } from "./migrateInboundLeadAddressColumn";
 import { migrateInboundLeadCallerIdCheckedColumn } from "./migrateInboundLeadCallerIdCheckedColumn";
 import { migrateInboundLeadStructuredFieldsColumn } from "./migrateInboundLeadStructuredFieldsColumn";
+import { migrateSentimentScoreColumn } from "./migrateSentimentScoreColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -44,3 +45,4 @@ migrateInboundLeadOverrideColumns(db);
 migrateInboundLeadAddressColumn(db);
 migrateInboundLeadCallerIdCheckedColumn(db);
 migrateInboundLeadStructuredFieldsColumn(db);
+migrateSentimentScoreColumn(db);

@@ -87,6 +87,23 @@ function extractCallReason(data: PostCallTranscriptionPayload["data"]): string |
   return typeof entry.value === "string" ? entry.value : String(entry.value);
 }
 
+// Requires the ElevenLabs agent to have a Data Collection field named
+// exactly "sentiment_score", type Integer — see docs/elevenlabs-tools.md's
+// Call Sentiment setup. 1 (very frustrated) through 5 (very happy). Absent
+// for any business that hasn't configured one (expected, handled gracefully
+// — column stays null), and also null if the model ever returns something
+// outside the real 1-5 range (defensive: the field's own description
+// constrains this, but nothing stops a redelivered/edge-case payload from
+// carrying a stray value, and a wrong-but-plausible number silently stored
+// as a real score would be worse than an honest null).
+function extractSentimentScore(data: PostCallTranscriptionPayload["data"]): number | null {
+  const entry = data.analysis?.data_collection_results?.sentiment_score;
+  if (entry === undefined || entry.value === undefined || entry.value === null) return null;
+  const num = typeof entry.value === "number" ? entry.value : Number(entry.value);
+  if (!Number.isInteger(num) || num < 1 || num > 5) return null;
+  return num;
+}
+
 function extractTwilioCallSid(data: PostCallTranscriptionPayload["data"]): string | null {
   const sid = data.metadata?.phone_call?.call_sid;
   return typeof sid === "string" && sid.length > 0 ? sid : null;
@@ -250,6 +267,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       durationSecs: extractDurationSecs(data),
       callReason: extractCallReason(data),
       twilioCallSid: extractTwilioCallSid(data),
+      sentimentScore: extractSentimentScore(data),
     });
 
     // Computed once here (and recomputed on a webhook redelivery, same as

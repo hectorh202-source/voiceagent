@@ -154,6 +154,17 @@ Setup, in the agent's dashboard (not the same place as the three webhook tools):
 
 **Confirmed against a real payload** (2026-07-15), enum-constrained: `analysis.data_collection_results.call_reason.value` came back as `"Unbooked - Pending Coordination"` — an exact match to one of the configured enum values, not a freeform sentence — and the stored `call_reason` column matched it byte-for-byte. (An earlier test before Enum Values was populated returned a freeform sentence like `"slow drip from sink"` instead — also stored correctly, just not constrained to the taxonomy.) Still worth a one-off spot-check (`docker compose exec app node`, piping in a small decrypt-and-print script — same pattern used elsewhere for direct-DB diagnostics) the first time *you* set this field up for a new business, since a materially different prompt/enum could in principle produce a different result.
 
+### Call Sentiment Data Collection setup (optional, any business)
+
+Powers the "Sentiment" column on the Calls page (`/app/:businessId/calls`) and the Call Detail page — a 1 (very frustrated) through 5 (very happy) score for how the caller came across, shown as a colored badge (Very Frustrated/Frustrated/Neutral/Happy/Very Happy). Same mechanism as Call Reason above — **not a tool the agent calls mid-conversation**, ElevenLabs' post-call Data Collection re-reads the finished transcript and classifies it, delivered on the same `analysis.data_collection_results` payload `webhooks/postCall.ts` already parses. This column stays blank/dash for every call until you set this up.
+
+Setup, in the agent's Analysis/Data Collection tab (same place as Call Reason):
+1. Add a new Data Collection field with **Identifier: `sentiment_score`** exactly — `postCall.ts`'s `extractSentimentScore()` looks up this exact key; a different identifier means the value is silently never picked up (no error, the column just stays blank).
+2. **Type: Integer** (not String/Enum this time — a real number, not a category label).
+3. **Description**, constraining the model to the same 1-5 scale this app expects: *"Rate the caller's overall sentiment/mood during this call on a scale of 1 to 5, based on tone and what they said — 1 means clearly frustrated or upset, 3 means neutral or business-as-usual, 5 means clearly happy or satisfied. Always return a whole number from 1 to 5, never anything else."* `extractSentimentScore()` discards (stores `null` for) anything outside 1-5 or non-integer, so a wildly out-of-range value degrades to "not classified" rather than displaying something misleading — but a tight description still gets you a real, consistently-scaled score instead of relying on that fallback.
+
+**Verify the same way Call Reason was verified**: after one real test call, a direct-DB spot-check (`docker compose exec app node`, same decrypt-and-print pattern used for Call Reason) confirms `sentiment_score` actually landed as a small integer 1-5, not something else — worth doing once per business the first time this is set up, since a materially different prompt/description could in principle produce an out-of-range or wrongly-scaled value that this app's own validation would then just discard as null rather than silently storing something wrong.
+
 ### Emergency transfer
 
 A built-in **system tool**, `transfer_to_number` (labeled "Transfer to number" in the dashboard, under Human Transfer Rules) — not a webhook tool, no code involved. Configured with:

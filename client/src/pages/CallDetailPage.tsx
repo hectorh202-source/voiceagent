@@ -3,7 +3,14 @@ import { useParams, useNavigate, useLocation, type Location } from "react-router
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CallDetail, CallStatus, RecoveryStatus } from "../api/types";
-import { formatDateTime, formatDuration, formatDurationClock, formatPhoneNumber } from "../lib/format";
+import {
+  formatDateTime,
+  formatDuration,
+  formatDurationClock,
+  formatPhoneNumber,
+  getSentimentLabel,
+  getSentimentBadgeClass,
+} from "../lib/format";
 import { useAuthedUser } from "../auth/AuthGate";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
@@ -293,6 +300,21 @@ export function CallDetailPage() {
               <div className="info-body">
                 <div className="info-label">Reason</div>
                 <div className="info-value">{data.callReason ?? "Not classified"}</div>
+              </div>
+            </div>
+            <div className="info-row">
+              <MessageIcon />
+              <div className="info-body">
+                <div className="info-label">Sentiment</div>
+                <div className="info-value">
+                  {data.sentimentScore !== null ? (
+                    <span className={`badge ${getSentimentBadgeClass(data.sentimentScore)}`}>
+                      {getSentimentLabel(data.sentimentScore)} ({data.sentimentScore}/5)
+                    </span>
+                  ) : (
+                    "Not classified"
+                  )}
+                </div>
               </div>
             </div>
             <div className="info-row">

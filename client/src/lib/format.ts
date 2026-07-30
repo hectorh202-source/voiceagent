@@ -219,6 +219,34 @@ export function getNameSourceColors(source: LeadNameSource): { bg: string; fg: s
   return { bg: "var(--warning-bg)", fg: "var(--warning-text)" };
 }
 
+// 1 (very frustrated) through 5 (very happy) — see CallDetail's own comment
+// for where this comes from (ElevenLabs' post-call Data Collection). null
+// for a business that hasn't configured that field, or a call from before
+// this shipped.
+const SENTIMENT_LABEL: Record<number, string> = {
+  1: "Very Frustrated",
+  2: "Frustrated",
+  3: "Neutral",
+  4: "Happy",
+  5: "Very Happy",
+};
+
+const SENTIMENT_BADGE_CLASS: Record<number, string> = {
+  1: "badge-danger",
+  2: "badge-warning",
+  3: "badge-neutral",
+  4: "badge-success",
+  5: "badge-success",
+};
+
+export function getSentimentLabel(score: number | null): string {
+  return score !== null && SENTIMENT_LABEL[score] ? SENTIMENT_LABEL[score] : "—";
+}
+
+export function getSentimentBadgeClass(score: number | null): string {
+  return score !== null && SENTIMENT_BADGE_CLASS[score] ? SENTIMENT_BADGE_CLASS[score] : "badge-neutral";
+}
+
 // Up to 2 initials from a display name (or "?" for an unknown/empty one) —
 // used by the .lead-avatar circles in LeadsPage.tsx/LeadDetailPage.tsx.
 export function getInitials(name: string | null): string {

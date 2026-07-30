@@ -22,6 +22,11 @@ export interface ElevenLabsCallRecord {
   no_booking_created: number;
   auto_status: string;
   twilio_call_sid: string | null;
+  // 1 (very frustrated) through 5 (very happy) — see webhooks/postCall.ts's
+  // extractSentimentScore for the ElevenLabs Data Collection field this
+  // comes from. null for any business that hasn't configured that field, or
+  // for a call from before this shipped. Not PII, not encrypted.
+  sentiment_score: number | null;
 }
 
 // transcript_json/summary/raw_payload_json/internal_notes carry customer PII
@@ -50,6 +55,7 @@ interface CallTranscriptionEntry {
   durationSecs?: number | null;
   callReason?: string | null;
   twilioCallSid?: string | null;
+  sentimentScore?: number | null;
 }
 
 // duration_secs/call_reason come from the webhook payload, so a redelivered
@@ -60,8 +66,8 @@ interface CallTranscriptionEntry {
 // delivery untouched, the same trick setAudioPathStmt already relies on for
 // not clobbering transcript fields.
 const upsertTranscriptionStmt = db.prepare(`
-  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json, duration_secs, call_reason, twilio_call_sid)
-  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson, @durationSecs, @callReason, @twilioCallSid)
+  INSERT INTO elevenlabs_calls (conversation_id, business_id, agent_id, transcript_json, summary, termination_reason, raw_payload_json, duration_secs, call_reason, twilio_call_sid, sentiment_score)
+  VALUES (@conversationId, @businessId, @agentId, @transcriptJson, @summary, @terminationReason, @rawPayloadJson, @durationSecs, @callReason, @twilioCallSid, @sentimentScore)
   ON CONFLICT(conversation_id) DO UPDATE SET
     agent_id = excluded.agent_id,
     transcript_json = excluded.transcript_json,
@@ -70,7 +76,8 @@ const upsertTranscriptionStmt = db.prepare(`
     raw_payload_json = excluded.raw_payload_json,
     duration_secs = excluded.duration_secs,
     call_reason = excluded.call_reason,
-    twilio_call_sid = excluded.twilio_call_sid
+    twilio_call_sid = excluded.twilio_call_sid,
+    sentiment_score = excluded.sentiment_score
 `);
 
 export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
@@ -85,6 +92,7 @@ export function upsertCallTranscription(entry: CallTranscriptionEntry): void {
     durationSecs: entry.durationSecs ?? null,
     callReason: entry.callReason ?? null,
     twilioCallSid: entry.twilioCallSid ?? null,
+    sentimentScore: entry.sentimentScore ?? null,
   });
 }
 

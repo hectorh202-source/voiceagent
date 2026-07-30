@@ -80,6 +80,10 @@ export interface CallListRow {
   leadUrl: string | null;
   jobUrl: string | null;
   flags: CallFlags;
+  // 1 (very frustrated) through 5 (very happy), from ElevenLabs' post-call
+  // Data Collection — null for a business that hasn't configured that field,
+  // or a call from before this shipped.
+  sentimentScore: number | null;
 }
 
 export interface CallDetail {
@@ -111,6 +115,7 @@ export interface CallDetail {
   autoStatus: CallStatus;
   statusOverride: CallStatus | null;
   durationSecs: number | null;
+  sentimentScore: number | null;
   callReason: string | null;
   autoCallReason: string | null;
   callReasonOverride: string | null;

@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import type { CallListRow } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
-import { formatDateTime, formatDuration, formatPhoneNumber } from "../lib/format";
+import { formatDateTime, formatDuration, formatPhoneNumber, getSentimentLabel, getSentimentBadgeClass } from "../lib/format";
 
 export function CallsTable({
   businessId,
@@ -34,6 +34,7 @@ export function CallsTable({
           <th>Call Handler</th>
           <th>Emergency</th>
           <th>Call Reason</th>
+          <th>Sentiment</th>
           <th>Job</th>
         </tr>
       </thead>
@@ -74,6 +75,15 @@ export function CallsTable({
             <td>{row.callHandler === "ai_human" ? "AI + Human" : "AI"}</td>
             <td>{row.isEmergency ? "⚠️" : "—"}</td>
             <td>{row.callReason ?? <span className="muted">—</span>}</td>
+            <td>
+              {row.sentimentScore !== null ? (
+                <span className={`badge ${getSentimentBadgeClass(row.sentimentScore)}`}>
+                  {getSentimentLabel(row.sentimentScore)}
+                </span>
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </td>
             <td onClick={(e) => e.stopPropagation()}>
               {row.jobId && row.jobUrl && (
                 <a className="badge badge-neutral" href={row.jobUrl} target="_blank" rel="noopener noreferrer">

@@ -159,6 +159,7 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     leadUrl,
     jobUrl,
     flags,
+    sentimentScore: record.sentiment_score,
   };
 }
 
@@ -252,6 +253,7 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
   res.json({
     ...viewModel,
     durationSecs: record.duration_secs,
+    sentimentScore: record.sentiment_score,
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     internalNotes: record.internal_notes,
