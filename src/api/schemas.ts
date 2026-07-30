@@ -63,6 +63,10 @@ export const patchCallsSchema = z.object({
   internalNotes: z.string().nullable().optional(),
 });
 
+export const bulkDeleteCallsSchema = z.object({
+  conversationIds: z.array(z.string().min(1)).min(1),
+});
+
 export const businessInfoSchema = z.object({
   name: z.string().min(1).optional(),
   serviceTitanBusinessUnitId: z.string().optional(),

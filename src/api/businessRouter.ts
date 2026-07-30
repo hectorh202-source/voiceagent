@@ -6,7 +6,14 @@ import { resolveBusiness } from "../middleware/resolveBusiness";
 import { requireApiSession } from "./requireApiSession";
 import { requireBusinessAccess } from "../middleware/requireBusinessAccess";
 import { requireApiPlatformAdmin } from "./requireApiPlatformAdmin";
-import { patchCallsSchema, businessInfoSchema, generalSettingsSchema, patchLeadsSchema, chatWidgetSettingsSchema } from "./schemas";
+import {
+  patchCallsSchema,
+  bulkDeleteCallsSchema,
+  businessInfoSchema,
+  generalSettingsSchema,
+  patchLeadsSchema,
+  chatWidgetSettingsSchema,
+} from "./schemas";
 import {
   listCallRecords,
   getCallRecord,
@@ -263,21 +270,19 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
   });
 });
 
-// Platform-admin-only, hard delete — not a status/archive flag, since this
-// exists for removing genuinely unwanted data (test calls, mistakes), not a
-// routine triage action any business user should be able to do. Deletes the
-// call_log/twilio_recordings rows and unlinks the on-disk audio files too
-// (see db/callRecords.ts's deleteCallRecord comment for why those aren't
-// cleaned up by an FK constraint automatically), so nothing orphaned is left
-// behind.
-apiBusinessRouter.delete("/calls/:conversationId", requireApiPlatformAdmin, (req, res) => {
-  const business = req.business!;
-  const { conversationId } = req.params;
+// Shared by both the single-call and bulk delete routes below. Not a
+// status/archive flag — a genuine hard delete, since this exists for
+// removing unwanted data (test calls, mistakes), not a routine triage action
+// any business user should be able to do (both routes are platform-admin
+// gated). Deletes the call_log/twilio_recordings rows and unlinks the
+// on-disk audio files too (see db/callRecords.ts's deleteCallRecord comment
+// for why those aren't cleaned up by an FK constraint automatically), so
+// nothing orphaned is left behind. Returns false (no-op) for an
+// already-gone/unknown conversationId, so a bulk call can keep going instead
+// of aborting the rest of the batch.
+function deleteCallAndFiles(business: Business, conversationId: string): boolean {
   const record = getCallRecord(business.id, conversationId);
-  if (!record) {
-    res.status(404).json({ error: "Call not found" });
-    return;
-  }
+  if (!record) return false;
   const recording = record.twilio_call_sid ? getTwilioRecording(business.id, record.twilio_call_sid) : undefined;
 
   deleteCallLogsForConversation(business.id, conversationId);
@@ -290,8 +295,33 @@ apiBusinessRouter.delete("/calls/:conversationId", requireApiPlatformAdmin, (req
       if (err && err.code !== "ENOENT") console.error(`Failed to delete recording file ${filePath}:`, err);
     });
   }
+  return true;
+}
 
+apiBusinessRouter.delete("/calls/:conversationId", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  if (!deleteCallAndFiles(business, req.params.conversationId)) {
+    res.status(404).json({ error: "Call not found" });
+    return;
+  }
   res.json({ success: true });
+});
+
+// Bulk counterpart, same auth/reasoning as the single-call route above —
+// mirrors PATCH /calls' conversationIds-array shape rather than requiring
+// the client to fire one request per selected row.
+apiBusinessRouter.delete("/calls", requireApiPlatformAdmin, (req, res) => {
+  const business = req.business!;
+  const parsed = bulkDeleteCallsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  let deletedCount = 0;
+  for (const conversationId of parsed.data.conversationIds) {
+    if (deleteCallAndFiles(business, conversationId)) deletedCount++;
+  }
+  res.json({ success: true, deletedCount });
 });
 
 // One page of the Leads inbox — same page size/keyset-pagination reasoning

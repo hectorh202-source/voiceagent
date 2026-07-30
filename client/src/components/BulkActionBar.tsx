@@ -5,6 +5,8 @@ export function BulkActionBar({
   onMarkRecovered,
   onMarkNotRecovered,
   onClear,
+  onDelete,
+  canDelete,
 }: {
   count: number;
   onMarkRead: () => void;
@@ -12,6 +14,11 @@ export function BulkActionBar({
   onMarkRecovered: () => void;
   onMarkNotRecovered: () => void;
   onClear: () => void;
+  // Both optional — callers that don't pass onDelete/canDelete (none exist
+  // yet, but this component has no other consumers today) simply don't get
+  // a Delete button, rather than every call site needing to wire this up.
+  onDelete?: () => void;
+  canDelete?: boolean;
 }) {
   if (count === 0) return null;
   return (
@@ -29,6 +36,11 @@ export function BulkActionBar({
       <button className="btn" onClick={onMarkNotRecovered}>
         Mark as not recovered
       </button>
+      {canDelete && onDelete && (
+        <button className="btn btn-danger" onClick={onDelete}>
+          Delete
+        </button>
+      )}
       <button className="link-btn" onClick={onClear}>
         Clear selection
       </button>

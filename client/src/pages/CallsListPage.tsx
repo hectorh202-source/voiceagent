@@ -6,6 +6,8 @@ import type { CallListFilters, CallListRow, RecoveryStatus } from "../api/types"
 import { CallsTable } from "../components/CallsTable";
 import { FiltersPanel } from "../components/FiltersPanel";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { useAuthedUser } from "../auth/AuthGate";
 
 function filtersFromParams(params: URLSearchParams): CallListFilters {
   return {
@@ -57,7 +59,9 @@ export function CallsListPage() {
   const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
+  const currentUser = useAuthedUser();
 
   // Keyset (cursor) pagination — each page's nextCursor comes from the
   // server (api/businessRouter.ts), which pushes every filter into the SQL
@@ -87,6 +91,15 @@ export function CallsListPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
       queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (conversationIds: string[]) => api.delete(`/api/businesses/${businessId}/calls`, { conversationIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", businessId] });
+      setSelected(new Set());
     },
   });
 
@@ -163,6 +176,8 @@ export function CallsListPage() {
         onMarkRecovered={() => bulkAction({ recoveryStatus: "recovered" })}
         onMarkNotRecovered={() => bulkAction({ recoveryStatus: "not_recovered" })}
         onClear={() => setSelected(new Set())}
+        canDelete={currentUser.isPlatformAdmin}
+        onDelete={() => setConfirmingDelete(true)}
       />
       <div className="card" style={{ padding: 0 }}>
         {isLoading ? (
@@ -190,6 +205,19 @@ export function CallsListPage() {
           </>
         )}
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`Delete ${selected.size} call${selected.size === 1 ? "" : "s"}?`}
+          message="This permanently deletes each selected call's record, transcript, recordings, and tool-call history. This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            deleteMutation.mutate(Array.from(selected));
+          }}
+        />
+      )}
     </div>
   );
 }
