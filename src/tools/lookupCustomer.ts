@@ -5,6 +5,7 @@ import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
 import { isDynamicMemoryEnabled } from "../settings/store";
 import { getCallMemory } from "../db/callMemory";
+import { getCachedCallerName } from "../db/callerIdCache";
 
 // conversationId is optional (older agent configs / any business that
 // hasn't wired it up yet just won't have it) — see docs/elevenlabs-tools.md's
@@ -49,7 +50,25 @@ export async function handleLookupCustomer(req: Request, res: Response): Promise
       }
     }
 
-    const response = { ...result, lastCallSummary };
+    // Not a ServiceTitan customer — try Twilio's Caller ID (CNAM) as a last-
+    // resort name, same "best-effort, not authoritative" source already used
+    // for Google LSA leads (see googleLsa/leads.ts). Cached per phone number
+    // forever (db/callerIdCache.ts), so this only ever costs a real Twilio
+    // Lookup call the first time a given number is ever checked, across every
+    // business — never on a cache hit, and never retried after a miss.
+    // Isolated in its own try/catch, same as lastCallSummary above: a
+    // Caller ID failure must never turn an otherwise-successful (if
+    // not-found) customer lookup into a failed tool call.
+    let callerIdName: string | null = null;
+    if (!result.found) {
+      try {
+        callerIdName = await getCachedCallerName(phone);
+      } catch (error) {
+        console.error("getCachedCallerName failed, proceeding without it:", error);
+      }
+    }
+
+    const response = { ...result, lastCallSummary, callerIdName };
     logToolCall({
       businessId: business.id,
       toolName: "lookup_customer",

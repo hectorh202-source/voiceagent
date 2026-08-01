@@ -230,6 +230,27 @@ export function bootstrapSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_call_memory_business ON call_memory(business_id);
 
+    -- Global (not per-business) cache of Twilio Caller ID (CNAM) lookups,
+    -- keyed purely by phone number — CNAM data is a property of the number
+    -- itself (Twilio's own carrier data), identical no matter which
+    -- business's agent is asking, so one shared cache serves every business
+    -- rather than each paying to look up the same number separately.
+    -- Checked ONCE ever per number, never retried regardless of outcome
+    -- (including a genuine miss) — see db/callerIdCache.ts, and the exact
+    -- same reasoning/incident (9,717 Twilio Lookup charges in under 24 hours
+    -- from repeatedly re-checking already-checked leads) that
+    -- googleLsa's caller_id_checked column already exists to prevent.
+    --
+    -- phone_lookup_hash, not the phone number itself — same reasoning as
+    -- call_memory above (looked up BY phone number before any row exists to
+    -- decrypt; AES-GCM's random IV means an encrypted column can't be
+    -- searched directly).
+    CREATE TABLE IF NOT EXISTS caller_id_cache (
+      phone_lookup_hash TEXT PRIMARY KEY,
+      caller_name TEXT,
+      checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- The shared knowledge base (see docs/chat-widget.md + knowledge-base.md).
     -- This app is the source of truth for the text; ElevenLabs holds a pushed
     -- copy for the voice agent (elevenlabs_document_id), and the chat widget

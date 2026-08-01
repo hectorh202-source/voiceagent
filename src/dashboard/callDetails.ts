@@ -150,10 +150,22 @@ export function resolveLookupCustomerFallback(businessId: number, conversationId
   let address: string | null = null;
   if (log.response_json) {
     try {
-      const response = JSON.parse(log.response_json) as { found?: boolean; name?: string | null; address?: string | null };
+      const response = JSON.parse(log.response_json) as {
+        found?: boolean;
+        name?: string | null;
+        address?: string | null;
+        callerIdName?: string | null;
+      };
       if (response.found) {
+        // A real ServiceTitan customer record — address only ever comes
+        // from here, never from Caller ID (Twilio has no address data).
         name = response.name ?? null;
         address = response.address ?? null;
+      } else {
+        // Not a ServiceTitan customer — callerIdName is a best-effort Twilio
+        // Caller ID (CNAM) guess, not a verified record (see
+        // tools/lookupCustomer.ts). Still better than "Unknown" when present.
+        name = response.callerIdName ?? null;
       }
     } catch {
       // leave null on a malformed response rather than crash

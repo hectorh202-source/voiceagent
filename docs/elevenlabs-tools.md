@@ -36,11 +36,14 @@ All five: validate the request body with `zod`, log the attempt to `call_log` (s
 POST /b/:businessId/tools/lookup-customer
 Request:  { "phone": string, "conversationId"?: string }
 Response: { "found": boolean, "customerId": string|null, "name": string|null, "address": string|null,
-            "email": string|null, "equipmentAge": string|null, "lastCallSummary": string|null }
+            "email": string|null, "equipmentAge": string|null, "lastCallSummary": string|null,
+            "callerIdName": string|null }
 ```
 Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently** at the start of a call (see agent config below) so the caller isn't asked to repeat a phone number ElevenLabs already has from caller ID.
 
 **`lastCallSummary`** is [dynamic memory](dynamic-memory.md) — populated from `db/callMemory.ts#getCallMemory` only when that business has `operational.dynamicMemoryEnabled` turned on (off by default), `null` otherwise (opted out, or a first-time caller with no prior memory row). Read in its own try/catch, separate from the ServiceTitan lookup — a memory-read failure only means a missing summary, never a failed customer lookup. A business that enables this toggle needs one added prompt instruction: *"if `lastCallSummary` is non-empty, acknowledge what was discussed last time before continuing."*
+
+**`callerIdName`** — only populated when `found` is `false` (a real ServiceTitan match always wins). A best-effort Twilio Caller ID (CNAM) guess via `db/callerIdCache.ts#getCachedCallerName`, same mechanism already used for Google LSA leads — **not a verified record**, just better than nothing for a caller who isn't in ServiceTitan. Cached globally by phone number, checked once ever (a real Twilio Lookup API cost, $0.01, charged even on a miss — see `twilio/callerName.ts`), reused for free on every subsequent call from that number across every business on the platform. Isolated in its own try/catch, same as `lastCallSummary` — a Caller ID failure never turns an otherwise-successful lookup into a failed tool call. No agent-side configuration needed; this is purely a response-field addition.
 
 **`conversationId` is optional but strongly recommended — see "Customer-info fallback setup" below.** Without it, `lookup_customer`'s result can't be linked back to a specific call in this app's own database, so it's only ever used live, in the moment, to greet the caller — it's silently unavailable afterward for the Calls list/Call Detail page to fall back on.
 
