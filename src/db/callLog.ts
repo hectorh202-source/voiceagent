@@ -119,3 +119,25 @@ export function findBookJobLogByConversationId(
     .get(businessId, conversationId) as CreateLeadLogRow | undefined;
   return row ? decryptLeadLogRow(row) : undefined;
 }
+
+// Correlates a lookup_customer call — the silent, start-of-call ServiceTitan
+// lookup every call makes — with its conversationId, ONLY populated once a
+// business's agent sends conversationId on this tool (system__conversation_id
+// dynamic variable; see docs/elevenlabs-tools.md). Used as a fallback name/
+// phone/address source (dashboard/callDetails.ts's resolveLookupCustomerFallback)
+// for calls that never reach create_lead/book_job, so a known ServiceTitan
+// customer who hung up early (or got routed to create_potential_lead, or
+// transferred out) doesn't show "Unknown" despite having been identified.
+export function findLookupCustomerLogByConversationId(
+  businessId: number,
+  conversationId: string,
+): CreateLeadLogRow | undefined {
+  const row = db
+    .prepare(
+      `SELECT request_json, response_json, created_at, success, phone FROM call_log
+       WHERE business_id = ? AND tool_name = 'lookup_customer' AND conversation_id = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(businessId, conversationId) as CreateLeadLogRow | undefined;
+  return row ? decryptLeadLogRow(row) : undefined;
+}

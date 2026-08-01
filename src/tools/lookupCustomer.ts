@@ -6,7 +6,14 @@ import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/h
 import { isDynamicMemoryEnabled } from "../settings/store";
 import { getCallMemory } from "../db/callMemory";
 
-const bodySchema = z.object({ phone: z.string().min(4) });
+// conversationId is optional (older agent configs / any business that
+// hasn't wired it up yet just won't have it) — see docs/elevenlabs-tools.md's
+// lookup_customer section for the system__conversation_id dynamic-variable
+// setup this depends on. Its only purpose is call_log.conversation_id
+// (populated automatically by callLog.ts's extractConversationId), which is
+// what lets buildCallDetailViewModel/parseCallRow fall back to this tool's
+// resolved name/address when a call never reaches create_lead/book_job.
+const bodySchema = z.object({ phone: z.string().min(4), conversationId: z.string().optional() });
 
 export async function handleLookupCustomer(req: Request, res: Response): Promise<void> {
   const business = req.business;

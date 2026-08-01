@@ -36,6 +36,7 @@ import {
   buildCallHistory,
   deriveCallHandler,
   buildServiceTitanUrls,
+  resolveLookupCustomerFallback,
 } from "../dashboard/callDetails";
 import type { CallFlags, CallStatus } from "../dashboard/callDetails";
 import { computeMetrics } from "../dashboard/metrics";
@@ -121,6 +122,14 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     } catch {
       // leave null on a malformed row rather than crash the list
     }
+  }
+  // See dashboard/callDetails.ts's resolveLookupCustomerFallback — fills in
+  // a known ServiceTitan customer's name/phone for a call that never reached
+  // create_lead/book_job, instead of showing "Unknown".
+  if (!customerName || !phone) {
+    const fallback = resolveLookupCustomerFallback(businessId, record.conversation_id);
+    if (!customerName) customerName = fallback.name;
+    if (!phone) phone = fallback.phone;
   }
 
   let leadId: string | null = null;

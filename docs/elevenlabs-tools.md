@@ -34,13 +34,24 @@ All five: validate the request body with `zod`, log the attempt to `call_log` (s
 
 ```
 POST /b/:businessId/tools/lookup-customer
-Request:  { "phone": string }
+Request:  { "phone": string, "conversationId"?: string }
 Response: { "found": boolean, "customerId": string|null, "name": string|null, "address": string|null,
             "email": string|null, "equipmentAge": string|null, "lastCallSummary": string|null }
 ```
 Calls `servicetitan/customers.ts#lookupCustomerByPhone`. Meant to run **silently** at the start of a call (see agent config below) so the caller isn't asked to repeat a phone number ElevenLabs already has from caller ID.
 
-**`lastCallSummary`** is [dynamic memory](dynamic-memory.md) — populated from `db/callMemory.ts#getCallMemory` only when that business has `operational.dynamicMemoryEnabled` turned on (off by default), `null` otherwise (opted out, or a first-time caller with no prior memory row). Read in its own try/catch, separate from the ServiceTitan lookup — a memory-read failure only means a missing summary, never a failed customer lookup. A business that enables this toggle needs one added prompt instruction: *"if `lastCallSummary` is non-empty, acknowledge what was discussed last time before continuing."* No other agent-side configuration is needed.
+**`lastCallSummary`** is [dynamic memory](dynamic-memory.md) — populated from `db/callMemory.ts#getCallMemory` only when that business has `operational.dynamicMemoryEnabled` turned on (off by default), `null` otherwise (opted out, or a first-time caller with no prior memory row). Read in its own try/catch, separate from the ServiceTitan lookup — a memory-read failure only means a missing summary, never a failed customer lookup. A business that enables this toggle needs one added prompt instruction: *"if `lastCallSummary` is non-empty, acknowledge what was discussed last time before continuing."*
+
+**`conversationId` is optional but strongly recommended — see "Customer-info fallback setup" below.** Without it, `lookup_customer`'s result can't be linked back to a specific call in this app's own database, so it's only ever used live, in the moment, to greet the caller — it's silently unavailable afterward for the Calls list/Call Detail page to fall back on.
+
+### Customer-info fallback setup (optional but recommended, any business)
+
+The Calls list's "Customer" column and the Call Detail page's name/phone/address normally come from whatever `create_lead`/`book_job` request the agent made — but a call that never reaches a booking tool (hung up early, routed to `create_potential_lead` instead, got transferred out, was excused/spam) has no such request, so those fields show "Unknown"/blank even when `lookup_customer` clearly identified a real, known ServiceTitan customer at the very start of the call. `dashboard/callDetails.ts`'s `resolveLookupCustomerFallback()` fixes this — but only for calls where `lookup_customer`'s own `call_log` row can be tied back to a `conversationId`, which requires one more parameter on the tool:
+
+1. On the `lookup_customer` webhook tool (same place `phone` is configured), add a second parameter: Identifier `conversationId`, **Value Type: Dynamic Variable**, value `system__conversation_id` (bare identifier, no `{{ }}` — same rule as `phone`'s `system__caller_id` wiring above). This is a real, ElevenLabs-provided built-in variable, populated automatically for every call — no LLM Prompt fallback needed, unlike `equipmentAge`-style custom fields.
+2. That's it — no prompt change needed. The fallback is read-side only (`callDetails.ts`/`businessRouter.ts` at page-load time), not something the agent needs to know about or act on.
+
+**Only affects calls received after this is added.** `lookup_customer` calls logged before this parameter existed have no `conversation_id` on their `call_log` row and can never be retroactively linked — same limitation as every other "add a new field, only new data has it" change in this app. Also note this needs to be added **per business** (per agent), same as every other tool parameter — an agent copied from another business's config before this was added won't have it either.
 
 ### `check_availability` — [`tools/checkAvailability.ts`](../src/tools/checkAvailability.ts)
 

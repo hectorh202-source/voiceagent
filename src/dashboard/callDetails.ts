@@ -1,7 +1,11 @@
 import { getCallRecord, listCallRecords } from "../db/callRecords";
 import type { ElevenLabsCallRecord } from "../db/callRecords";
 import { getTwilioRecording } from "../db/twilioRecordings";
-import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
+import {
+  findCreateLeadLogByConversationId,
+  findBookJobLogByConversationId,
+  findLookupCustomerLogByConversationId,
+} from "../db/callLog";
 import type { CreateLeadLogRow } from "../db/callLog";
 import { getRawServiceTitanSettings } from "../settings/store";
 import type { Business } from "../db/businesses";
@@ -124,6 +128,41 @@ function findTransferInfo(turns: TranscriptTurn[]): {
   return { isTransferred: false, forwardedNumber: null, transferDestination: null, transferFailed: false, transferTimeSecs: null };
 }
 
+export interface LookupCustomerFallback {
+  name: string | null;
+  phone: string | null;
+  address: string | null;
+}
+
+// Fallback name/phone/address source for a call that never reached
+// create_lead/book_job — lookup_customer runs silently at the start of every
+// call and, for a known ServiceTitan customer, already resolves this data
+// independent of whether the call went on to book/create anything. Only
+// fills in gaps left by a bookingLog, never overrides it (see call sites
+// below). Returns everything null if this business's agent hasn't been
+// wired up to send conversationId on lookup_customer yet (see
+// docs/elevenlabs-tools.md) — same as if the call simply had no match.
+export function resolveLookupCustomerFallback(businessId: number, conversationId: string): LookupCustomerFallback {
+  const log = findLookupCustomerLogByConversationId(businessId, conversationId);
+  if (!log) return { name: null, phone: null, address: null };
+
+  let name: string | null = null;
+  let address: string | null = null;
+  if (log.response_json) {
+    try {
+      const response = JSON.parse(log.response_json) as { found?: boolean; name?: string | null; address?: string | null };
+      if (response.found) {
+        name = response.name ?? null;
+        address = response.address ?? null;
+      }
+    } catch {
+      // leave null on a malformed response rather than crash
+    }
+  }
+
+  return { name, phone: log.phone, address };
+}
+
 export function buildCallDetailViewModel(business: Business, conversationId: string): CallDetailViewModel | null {
   const callRecord = getCallRecord(business.id, conversationId);
   if (!callRecord) return null;
@@ -171,6 +210,18 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
         // same as above
       }
     }
+  }
+
+  // No booking tool ever fired for this call (hung up early, routed to
+  // create_potential_lead, transferred out, etc.) — fall back to whatever
+  // lookup_customer already resolved at call start, rather than showing
+  // "Unknown" for a caller this app actually identified. Only fills gaps;
+  // never overrides a real bookingLog value.
+  if (!customerName || !phone || !address) {
+    const fallback = resolveLookupCustomerFallback(business.id, conversationId);
+    if (!customerName) customerName = fallback.name;
+    if (!phone) phone = fallback.phone;
+    if (!address) address = fallback.address;
   }
 
   const { leadUrl, jobUrl } = buildServiceTitanUrls(business.id, leadId, jobId);
@@ -268,7 +319,12 @@ export interface CallHistoryRow {
 function resolveCallPhone(businessId: number, record: ElevenLabsCallRecord): string | null {
   const leadLog = findCreateLeadLogByConversationId(businessId, record.conversation_id);
   const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, record.conversation_id);
-  return (leadLog ?? jobLog)?.phone ?? null;
+  const bookingPhone = (leadLog ?? jobLog)?.phone ?? null;
+  if (bookingPhone) return bookingPhone;
+  // Same fallback as buildCallDetailViewModel/parseCallRow — a call with no
+  // booking tool can still be matched to "the same caller" via whatever
+  // phone number lookup_customer resolved this call against.
+  return resolveLookupCustomerFallback(businessId, record.conversation_id).phone;
 }
 
 // Every other call from the same caller, newest first, including the call
@@ -300,6 +356,9 @@ export function buildCallHistory(business: Business, currentRecord: ElevenLabsCa
       } catch {
         // leave null on a malformed row rather than crash the list
       }
+    }
+    if (!customerName) {
+      customerName = resolveLookupCustomerFallback(business.id, record.conversation_id).name;
     }
 
     const autoStatus = deriveStatus(leadLog, jobLog);
