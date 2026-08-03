@@ -297,7 +297,18 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
     transcript,
     terminationReason: callRecord.termination_reason,
     hasAudio: !!callRecord.audio_path,
-    hasHumanRecording,
+    // pollAndStartRecordings() can't know in advance which in-progress calls
+    // will actually be transferred (no early hook to react to — see
+    // call-dashboard.md's Human-portion section), so it records every call
+    // for a business with a Twilio number configured, not just transferred
+    // ones. hasHumanRecording on its own only means "a completed Twilio
+    // recording exists for this call's SID" — without this transfer check,
+    // every non-transferred call got a second player showing the exact same
+    // full-call recording (no transfer offset to seek to, so it just played
+    // from 0:00 — a verbatim repeat of the AI portion). A failed transfer
+    // attempt is excluded too, same reasoning as deriveCallHandler/
+    // buildCallHistory's own "ai_human" determination elsewhere in this file.
+    hasHumanRecording: hasHumanRecording && transferInfo.isTransferred && !transferInfo.transferFailed,
     humanRecordingOffsetSecs: transferInfo.transferTimeSecs,
     status,
     autoStatus,
