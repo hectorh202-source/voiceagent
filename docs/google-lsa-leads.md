@@ -31,6 +31,31 @@ Both are combined behind one strict getter, `getGoogleLsaConfig(businessId)` in 
 
 **No in-app OAuth "Connect with Google" flow.** Matching how ServiceTitan/ElevenLabs credentials are handled everywhere else in this app, the refresh token is manually obtained (via Google's OAuth 2.0 Playground, during Stage 0) and pasted into the settings UI — not a self-service consent-screen flow. That could be built later if this expands beyond one or two businesses, but isn't needed to get TitanZ working first.
 
+## Token expired / recovery runbook
+
+**Symptom**: leads stop showing up in a business's Leads inbox despite real activity in that business's Google LSA dashboard. `docker compose logs app --since 6h | grep -i "google lsa"` shows:
+```
+ERROR calling Google Ads API: 400 { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }
+```
+
+**Root cause, confirmed real and recurring**: exactly the 7-day refresh-token expiry noted above — this is *expected* to happen roughly weekly for every business until the OAuth consent screen is submitted for Google's verification (see Stage 0, item 3). It is not a new bug each time it happens; don't go looking for a code regression before checking this first.
+
+**Recovery — get a fresh refresh token:**
+1. Go to [developers.google.com/oauthplayground](https://developers.google.com/oauthplayground).
+2. Gear icon (top right) → check **"Use your own OAuth credentials"** → paste this platform's **Client ID** and **Client Secret** (Global Admin Settings → Google Ads section).
+3. In the scope box, enter `https://www.googleapis.com/auth/adwords`.
+4. **Authorize APIs**, signing in with the Google account that has access to the affected business's Google Ads account — it must already be a Test user on this project's OAuth consent screen, or Google blocks the flow entirely.
+5. Click through the "Google hasn't verified this app" warning (Advanced → Go to [app] (unsafe)) — expected for an unverified app.
+6. **Exchange authorization code for tokens** → copy the **Refresh token** (not the Access token, which expires in an hour).
+7. Paste it into that business's own General Settings → Google LSA **Refresh Token** field → Save.
+8. Confirm within ~5 minutes: `docker compose logs app --since 10m | grep -i "google lsa"` shows no more `invalid_grant` errors, and new leads appear in the dashboard.
+
+**If the redirect step instead fails with `Error 400: redirect_uri_mismatch`**: the OAuth Client isn't configured to allow the Playground's callback yet. Google Cloud Console → APIs & Services → Credentials → that Client → **Authorized redirect URIs** → add exactly `https://developers.google.com/oauthplayground` (no trailing slash, must match exactly) → save → retry.
+
+**If the Client Secret itself was rotated** (Google Cloud Console only ever shows a secret once, at creation — if it wasn't saved, the only fix is to add/regenerate a secret on the same Client ID, not create a new Client): **update Global Admin Settings → Google Ads → OAuth Client Secret to the new value too**, or every business's next poll fails with `invalid_client` instead of `invalid_grant`, since this app is still presenting the old, now-invalid secret. The Client ID itself doesn't change when only the secret is rotated. This is a **global** field — one update covers every business on the platform, not something to repeat per business.
+
+**The actual permanent fix**, not another token swap: submit the OAuth consent screen for Google's verification so refresh tokens for the `adwords` scope stop expiring every 7 days. Worth doing once rather than repeating this runbook weekly.
+
 ## `inbound_leads` upsert semantics for a polling source
 
 Every lead source built before this one (the website form/chat webhook) is a one-shot submission — a given `external_id` is either new or a harmless exact redelivery, so the original `insertInboundLead()` used `ON CONFLICT ... DO NOTHING`. A polling source is different: the *same* `local_services_lead` resource can legitimately be seen again on a later poll with genuinely new content (a message thread's later reply, a call's billing data settling) — silently ignoring it on conflict would mean losing real content, not just no-op'ing a redundant delivery.
