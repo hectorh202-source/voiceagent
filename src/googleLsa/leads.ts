@@ -81,47 +81,66 @@ export interface LsaLeadResult {
 // you try to do that to a field that's actually fine selected whole, as
 // contact_details turned out to be). The REST JSON response nests
 // contact_details back under contactDetails, matching the row type below.
-const LEADS_QUERY = `
-  SELECT
-    local_services_lead.resource_name,
-    local_services_lead.id,
-    local_services_lead.lead_type,
-    local_services_lead.lead_status,
-    local_services_lead.creation_date_time,
-    local_services_lead.locale,
-    local_services_lead.lead_charged,
-    local_services_lead.contact_details
-  FROM local_services_lead
-  ORDER BY local_services_lead.creation_date_time DESC
-  LIMIT 50
-`;
+// Parameterized (sinceDate/limit) rather than a fixed constant so the same
+// query — and therefore the exact same, already-verified field-mapping
+// logic below — serves both the live poller's "50 newest leads" default and
+// a one-off backfill's wider "everything since a given date" need (e.g.
+// recovering a Google Ads OAuth token outage — see
+// docs/google-lsa-leads.md's recovery runbook). sinceDate is a plain
+// 'YYYY-MM-DD' GAQL date literal (confirmed against Google's own date-range
+// docs — a DATETIME field compares fine against a date-only literal, GAQL
+// treats it as that date's midnight).
+function buildLeadsQuery(options: { sinceDate?: string; limit?: number } = {}): string {
+  const where = options.sinceDate ? `WHERE local_services_lead.creation_date_time >= '${options.sinceDate}'` : "";
+  return `
+    SELECT
+      local_services_lead.resource_name,
+      local_services_lead.id,
+      local_services_lead.lead_type,
+      local_services_lead.lead_status,
+      local_services_lead.creation_date_time,
+      local_services_lead.locale,
+      local_services_lead.lead_charged,
+      local_services_lead.contact_details
+    FROM local_services_lead
+    ${where}
+    ORDER BY local_services_lead.creation_date_time DESC
+    LIMIT ${options.limit ?? 50}
+  `;
+}
 
 // Confirmed via real data (2026-07-17): this must be DESC, not ASC.
-// LEADS_QUERY above fetches the 50 *newest* leads — an ASC-ordered
-// conversations query with the same LIMIT instead fetches the account's
+// buildLeadsQuery above fetches the *newest* leads first — an ASC-ordered
+// conversations query with a small LIMIT instead fetches the account's
 // *oldest* conversations, which for an account with any real history never
-// overlaps with those 50 recent leads at all (confirmed: a real MESSAGE
-// lead came back with an empty conversations array and fell through to the
+// overlaps with those recent leads at all (confirmed: a real MESSAGE lead
+// came back with an empty conversations array and fell through to the
 // generic fallback message, purely because of this ordering mismatch, not
 // because the conversation didn't exist). Sorted back to ascending
 // per-lead, after grouping, wherever chronological order actually matters
 // (see the sort in fetchRecentLsaLeads below).
-const CONVERSATIONS_QUERY = `
-  SELECT
-    local_services_lead_conversation.resource_name,
-    local_services_lead_conversation.id,
-    local_services_lead_conversation.lead,
-    local_services_lead_conversation.conversation_channel,
-    local_services_lead_conversation.participant_type,
-    local_services_lead_conversation.event_date_time,
-    local_services_lead_conversation.message_details.text,
-    local_services_lead_conversation.message_details.attachment_urls,
-    local_services_lead_conversation.phone_call_details.call_duration_millis,
-    local_services_lead_conversation.phone_call_details.call_recording_url
-  FROM local_services_lead_conversation
-  ORDER BY local_services_lead_conversation.event_date_time DESC
-  LIMIT 200
-`;
+function buildConversationsQuery(options: { sinceDate?: string; limit?: number } = {}): string {
+  const where = options.sinceDate
+    ? `WHERE local_services_lead_conversation.event_date_time >= '${options.sinceDate}'`
+    : "";
+  return `
+    SELECT
+      local_services_lead_conversation.resource_name,
+      local_services_lead_conversation.id,
+      local_services_lead_conversation.lead,
+      local_services_lead_conversation.conversation_channel,
+      local_services_lead_conversation.participant_type,
+      local_services_lead_conversation.event_date_time,
+      local_services_lead_conversation.message_details.text,
+      local_services_lead_conversation.message_details.attachment_urls,
+      local_services_lead_conversation.phone_call_details.call_duration_millis,
+      local_services_lead_conversation.phone_call_details.call_recording_url
+    FROM local_services_lead_conversation
+    ${where}
+    ORDER BY local_services_lead_conversation.event_date_time DESC
+    LIMIT ${options.limit ?? 200}
+  `;
+}
 
 function formatDuration(callDurationMillis: string | undefined): string | null {
   if (!callDurationMillis) return null;
@@ -177,10 +196,15 @@ export async function fetchRecentLsaLeads(
   // this function stays a pure Google-facing fetch with no DB dependency;
   // pollLeads.ts (which already talks to the DB) computes it once per poll.
   alreadyCheckedExternalIds: Set<string>,
+  // Left undefined by the live poller (pollLeads.ts) — defaults to the
+  // original "50 newest leads" behavior, completely unchanged. Only a
+  // one-off backfill script (e.g. recovering an OAuth outage) passes a
+  // wider sinceDate/limit — see docs/google-lsa-leads.md.
+  queryOptions: { sinceDate?: string; limit?: number } = {},
 ): Promise<LsaLeadResult[]> {
   const [leadRows, conversationRows] = await Promise.all([
-    gaqlSearch<LocalServicesLeadRow>(config, LEADS_QUERY),
-    gaqlSearch<LocalServicesLeadConversationRow>(config, CONVERSATIONS_QUERY),
+    gaqlSearch<LocalServicesLeadRow>(config, buildLeadsQuery(queryOptions)),
+    gaqlSearch<LocalServicesLeadConversationRow>(config, buildConversationsQuery(queryOptions)),
   ]);
 
   const conversationsByLead = new Map<string, NonNullable<LocalServicesLeadConversationRow["localServicesLeadConversation"]>[]>();
