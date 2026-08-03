@@ -86,30 +86,32 @@ export function BusinessInfoSettingsPage() {
       <div className="card">
         <h2>Service categories (optional)</h2>
         <p className="form-hint">Classify calls into a business unit/job type by name (e.g. "Plumbing", "HVAC").</p>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Business Unit ID</th>
-              <th>Job Type ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map((c, i) => (
-              <tr key={i}>
-                <td>
-                  <input value={c.name} onChange={(e) => updateCategory(i, "name", e.target.value)} />
-                </td>
-                <td>
-                  <input value={c.businessUnitId} onChange={(e) => updateCategory(i, "businessUnitId", e.target.value)} />
-                </td>
-                <td>
-                  <input value={c.jobTypeId} onChange={(e) => updateCategory(i, "jobTypeId", e.target.value)} />
-                </td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Business Unit ID</th>
+                <th>Job Type ID</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {categories.map((c, i) => (
+                <tr key={i}>
+                  <td>
+                    <input value={c.name} onChange={(e) => updateCategory(i, "name", e.target.value)} />
+                  </td>
+                  <td>
+                    <input value={c.businessUnitId} onChange={(e) => updateCategory(i, "businessUnitId", e.target.value)} />
+                  </td>
+                  <td>
+                    <input value={c.jobTypeId} onChange={(e) => updateCategory(i, "jobTypeId", e.target.value)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>

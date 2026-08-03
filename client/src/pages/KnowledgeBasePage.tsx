@@ -96,6 +96,7 @@ export function KnowledgeBasePage() {
       )}
 
       {!isLoading && !isError && (
+        <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -157,6 +158,7 @@ export function KnowledgeBasePage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {documents.length > 0 && (

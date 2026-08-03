@@ -420,6 +420,19 @@ textarea,
   box-shadow: var(--shadow-sm);
 }
 
+/* Every .data-table column is white-space:nowrap (below), so a table with
+   enough columns (e.g. Calls' 9-column list) is often wider than the
+   viewport on narrower windows. Without this wrapper, that overflow was
+   left to whichever ancestor happened to have overflow-x:auto — usually
+   .content, the whole-page scroll container — which drags the filters/bulk
+   action bar out of view along with the table, and on Windows' non-overlay
+   scrollbars let the table's rightmost column render right under/behind the
+   vertical scrollbar's track instead of properly reserving space for it.
+   Scoping the horizontal scroll to just the table itself fixes both. */
+.table-scroll {
+  overflow-x: auto;
+}
+
 table.data-table {
   width: 100%;
   border-collapse: collapse;
