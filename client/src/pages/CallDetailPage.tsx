@@ -367,6 +367,50 @@ export function CallDetailPage() {
           </div>
 
           <div className="info-section">
+            <div className="info-section-title">ServiceTitan Call Reason</div>
+            {!hasBooking ? (
+              <div className="muted" style={{ fontSize: 13 }}>
+                No ServiceTitan Lead or Job for this call — nothing to attach a note to.
+              </div>
+            ) : callReasonsQuery.isLoading ? (
+              <div className="muted" style={{ fontSize: 13 }}>Loading…</div>
+            ) : callReasonsQuery.isError ? (
+              <div className="muted" style={{ fontSize: 13 }}>
+                Couldn't load ServiceTitan's call reasons list.
+              </div>
+            ) : (
+              <>
+                <div className="select-display-wrap">
+                  <select
+                    className="select-display"
+                    value={data.serviceTitanCallReason ?? ""}
+                    disabled={setServiceTitanCallReasonMutation.isPending}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setServiceTitanCallReasonMutation.mutate(value === "" ? null : value);
+                    }}
+                  >
+                    <option value="">Not set</option>
+                    {callReasonsQuery.data?.callReasons.map((reason) => (
+                      <option key={reason.id} value={reason.name}>
+                        {reason.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDownIcon width={14} height={14} />
+                </div>
+                {serviceTitanCallReasonError ? (
+                  <div className="muted" style={{ fontSize: 13, color: "var(--danger-text)" }}>
+                    {serviceTitanCallReasonError}
+                  </div>
+                ) : data.serviceTitanCallReason ? (
+                  <div className="muted" style={{ fontSize: 12 }}>Posted as a note to ServiceTitan.</div>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <div className="info-section">
             <div className="info-section-title">Bookability</div>
             <div className="select-display-wrap">
               <select
@@ -418,50 +462,6 @@ export function CallDetailPage() {
               </select>
               <ChevronDownIcon width={14} height={14} />
             </div>
-          </div>
-
-          <div className="info-section">
-            <div className="info-section-title">ServiceTitan Call Reason</div>
-            {!hasBooking ? (
-              <div className="muted" style={{ fontSize: 13 }}>
-                No ServiceTitan Lead or Job for this call — nothing to attach a note to.
-              </div>
-            ) : callReasonsQuery.isLoading ? (
-              <div className="muted" style={{ fontSize: 13 }}>Loading…</div>
-            ) : callReasonsQuery.isError ? (
-              <div className="muted" style={{ fontSize: 13 }}>
-                Couldn't load ServiceTitan's call reasons list.
-              </div>
-            ) : (
-              <>
-                <div className="select-display-wrap">
-                  <select
-                    className="select-display"
-                    value={data.serviceTitanCallReason ?? ""}
-                    disabled={setServiceTitanCallReasonMutation.isPending}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setServiceTitanCallReasonMutation.mutate(value === "" ? null : value);
-                    }}
-                  >
-                    <option value="">Not set</option>
-                    {callReasonsQuery.data?.callReasons.map((reason) => (
-                      <option key={reason.id} value={reason.name}>
-                        {reason.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDownIcon width={14} height={14} />
-                </div>
-                {serviceTitanCallReasonError ? (
-                  <div className="muted" style={{ fontSize: 13, color: "var(--danger-text)" }}>
-                    {serviceTitanCallReasonError}
-                  </div>
-                ) : data.serviceTitanCallReason ? (
-                  <div className="muted" style={{ fontSize: 12 }}>Posted as a note to ServiceTitan.</div>
-                ) : null}
-              </>
-            )}
           </div>
 
           <div className="info-section">
