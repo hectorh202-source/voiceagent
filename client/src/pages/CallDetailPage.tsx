@@ -205,6 +205,11 @@ export function CallDetailPage() {
     onSuccess: () => {
       setServiceTitanCallReasonError(null);
       queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
+      // Same as patchMutation above — this value now drives the Calls list's
+      // "Call Reason" column too (see businessRouter.ts's parseCallRow), so
+      // that list query needs invalidating too or it keeps showing the
+      // stale, cached value until something else happens to refetch it.
+      queryClient.invalidateQueries({ queryKey: ["calls", businessId] });
     },
     onError: (error: unknown) => {
       setServiceTitanCallReasonError(error instanceof Error ? error.message : "Failed to save");
