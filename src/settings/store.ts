@@ -92,6 +92,14 @@ export interface ServiceTitanConfig {
   defaultBusinessUnitId: string;
   defaultCampaignId: string;
   defaultCallReasonId: string;
+  // Preferred over defaultCallReasonId when set — resolved by name against
+  // ServiceTitan's real Call Reasons list at request time (same "configure
+  // by name, not an opaque ID" pattern already used for tagName below,
+  // since ServiceTitan's own UI doesn't make Call Reason IDs easy to find
+  // either). defaultCallReasonId stays as a manual-override fallback for
+  // whoever already has a raw ID configured — see createLead()'s resolution
+  // order in servicetitan/leads.ts.
+  defaultCallReasonName: string;
   defaultJobTypeId: string;
 }
 
@@ -129,6 +137,7 @@ export function getServiceTitanConfig(businessId: number): ServiceTitanConfig | 
     defaultBusinessUnitId: getBusinessSetting(businessId, "servicetitan.businessUnitId") ?? "",
     defaultCampaignId: getBusinessSetting(businessId, "servicetitan.campaignId") ?? "",
     defaultCallReasonId: getBusinessSetting(businessId, "servicetitan.callReasonId") ?? "",
+    defaultCallReasonName: getBusinessSetting(businessId, "servicetitan.callReasonName") ?? "",
     defaultJobTypeId: getBusinessSetting(businessId, "servicetitan.jobTypeId") ?? "",
   };
 }
@@ -196,6 +205,7 @@ export function getRawServiceTitanSettings(businessId: number) {
     businessUnitId: getBusinessSetting(businessId, "servicetitan.businessUnitId") ?? "",
     campaignId: getBusinessSetting(businessId, "servicetitan.campaignId") ?? "",
     callReasonId: getBusinessSetting(businessId, "servicetitan.callReasonId") ?? "",
+    callReasonName: getBusinessSetting(businessId, "servicetitan.callReasonName") ?? "",
     jobTypeId: getBusinessSetting(businessId, "servicetitan.jobTypeId") ?? "",
     tagName: getBusinessSetting(businessId, "servicetitan.tagName") ?? "",
     bookingMode: getBookingMode(businessId),

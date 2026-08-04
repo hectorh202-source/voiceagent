@@ -1,5 +1,6 @@
 import { requireServiceTitanConfig, stRequest, describeError } from "./httpClient";
 import { findTagTypeIdByName } from "./tags";
+import { findCallReasonIdByName } from "./callReasons";
 import { getBusinessSetting } from "../settings/store";
 
 export interface CreateLeadInput {
@@ -54,13 +55,27 @@ export async function createLead(businessId: number, input: CreateLeadInput): Pr
     return { success: false, leadId: null };
   }
 
+  // Call Reason is configurable two ways, name taking priority — same
+  // reasoning as tagName below (ServiceTitan's own UI doesn't surface
+  // Call Reason IDs anywhere obvious, so a name-based lookup against the
+  // real Call Reasons list, see servicetitan/callReasons.ts, is friendlier
+  // to configure than hunting down a raw numeric ID). defaultCallReasonId
+  // stays as a fallback for whoever already has one configured, or if the
+  // configured name doesn't resolve to anything real (typo, deleted).
+  const callReasonName = config.defaultCallReasonName;
+  let callReasonId: number | null = callReasonName ? await findCallReasonIdByName(businessId, callReasonName) : null;
+  if (callReasonName && !callReasonId) {
+    console.error(`createLead: configured call reason name "${callReasonName}" was not found in ServiceTitan call reasons`);
+  }
+  if (!callReasonId && config.defaultCallReasonId) {
+    callReasonId = Number(config.defaultCallReasonId);
+  }
+
   // ServiceTitan requires either a Call Reason ID or a follow-up date on every
   // lead. We don't have a real scheduled date from the call (preferredTiming
-  // is freeform text, not a date) — if no Call Reason ID is configured,
+  // is freeform text, not a date) — if no Call Reason ID resolved above,
   // default to one business day out so the lead is never rejected for this.
-  const followUpDate = config.defaultCallReasonId
-    ? undefined
-    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const followUpDate = callReasonId ? undefined : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   // Tags identify leads created by this AI receptionist so the business can
   // tell at a glance (and once converted to a job) that it came from this
@@ -85,7 +100,7 @@ export async function createLead(businessId: number, input: CreateLeadInput): Pr
         locationId: input.locationId ? Number(input.locationId) : undefined,
         businessUnitId: businessUnitId ? Number(businessUnitId) : undefined,
         campaignId: Number(config.defaultCampaignId),
-        callReasonId: config.defaultCallReasonId ? Number(config.defaultCallReasonId) : undefined,
+        callReasonId: callReasonId ?? undefined,
         jobTypeId: jobTypeId ? Number(jobTypeId) : undefined,
         tagTypeIds: tagTypeId ? [tagTypeId] : undefined,
         followUpDate,

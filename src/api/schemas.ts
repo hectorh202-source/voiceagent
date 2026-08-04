@@ -106,6 +106,7 @@ export const generalSettingsSchema = z.object({
   serviceTitanAppKey: z.string().optional(),
   serviceTitanTenantId: z.string().optional(),
   serviceTitanCallReasonId: z.string().optional(),
+  serviceTitanCallReasonName: z.string().optional(),
   serviceTitanTagName: z.string().optional(),
   serviceTitanBookingMode: z.enum(["lead", "job"]).optional(),
   timezone: z.string().optional(),

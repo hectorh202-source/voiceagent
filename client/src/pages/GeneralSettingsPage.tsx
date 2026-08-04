@@ -36,6 +36,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [appKey, setAppKey] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [callReasonId, setCallReasonId] = useState("");
+  const [callReasonName, setCallReasonName] = useState("");
   const [tagName, setTagName] = useState("");
   const [bookingMode, setBookingMode] = useState<"lead" | "job">("lead");
   const [timezone, setTimezone] = useState("America/New_York");
@@ -59,6 +60,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
     setEnvironment(data.serviceTitan.environment);
     setTenantId(data.serviceTitan.tenantId);
     setCallReasonId(data.serviceTitan.callReasonId);
+    setCallReasonName(data.serviceTitan.callReasonName);
     setTagName(data.serviceTitan.tagName);
     setBookingMode(data.serviceTitan.bookingMode);
     setTimezone(data.operational.timezone);
@@ -120,6 +122,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         serviceTitanAppKey: appKey || undefined,
         serviceTitanTenantId: tenantId,
         serviceTitanCallReasonId: callReasonId,
+        serviceTitanCallReasonName: callReasonName,
         serviceTitanTagName: tagName,
         serviceTitanBookingMode: bookingMode,
         timezone,
@@ -261,8 +264,18 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
           <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} />
         </div>
         <div className="form-row">
-          <label>Call reason ID</label>
+          <label>Call reason name</label>
+          <input value={callReasonName} onChange={(e) => setCallReasonName(e.target.value)} />
+          <p className="form-hint">
+            Matched by name against this business's real ServiceTitan Call Reasons list at lead-creation time — the
+            name must match one configured in ServiceTitan exactly (case-insensitive). Takes priority over Call reason
+            ID below when set.
+          </p>
+        </div>
+        <div className="form-row">
+          <label>Call reason ID (fallback)</label>
           <input value={callReasonId} onChange={(e) => setCallReasonId(e.target.value)} />
+          <p className="form-hint">Only used if Call reason name above is blank, or doesn't match anything.</p>
         </div>
         <div className="form-row">
           <label>Lead/Job tag name</label>

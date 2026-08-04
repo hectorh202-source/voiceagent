@@ -236,6 +236,7 @@ export interface GeneralSettings {
     businessUnitId: string;
     campaignId: string;
     callReasonId: string;
+    callReasonName: string;
     jobTypeId: string;
     tagName: string;
     bookingMode: "lead" | "job";

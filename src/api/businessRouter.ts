@@ -863,6 +863,7 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "servicetitan.appKey", body.serviceTitanAppKey);
   maybeSetBusinessSetting(business.id, "servicetitan.tenantId", body.serviceTitanTenantId);
   maybeSetBusinessSetting(business.id, "servicetitan.callReasonId", body.serviceTitanCallReasonId);
+  maybeSetBusinessSetting(business.id, "servicetitan.callReasonName", body.serviceTitanCallReasonName);
   maybeSetBusinessSetting(business.id, "servicetitan.tagName", body.serviceTitanTagName);
   if (body.serviceTitanBookingMode) {
     setBusinessSetting(business.id, "servicetitan.bookingMode", body.serviceTitanBookingMode as BookingMode);
