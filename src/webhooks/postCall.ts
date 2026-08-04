@@ -251,15 +251,23 @@ async function updateJobWithRealSummary(
 // Never throws — runs after the call's own data is already safely stored,
 // so a failure here only ever means a still-missing customer name, never a
 // broken webhook response to ElevenLabs.
-async function backfillMissingCustomerInfoFromTwilio(
+//
+// Takes conversationId/twilioCallSid directly (not the raw webhook payload)
+// so this is equally callable from a one-off retroactive sweep over already-
+// stored elevenlabs_calls rows, not just the live webhook — every check
+// below is already a no-op for a call that doesn't need this, so a sweep
+// can safely call this for every existing call without its own filtering.
+export async function backfillMissingCustomerInfoFromTwilio(
   business: Business,
-  data: PostCallTranscriptionPayload["data"],
+  conversationId: string,
+  twilioCallSid: string | null,
 ): Promise<void> {
   try {
-    if (findLookupCustomerLogByConversationId(business.id, data.conversation_id)) return;
+    if (!twilioCallSid) return;
+    if (findLookupCustomerLogByConversationId(business.id, conversationId)) return;
 
-    const leadLog = findCreateLeadLogByConversationId(business.id, data.conversation_id);
-    const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, data.conversation_id);
+    const leadLog = findCreateLeadLogByConversationId(business.id, conversationId);
+    const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, conversationId);
     const bookingLog = leadLog ?? jobLog;
     if (bookingLog) {
       try {
@@ -269,9 +277,6 @@ async function backfillMissingCustomerInfoFromTwilio(
         // malformed stored JSON — fall through and attempt the backfill anyway
       }
     }
-
-    const twilioCallSid = extractTwilioCallSid(data);
-    if (!twilioCallSid) return;
 
     const twilioConfig = getTwilioConfig();
     if (!twilioConfig) return;
@@ -307,7 +312,7 @@ async function backfillMissingCustomerInfoFromTwilio(
       businessId: business.id,
       toolName: "lookup_customer",
       phone,
-      request: { phone, conversationId: data.conversation_id, backfilledFromTwilio: true },
+      request: { phone, conversationId, backfilledFromTwilio: true },
       response: { ...result, lastCallSummary: null, callerIdName },
       success: true,
     });
@@ -369,7 +374,7 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
     });
     setCallDerivedFields(business.id, data.conversation_id, failedTransfer, noBookingCreated, autoStatus);
 
-    await backfillMissingCustomerInfoFromTwilio(business, data);
+    await backfillMissingCustomerInfoFromTwilio(business, data.conversation_id, extractTwilioCallSid(data));
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);
