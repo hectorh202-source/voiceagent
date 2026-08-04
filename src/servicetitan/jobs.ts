@@ -39,6 +39,23 @@ export async function updateJobSummary(businessId: number, jobId: string, summar
   }
 }
 
+// Confirmed against the real OpenAPI spec (Jpm.V2.JobNoteCreateRequest):
+// { text: string, pinToTop?: boolean | null }. Same reasoning as
+// leads.ts's addLeadNote — Jobs have no callReasonId concept at all, and
+// even Leads' PATCH endpoint can't update it after creation, so a note is
+// the only real way to push this dashboard's "ServiceTitan Call Reason"
+// field back to the real record.
+export async function addJobNote(businessId: number, jobId: string, text: string): Promise<boolean> {
+  try {
+    const config = requireServiceTitanConfig(businessId);
+    await stRequest(config, "POST", `/jpm/v2/tenant/${config.tenantId}/jobs/${jobId}/notes`, { data: { text } });
+    return true;
+  } catch (error) {
+    console.error("addJobNote failed:", describeError(error));
+    return false;
+  }
+}
+
 export async function createJob(businessId: number, input: CreateJobInput): Promise<CreateJobResult> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/jpm/v2/tenant/${config.tenantId}/jobs`;

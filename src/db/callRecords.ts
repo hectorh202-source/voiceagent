@@ -27,6 +27,13 @@ export interface ElevenLabsCallRecord {
   // comes from. null for any business that hasn't configured that field, or
   // for a call from before this shipped. Not PII, not encrypted.
   sentiment_score: number | null;
+  // Staff-picked, from this business's own real ServiceTitan Call Reasons
+  // list — distinct from call_reason (this app's own AI-outcome taxonomy).
+  // Only ever set by setServiceTitanCallReason(), and only once the real
+  // ServiceTitan note-post actually succeeds (see
+  // businessRouter.ts's PUT .../servicetitan-call-reason) — never reflects
+  // an attempted-but-failed push.
+  service_titan_call_reason: string | null;
 }
 
 // transcript_json/summary/raw_payload_json/internal_notes carry customer PII
@@ -142,6 +149,20 @@ export function updateCallStatus(businessId: number, conversationIds: string[], 
       setInternalNotesStmt.run({ conversationId, businessId, internalNotes: encryptNullable(patch.internalNotes) });
     }
   }
+}
+
+const setServiceTitanCallReasonStmt = db.prepare(
+  `UPDATE elevenlabs_calls SET service_titan_call_reason = @serviceTitanCallReason WHERE conversation_id = @conversationId AND business_id = @businessId`,
+);
+
+// Deliberately separate from updateCallStatus above, not folded into
+// CallStatusPatch — this one has a real external side effect gating it
+// (pushing a note to ServiceTitan, see businessRouter.ts's PUT
+// .../servicetitan-call-reason), so the caller must only invoke this after
+// that write actually succeeds, unlike the other fields here which are
+// pure local DB updates with no external dependency.
+export function setServiceTitanCallReason(businessId: number, conversationId: string, value: string | null): void {
+  setServiceTitanCallReasonStmt.run({ conversationId, businessId, serviceTitanCallReason: value });
 }
 
 // The audio webhook can arrive before or after the transcription webhook, so

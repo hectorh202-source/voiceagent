@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useParams, useNavigate, useLocation, type Location } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { CallDetail, CallStatus, RecoveryStatus } from "../api/types";
+import type { CallDetail, CallStatus, RecoveryStatus, ServiceTitanCallReason } from "../api/types";
 import {
   formatDateTime,
   formatDuration,
@@ -183,6 +183,33 @@ export function CallDetailPage() {
 
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
+
+  // Only fetched once a real Lead/Job exists for this call — there's nothing
+  // to attach a note to otherwise, so the dropdown stays hidden in that case
+  // rather than offering choices that would just fail on save.
+  const hasBooking = !!(data?.leadId || data?.jobId);
+  const callReasonsQuery = useQuery({
+    queryKey: ["servicetitan-call-reasons", businessId, conversationId],
+    queryFn: () =>
+      api.get<{ callReasons: ServiceTitanCallReason[] }>(
+        `/api/businesses/${businessId}/calls/${conversationId}/servicetitan-call-reasons`,
+      ),
+    enabled: hasBooking,
+  });
+  const [serviceTitanCallReasonError, setServiceTitanCallReasonError] = useState<string | null>(null);
+  const setServiceTitanCallReasonMutation = useMutation({
+    mutationFn: (callReason: string | null) =>
+      api.put<{ success: boolean }>(`/api/businesses/${businessId}/calls/${conversationId}/servicetitan-call-reason`, {
+        callReason,
+      }),
+    onSuccess: () => {
+      setServiceTitanCallReasonError(null);
+      queryClient.invalidateQueries({ queryKey: ["call", businessId, conversationId] });
+    },
+    onError: (error: unknown) => {
+      setServiceTitanCallReasonError(error instanceof Error ? error.message : "Failed to save");
+    },
+  });
 
   const currentUser = useAuthedUser();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -391,6 +418,50 @@ export function CallDetailPage() {
               </select>
               <ChevronDownIcon width={14} height={14} />
             </div>
+          </div>
+
+          <div className="info-section">
+            <div className="info-section-title">ServiceTitan Call Reason</div>
+            {!hasBooking ? (
+              <div className="muted" style={{ fontSize: 13 }}>
+                No ServiceTitan Lead or Job for this call — nothing to attach a note to.
+              </div>
+            ) : callReasonsQuery.isLoading ? (
+              <div className="muted" style={{ fontSize: 13 }}>Loading…</div>
+            ) : callReasonsQuery.isError ? (
+              <div className="muted" style={{ fontSize: 13 }}>
+                Couldn't load ServiceTitan's call reasons list.
+              </div>
+            ) : (
+              <>
+                <div className="select-display-wrap">
+                  <select
+                    className="select-display"
+                    value={data.serviceTitanCallReason ?? ""}
+                    disabled={setServiceTitanCallReasonMutation.isPending}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setServiceTitanCallReasonMutation.mutate(value === "" ? null : value);
+                    }}
+                  >
+                    <option value="">Not set</option>
+                    {callReasonsQuery.data?.callReasons.map((reason) => (
+                      <option key={reason.id} value={reason.name}>
+                        {reason.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDownIcon width={14} height={14} />
+                </div>
+                {serviceTitanCallReasonError ? (
+                  <div className="muted" style={{ fontSize: 13, color: "var(--danger-text)" }}>
+                    {serviceTitanCallReasonError}
+                  </div>
+                ) : data.serviceTitanCallReason ? (
+                  <div className="muted" style={{ fontSize: 12 }}>Posted as a note to ServiceTitan.</div>
+                ) : null}
+              </>
+            )}
           </div>
 
           <div className="info-section">

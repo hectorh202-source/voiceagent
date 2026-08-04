@@ -122,9 +122,20 @@ export interface CallDetail {
   isRead: boolean;
   recoveryStatus: RecoveryStatus;
   internalNotes: string | null;
+  // ServiceTitan's own real per-business Call Reason (distinct from
+  // callReason/callReasonOverride above, which are this app's own AI-outcome
+  // taxonomy) — staff-picked, pushed to the real Lead/Job as a note.
+  serviceTitanCallReason: string | null;
   audioUrl: string | null;
   humanRecordingUrl: string | null;
   callHistory: CallHistoryRow[];
+}
+
+// One entry in ServiceTitan's own real, per-business Call Reasons list (see
+// GET /calls/:conversationId/servicetitan-call-reasons).
+export interface ServiceTitanCallReason {
+  id: number;
+  name: string;
 }
 
 export interface CallMetrics {

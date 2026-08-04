@@ -20,6 +20,7 @@ import { migrateInboundLeadAddressColumn } from "./migrateInboundLeadAddressColu
 import { migrateInboundLeadCallerIdCheckedColumn } from "./migrateInboundLeadCallerIdCheckedColumn";
 import { migrateInboundLeadStructuredFieldsColumn } from "./migrateInboundLeadStructuredFieldsColumn";
 import { migrateSentimentScoreColumn } from "./migrateSentimentScoreColumn";
+import { migrateServiceTitanCallReasonColumn } from "./migrateServiceTitanCallReasonColumn";
 
 const dbDir = path.dirname(env.DATABASE_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -46,3 +47,4 @@ migrateInboundLeadAddressColumn(db);
 migrateInboundLeadCallerIdCheckedColumn(db);
 migrateInboundLeadStructuredFieldsColumn(db);
 migrateSentimentScoreColumn(db);
+migrateServiceTitanCallReasonColumn(db);

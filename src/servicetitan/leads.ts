@@ -41,6 +41,22 @@ export async function updateLeadSummary(businessId: number, leadId: string, summ
   }
 }
 
+// Confirmed against the real OpenAPI spec (Crm.V2.LeadNoteCreateRequest):
+// { text: string, pinToTop?: boolean | null }. Used for the dashboard's
+// "ServiceTitan Call Reason" field — a note, not the callReasonId field
+// itself, since ServiceTitan's real PATCH /leads/{id} schema has no way to
+// change callReasonId after creation (confirmed directly against the spec).
+export async function addLeadNote(businessId: number, leadId: string, text: string): Promise<boolean> {
+  try {
+    const config = requireServiceTitanConfig(businessId);
+    await stRequest(config, "POST", `/crm/v2/tenant/${config.tenantId}/leads/${leadId}/notes`, { data: { text } });
+    return true;
+  } catch (error) {
+    console.error("addLeadNote failed:", describeError(error));
+    return false;
+  }
+}
+
 export async function createLead(businessId: number, input: CreateLeadInput): Promise<CreateLeadResult> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/crm/v2/tenant/${config.tenantId}/leads`;

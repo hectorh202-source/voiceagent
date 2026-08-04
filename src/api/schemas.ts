@@ -67,6 +67,14 @@ export const bulkDeleteCallsSchema = z.object({
   conversationIds: z.array(z.string().min(1)).min(1),
 });
 
+// null clears the locally-stored value without pushing anything to
+// ServiceTitan (used when a note push fails and the caller wants to reset
+// the dropdown) — a non-null value is the ServiceTitan Call Reason name the
+// route will attempt to push as a note before persisting.
+export const setServiceTitanCallReasonSchema = z.object({
+  callReason: z.string().min(1).nullable(),
+});
+
 export const businessInfoSchema = z.object({
   name: z.string().min(1).optional(),
   serviceTitanBusinessUnitId: z.string().optional(),

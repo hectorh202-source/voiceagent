@@ -48,7 +48,18 @@ export function bootstrapSchema(db: DatabaseSync): void {
       no_booking_created INTEGER NOT NULL DEFAULT 0,
       auto_status TEXT NOT NULL DEFAULT 'excused',
       twilio_call_sid TEXT,
-      sentiment_score INTEGER
+      sentiment_score INTEGER,
+      -- Staff-set, never touched by webhook upserts — same treatment as
+      -- status_override/call_reason_override/internal_notes above. Distinct
+      -- from call_reason (this app's own AI-outcome taxonomy): this is
+      -- ServiceTitan's own real per-business Call Reason, picked manually
+      -- and pushed to the real Lead/Job as a note (see
+      -- servicetitan/leads.ts#addLeadNote) since ServiceTitan's API has no
+      -- way to update callReasonId after creation. Only set once the real
+      -- ServiceTitan write succeeds — never reflects an attempted-but-failed
+      -- push, so this column is always an honest "yes, ServiceTitan has this
+      -- note" signal, not just local intent.
+      service_titan_call_reason TEXT
     );
 
     -- business_id/received_at exist on every install (present since this

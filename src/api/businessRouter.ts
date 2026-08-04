@@ -13,6 +13,7 @@ import {
   generalSettingsSchema,
   patchLeadsSchema,
   chatWidgetSettingsSchema,
+  setServiceTitanCallReasonSchema,
 } from "./schemas";
 import {
   listCallRecords,
@@ -20,7 +21,11 @@ import {
   updateCallStatus,
   countUnreadCalls,
   deleteCallRecord,
+  setServiceTitanCallReason,
 } from "../db/callRecords";
+import { listCallReasons } from "../servicetitan/callReasons";
+import { addLeadNote } from "../servicetitan/leads";
+import { addJobNote } from "../servicetitan/jobs";
 import type { CallDateRange, CallCursor } from "../db/callRecords";
 import { listInboundLeads, getInboundLeadById, updateInboundLead, countUnreadLeads, deleteInboundLead } from "../db/inboundLeads";
 import { extractRecordingUrl, fetchRecordingAudio } from "../googleLsa/recordings";
@@ -273,10 +278,82 @@ apiBusinessRouter.get("/calls/:conversationId", (req, res) => {
     isRead: !!record.is_read,
     recoveryStatus: record.recovery_status as "recovered" | "not_recovered" | null,
     internalNotes: record.internal_notes,
+    serviceTitanCallReason: record.service_titan_call_reason,
     audioUrl: viewModel.hasAudio ? `/b/${business.id}/calls/${conversationId}/audio` : null,
     humanRecordingUrl: viewModel.hasHumanRecording ? `/b/${business.id}/calls/${conversationId}/human-audio` : null,
     callHistory: buildCallHistory(business, record),
   });
+});
+
+// Returns this business's real ServiceTitan Call Reasons list, for the
+// dashboard's "ServiceTitan Call Reason" dropdown (distinct from this app's
+// own AI-outcome "Call Reason" taxonomy above — see callReasons.ts). Any
+// business user can view this, not just admins, since it's just a read of
+// ServiceTitan's own configured list, mirroring how Internal Notes is
+// editable by any business user today.
+apiBusinessRouter.get("/calls/:conversationId/servicetitan-call-reasons", async (req, res) => {
+  const business = req.business!;
+  try {
+    const reasons = await listCallReasons(business.id);
+    res.json({ callReasons: reasons });
+  } catch (error) {
+    res.status(502).json({ error: `Failed to load ServiceTitan call reasons: ${describeError(error)}` });
+  }
+});
+
+// Finds the real ServiceTitan Lead/Job id (if any) a given call produced —
+// same lookup/parse logic as parseCallRow above, factored out since this
+// route needs just the ids, not the rest of that function's list-row shape.
+function resolveBookingIds(businessId: number, conversationId: string): { leadId: string | null; jobId: string | null } {
+  const leadLog = findCreateLeadLogByConversationId(businessId, conversationId);
+  const jobLog = leadLog ? undefined : findBookJobLogByConversationId(businessId, conversationId);
+  const bookingLog = leadLog ?? jobLog;
+  if (!bookingLog?.response_json) return { leadId: null, jobId: null };
+  try {
+    const response = JSON.parse(bookingLog.response_json) as { leadId?: string | null; jobId?: string | null };
+    return { leadId: response.leadId ?? null, jobId: response.jobId ?? null };
+  } catch {
+    return { leadId: null, jobId: null };
+  }
+}
+
+// Sets this call's staff-picked ServiceTitan Call Reason and pushes it as a
+// note to the real Lead/Job (see servicetitan/leads.ts's addLeadNote comment
+// for why a note, not the callReasonId field itself — ServiceTitan's real
+// API has no way to update callReasonId after creation). Only persists
+// locally once the real ServiceTitan write actually succeeds, so this
+// column is always an honest "yes, ServiceTitan has this note" signal.
+apiBusinessRouter.put("/calls/:conversationId/servicetitan-call-reason", async (req, res) => {
+  const business = req.business!;
+  const { conversationId } = req.params;
+  const parsed = setServiceTitanCallReasonSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const { callReason } = parsed.data;
+
+  if (callReason === null) {
+    setServiceTitanCallReason(business.id, conversationId, null);
+    res.json({ success: true, serviceTitanCallReason: null });
+    return;
+  }
+
+  const { leadId, jobId } = resolveBookingIds(business.id, conversationId);
+  if (!leadId && !jobId) {
+    res.status(400).json({ error: "This call has no ServiceTitan Lead or Job to attach a note to" });
+    return;
+  }
+
+  const noteText = `ServiceTitan Call Reason (set via AI phone agent dashboard): ${callReason}`;
+  const posted = leadId ? await addLeadNote(business.id, leadId, noteText) : await addJobNote(business.id, jobId!, noteText);
+  if (!posted) {
+    res.status(502).json({ error: "Failed to post the note to ServiceTitan" });
+    return;
+  }
+
+  setServiceTitanCallReason(business.id, conversationId, callReason);
+  res.json({ success: true, serviceTitanCallReason: callReason });
 });
 
 // Shared by both the single-call and bulk delete routes below. Not a
