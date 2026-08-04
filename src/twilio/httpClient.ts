@@ -33,3 +33,22 @@ export async function twRequest<T>(
   });
   return response.data;
 }
+
+// Twilio's own Call resource — the ground truth for a call's caller number,
+// independent of anything ElevenLabs' agent did or didn't do mid-call (see
+// webhooks/postCall.ts's backfillMissingCustomerInfoFromTwilio). Confirmed
+// queryable for 13 months after a call via Twilio's own docs. Swallows its
+// own errors (returns null) since every caller already treats "no number
+// available" as a normal, expected outcome, not something to propagate.
+export async function getCallFromNumber(config: TwilioConfig, callSid: string): Promise<string | null> {
+  try {
+    const call = await twRequest<{ from?: string }>(
+      config,
+      "GET",
+      `/2010-04-01/Accounts/${config.accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+    );
+    return call.from ?? null;
+  } catch {
+    return null;
+  }
+}

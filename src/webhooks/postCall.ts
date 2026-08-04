@@ -1,16 +1,25 @@
 import type { Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { getBusinessSetting, isDynamicMemoryEnabled } from "../settings/store";
+import { getBusinessSetting, isDynamicMemoryEnabled, getTwilioConfig } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath, setCallDerivedFields } from "../db/callRecords";
-import { findCreateLeadLogByConversationId, findBookJobLogByConversationId } from "../db/callLog";
+import {
+  findCreateLeadLogByConversationId,
+  findBookJobLogByConversationId,
+  findLookupCustomerLogByConversationId,
+  logToolCall,
+} from "../db/callLog";
 import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
 import { updateJobSummary } from "../servicetitan/jobs";
 import { computeCallFlags } from "../dashboard/callDetails";
 import { upsertCallMemory } from "../db/callMemory";
 import { env } from "../config/env";
+import { getCallFromNumber } from "../twilio/httpClient";
+import { lookupCustomerByPhone } from "../servicetitan/customers";
+import { getCachedCallerName } from "../db/callerIdCache";
+import type { Business } from "../db/businesses";
 
 interface TranscriptTurn {
   role: string;
@@ -226,6 +235,87 @@ async function updateJobWithRealSummary(
   }
 }
 
+// Fallback for a call where lookup_customer never fired at all — a real,
+// observed LLM-reliability gap (the agent sometimes just skips its "always
+// call this first" instruction, independent of call length or the
+// conversationId dynamic-variable wiring, both confirmed working correctly
+// elsewhere) rather than anything this app's code controls. Pulls the
+// caller's number straight from Twilio's own Call resource — ground truth,
+// unaffected by what the agent did or didn't do — then runs the exact same
+// ServiceTitan/Caller-ID fallback lookup_customer itself would have (see
+// tools/lookupCustomer.ts). Writes a real lookup_customer-shaped call_log
+// row via logToolCall (same call a live tool invocation makes, conversation_id
+// included), so the existing resolveLookupCustomerFallback() read path
+// picks it up automatically — no new read-side code needed.
+//
+// Never throws — runs after the call's own data is already safely stored,
+// so a failure here only ever means a still-missing customer name, never a
+// broken webhook response to ElevenLabs.
+async function backfillMissingCustomerInfoFromTwilio(
+  business: Business,
+  data: PostCallTranscriptionPayload["data"],
+): Promise<void> {
+  try {
+    if (findLookupCustomerLogByConversationId(business.id, data.conversation_id)) return;
+
+    const leadLog = findCreateLeadLogByConversationId(business.id, data.conversation_id);
+    const jobLog = leadLog ? undefined : findBookJobLogByConversationId(business.id, data.conversation_id);
+    const bookingLog = leadLog ?? jobLog;
+    if (bookingLog) {
+      try {
+        const request = JSON.parse(bookingLog.request_json) as { name?: string; phone?: string };
+        if (request.name && request.phone) return; // already fine, nothing to fill
+      } catch {
+        // malformed stored JSON — fall through and attempt the backfill anyway
+      }
+    }
+
+    const twilioCallSid = extractTwilioCallSid(data);
+    if (!twilioCallSid) return;
+
+    const twilioConfig = getTwilioConfig();
+    if (!twilioConfig) return;
+
+    const phone = await getCallFromNumber(twilioConfig, twilioCallSid);
+    if (!phone) return;
+
+    let result: { found: boolean; customerId: string | null; locationId: string | null; name: string | null; address: string | null; email: string | null; equipmentAge: string | null } = {
+      found: false,
+      customerId: null,
+      locationId: null,
+      name: null,
+      address: null,
+      email: null,
+      equipmentAge: null,
+    };
+    try {
+      result = await lookupCustomerByPhone(business.id, phone);
+    } catch (error) {
+      console.error("backfillMissingCustomerInfoFromTwilio: ServiceTitan lookup failed:", error);
+    }
+
+    let callerIdName: string | null = null;
+    if (!result.found) {
+      try {
+        callerIdName = await getCachedCallerName(phone);
+      } catch (error) {
+        console.error("backfillMissingCustomerInfoFromTwilio: Caller ID lookup failed:", error);
+      }
+    }
+
+    logToolCall({
+      businessId: business.id,
+      toolName: "lookup_customer",
+      phone,
+      request: { phone, conversationId: data.conversation_id, backfilledFromTwilio: true },
+      response: { ...result, lastCallSummary: null, callerIdName },
+      success: true,
+    });
+  } catch (error) {
+    console.error("backfillMissingCustomerInfoFromTwilio failed:", error);
+  }
+}
+
 export async function handlePostCallWebhook(req: Request, res: Response): Promise<void> {
   const business = req.business;
   if (!business) {
@@ -278,6 +368,8 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
       transcript_json: transcriptJson,
     });
     setCallDerivedFields(business.id, data.conversation_id, failedTransfer, noBookingCreated, autoStatus);
+
+    await backfillMissingCustomerInfoFromTwilio(business, data);
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);
