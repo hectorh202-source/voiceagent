@@ -184,9 +184,10 @@ export function CallDetailPage() {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
 
-  // Only fetched once a real Lead/Job exists for this call — there's nothing
-  // to attach a note to otherwise, so the dropdown stays hidden in that case
-  // rather than offering choices that would just fail on save.
+  // Shown for every call, not just ones with a real Lead/Job — a call
+  // without one just updates the local Call Reason column directly (see the
+  // confirmation text below); only a call with a Lead/Job also gets a note
+  // pushed to it (see businessRouter.ts's PUT .../servicetitan-call-reason).
   const hasBooking = !!(data?.leadId || data?.jobId);
   const callReasonsQuery = useQuery({
     queryKey: ["servicetitan-call-reasons", businessId, conversationId],
@@ -194,7 +195,6 @@ export function CallDetailPage() {
       api.get<{ callReasons: ServiceTitanCallReason[] }>(
         `/api/businesses/${businessId}/calls/${conversationId}/servicetitan-call-reasons`,
       ),
-    enabled: hasBooking,
   });
   const [serviceTitanCallReasonError, setServiceTitanCallReasonError] = useState<string | null>(null);
   const setServiceTitanCallReasonMutation = useMutation({
@@ -368,11 +368,7 @@ export function CallDetailPage() {
 
           <div className="info-section">
             <div className="info-section-title">ServiceTitan Call Reason</div>
-            {!hasBooking ? (
-              <div className="muted" style={{ fontSize: 13 }}>
-                No ServiceTitan Lead or Job for this call — nothing to attach a note to.
-              </div>
-            ) : callReasonsQuery.isLoading ? (
+            {callReasonsQuery.isLoading ? (
               <div className="muted" style={{ fontSize: 13 }}>Loading…</div>
             ) : callReasonsQuery.isError ? (
               <div className="muted" style={{ fontSize: 13 }}>
@@ -404,7 +400,11 @@ export function CallDetailPage() {
                     {serviceTitanCallReasonError}
                   </div>
                 ) : data.serviceTitanCallReason ? (
-                  <div className="muted" style={{ fontSize: 12 }}>Posted as a note to ServiceTitan.</div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {hasBooking
+                      ? "Posted as a note to ServiceTitan."
+                      : "Saved — no ServiceTitan Lead or Job on this call to attach a note to."}
+                  </div>
                 ) : null}
               </>
             )}

@@ -170,7 +170,11 @@ function parseCallRow(business: Business, record: ReturnType<typeof listCallReco
     status: statusOverride ?? autoStatus,
     autoStatus,
     statusOverride,
-    callReason: callReasonOverride ?? autoCallReason,
+    // ServiceTitan's own staff-picked Call Reason (see the PUT .../servicetitan-call-reason
+    // route below) takes priority for display here when set — it's a deliberate
+    // human decision, so it should win over both the AI's auto-classification
+    // and the AI-taxonomy override.
+    callReason: record.service_titan_call_reason ?? callReasonOverride ?? autoCallReason,
     autoCallReason,
     callReasonOverride,
     isRead: !!record.is_read,
@@ -317,12 +321,17 @@ function resolveBookingIds(businessId: number, conversationId: string): { leadId
   }
 }
 
-// Sets this call's staff-picked ServiceTitan Call Reason and pushes it as a
-// note to the real Lead/Job (see servicetitan/leads.ts's addLeadNote comment
-// for why a note, not the callReasonId field itself — ServiceTitan's real
-// API has no way to update callReasonId after creation). Only persists
-// locally once the real ServiceTitan write actually succeeds, so this
-// column is always an honest "yes, ServiceTitan has this note" signal.
+// Sets this call's staff-picked ServiceTitan Call Reason — shown for every
+// call (see parseCallRow/buildCallDetailViewModel, where it now takes
+// priority over the AI-classified Call Reason in the dashboard's "Reason"
+// column/field). Only a call with a real Lead or Job also gets a note
+// pushed to it (see servicetitan/leads.ts's addLeadNote comment for why a
+// note, not the callReasonId field itself — ServiceTitan's real API has no
+// way to update callReasonId after creation); a call with neither just
+// updates the local column directly, since there's nowhere to post a note.
+// The local value is only ever persisted once any attempted ServiceTitan
+// write actually succeeds, so it's always an honest "yes, ServiceTitan has
+// this note" signal on calls where a note applies.
 apiBusinessRouter.put("/calls/:conversationId/servicetitan-call-reason", async (req, res) => {
   const business = req.business!;
   const { conversationId } = req.params;
@@ -340,16 +349,13 @@ apiBusinessRouter.put("/calls/:conversationId/servicetitan-call-reason", async (
   }
 
   const { leadId, jobId } = resolveBookingIds(business.id, conversationId);
-  if (!leadId && !jobId) {
-    res.status(400).json({ error: "This call has no ServiceTitan Lead or Job to attach a note to" });
-    return;
-  }
-
-  const noteText = `ServiceTitan Call Reason (set via AI phone agent dashboard): ${callReason}`;
-  const posted = leadId ? await addLeadNote(business.id, leadId, noteText) : await addJobNote(business.id, jobId!, noteText);
-  if (!posted) {
-    res.status(502).json({ error: "Failed to post the note to ServiceTitan" });
-    return;
+  if (leadId || jobId) {
+    const noteText = `ServiceTitan Call Reason (set via AI phone agent dashboard): ${callReason}`;
+    const posted = leadId ? await addLeadNote(business.id, leadId, noteText) : await addJobNote(business.id, jobId!, noteText);
+    if (!posted) {
+      res.status(502).json({ error: "Failed to post the note to ServiceTitan" });
+      return;
+    }
   }
 
   setServiceTitanCallReason(business.id, conversationId, callReason);

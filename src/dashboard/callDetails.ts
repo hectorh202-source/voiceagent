@@ -252,7 +252,11 @@ export function buildCallDetailViewModel(business: Business, conversationId: str
   const status = statusOverride ?? autoStatus;
   const autoCallReason = callRecord.call_reason;
   const callReasonOverride = callRecord.call_reason_override;
-  const callReason = callReasonOverride ?? autoCallReason;
+  // ServiceTitan's own staff-picked Call Reason (see businessRouter.ts's PUT
+  // .../servicetitan-call-reason) takes priority for display here when set —
+  // a deliberate human decision, so it should win over both the AI's
+  // auto-classification and the AI-taxonomy override.
+  const callReason = callRecord.service_titan_call_reason ?? callReasonOverride ?? autoCallReason;
 
   let transcript: { role: string; message: string; timeLabel: string }[] = [];
   let transferInfo = {
