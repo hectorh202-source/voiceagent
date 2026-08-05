@@ -52,6 +52,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [leadNotifyEnabled, setLeadNotifyEnabled] = useState(false);
   const [leadNotifyEmail, setLeadNotifyEmail] = useState("");
   const [leadNotifyCc, setLeadNotifyCc] = useState("");
+  const [callNotifyEnabled, setCallNotifyEnabled] = useState(false);
+  const [callNotifyEmail, setCallNotifyEmail] = useState("");
+  const [callNotifyCc, setCallNotifyCc] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -71,6 +74,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
     setLeadNotifyEnabled(data.operational.leadNotifyEnabled);
     setLeadNotifyEmail(data.operational.leadNotifyEmail);
     setLeadNotifyCc(data.operational.leadNotifyCc);
+    setCallNotifyEnabled(data.operational.callNotifyEnabled);
+    setCallNotifyEmail(data.operational.callNotifyEmail);
+    setCallNotifyCc(data.operational.callNotifyCc);
   }, [data]);
 
   // A stray click on one of these silently breaks the integration rather
@@ -138,6 +144,9 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         leadNotifyEnabled,
         leadNotifyEmail,
         leadNotifyCc,
+        callNotifyEnabled,
+        callNotifyEmail,
+        callNotifyCc,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -484,6 +493,39 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
           <input
             value={leadNotifyCc}
             onChange={(e) => setLeadNotifyCc(e.target.value)}
+            placeholder="office@yourbusiness.com"
+          />
+          <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
+        </div>
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={callNotifyEnabled}
+              onChange={(e) => setCallNotifyEnabled(e.target.checked)}
+            />
+            Email me completed calls
+          </label>
+          <div className="form-hint">
+            Fires once for every AI phone agent call, right after it ends — separate from the Leads-inbox
+            notification above, since a business might want one alert stream but not the other. Requires the
+            platform's SMTP settings to be configured in the global Admin Settings.
+          </div>
+        </div>
+        <div className="form-row">
+          <label>Notification email</label>
+          <input
+            value={callNotifyEmail}
+            onChange={(e) => setCallNotifyEmail(e.target.value)}
+            placeholder="calls@yourbusiness.com, owner@yourbusiness.com"
+          />
+          <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
+        </div>
+        <div className="form-row">
+          <label>CC (optional)</label>
+          <input
+            value={callNotifyCc}
+            onChange={(e) => setCallNotifyCc(e.target.value)}
             placeholder="office@yourbusiness.com"
           />
           <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>

@@ -166,6 +166,84 @@ export async function sendNewLeadNotificationEmail(
   });
 }
 
+export interface CallCompletedNotification {
+  businessName: string;
+  customerName?: string | null;
+  phone?: string | null;
+  durationSecs?: number | null;
+  // Whichever value the call-detail page itself would show — ServiceTitan's
+  // staff-picked Call Reason if set, else the AI's own classification/
+  // override. See dashboard/callDetails.ts's buildCallDetailViewModel.
+  callReason?: string | null;
+  isEmergency?: boolean | null;
+  isTransferred?: boolean;
+  callUrl: string;
+}
+
+function formatDurationForEmail(secs: number | null | undefined): string | undefined {
+  if (secs === null || secs === undefined) return undefined;
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}m ${s}s`;
+}
+
+// Sent once per call, right after webhooks/postCall.ts finishes recording
+// that call's own data (transcript, duration, call reason, any Lead/Job it
+// produced) — see notifyCallCompleted() there for exactly where this fires.
+// Best-effort: the caller wraps this in try/catch so a mail failure never
+// affects the webhook's response to ElevenLabs. Fields are caller-supplied,
+// so every one is HTML-escaped.
+export async function sendCallCompletedNotificationEmail(
+  toEmails: string[],
+  call: CallCompletedNotification,
+  ccEmails: string[] = [],
+): Promise<void> {
+  const { transport, from } = getTransport();
+
+  const heading = call.isEmergency ? "Call completed — marked emergency" : "Call completed";
+  const rows: [string, string | undefined][] = [
+    ["Customer", call.customerName ?? undefined],
+    ["Phone", call.phone ?? undefined],
+    ["Duration", formatDurationForEmail(call.durationSecs)],
+    ["Reason", call.callReason ?? undefined],
+    ["Transferred", call.isTransferred ? "Yes" : undefined],
+  ];
+  const rowsHtml = rows
+    .filter(([, value]) => value && value.trim())
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;color:#1a1d23;font-size:14px;">${escapeHtml(value!.trim())}</td></tr>`,
+    )
+    .join("");
+
+  const html = wrapEmailHtml(
+    heading,
+    `
+    <p style="color:#374151;font-size:14px;line-height:1.6;">
+      A call just finished for <strong>${escapeHtml(call.businessName)}</strong>.
+    </p>
+    <table style="border-collapse:collapse;margin:8px 0;">${rowsHtml || `<tr><td style="color:#6b7280;font-size:13px;">No details captured.</td></tr>`}</table>
+    <a href="${escapeHtml(call.callUrl)}" style="display:inline-block;margin:16px 0 0;padding:12px 24px;background:#3b6ef6;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">View call details</a>
+    `,
+  );
+
+  const textLines = [
+    heading,
+    `Business: ${call.businessName}`,
+    ...rows.filter(([, v]) => v && v.trim()).map(([label, v]) => `${label}: ${v!.trim()}`),
+    `\nView call details: ${call.callUrl}`,
+  ];
+
+  await transport.sendMail({
+    from,
+    to: toEmails.join(", "),
+    ...(ccEmails.length ? { cc: ccEmails.join(", ") } : {}),
+    subject: `${heading} — ${call.businessName}`,
+    html,
+    text: textLines.join("\n"),
+  });
+}
+
 export async function sendTestEmail(toEmail: string): Promise<void> {
   const { transport, from } = getTransport();
   const html = wrapEmailHtml(

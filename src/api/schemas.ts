@@ -130,6 +130,9 @@ export const generalSettingsSchema = z.object({
   leadNotifyEnabled: z.boolean().optional(),
   leadNotifyEmail: z.string().optional(),
   leadNotifyCc: z.string().optional(),
+  callNotifyEnabled: z.boolean().optional(),
+  callNotifyEmail: z.string().optional(),
+  callNotifyCc: z.string().optional(),
 });
 
 // The OAuth Client ID/Secret and Developer Token this platform's Google Ads

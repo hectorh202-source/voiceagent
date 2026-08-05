@@ -278,6 +278,9 @@ export function getRawOperationalSettings(businessId: number) {
     leadNotifyEnabled: isLeadNotifyEnabled(businessId),
     leadNotifyEmail: getBusinessSetting(businessId, "operational.leadNotifyEmail") ?? "",
     leadNotifyCc: getBusinessSetting(businessId, "operational.leadNotifyCc") ?? "",
+    callNotifyEnabled: isCallNotifyEnabled(businessId),
+    callNotifyEmail: getBusinessSetting(businessId, "operational.callNotifyEmail") ?? "",
+    callNotifyCc: getBusinessSetting(businessId, "operational.callNotifyCc") ?? "",
   };
 }
 
@@ -311,6 +314,25 @@ export function getLeadNotifyCcEmails(businessId: number): string[] {
   const value = getBusinessSetting(businessId, "operational.leadNotifyCc");
   if (value) return splitEmailList(value);
   return splitEmailList(getBusinessSetting(businessId, "chatWidget.notifyCc") ?? "");
+}
+
+// Same shape as the Lead-notification trio above, but for the AI phone
+// Calls dashboard instead of the Leads inbox — a separate opt-in, since a
+// business might want one alert stream but not the other. No legacy
+// chatWidget.* fallback here (there's no older Calls-specific email setting
+// this could have replaced). Off by default; requires global SMTP to be
+// configured. Fired once per call from webhooks/postCall.ts, right after
+// that call's own data is fully recorded.
+export function isCallNotifyEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.callNotifyEnabled") === "true";
+}
+
+export function getCallNotifyEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.callNotifyEmail") ?? "");
+}
+
+export function getCallNotifyCcEmails(businessId: number): string[] {
+  return splitEmailList(getBusinessSetting(businessId, "operational.callNotifyCc") ?? "");
 }
 
 // Cross-call memory by phone number (see docs/dynamic-memory.md) — default

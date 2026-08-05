@@ -1,7 +1,15 @@
 import type { Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { getBusinessSetting, isDynamicMemoryEnabled, getTwilioConfig } from "../settings/store";
+import {
+  getBusinessSetting,
+  isDynamicMemoryEnabled,
+  getTwilioConfig,
+  isCallNotifyEnabled,
+  getCallNotifyEmails,
+  getCallNotifyCcEmails,
+  getDashboardBaseUrl,
+} from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath, setCallDerivedFields } from "../db/callRecords";
 import {
@@ -13,12 +21,13 @@ import {
 import { buildLeadSummary } from "../servicetitan/leadSummary";
 import { updateLeadSummary } from "../servicetitan/leads";
 import { updateJobSummary } from "../servicetitan/jobs";
-import { computeCallFlags } from "../dashboard/callDetails";
+import { computeCallFlags, buildCallDetailViewModel } from "../dashboard/callDetails";
 import { upsertCallMemory } from "../db/callMemory";
 import { env } from "../config/env";
 import { getCallFromNumber } from "../twilio/httpClient";
 import { lookupCustomerByPhone } from "../servicetitan/customers";
 import { getCachedCallerName } from "../db/callerIdCache";
+import { sendCallCompletedNotificationEmail } from "../settings/email";
 import type { Business } from "../db/businesses";
 
 interface TranscriptTurn {
@@ -321,6 +330,47 @@ export async function backfillMissingCustomerInfoFromTwilio(
   }
 }
 
+// Fires once per completed call, regardless of whether it produced a real
+// AI summary yet — unlike updateLeadWithRealSummary/updateJobWithRealSummary
+// above, this doesn't wait on data.analysis?.transcript_summary, since the
+// point is just letting staff know a call happened at all. Reuses
+// buildCallDetailViewModel (the same assembly dashboard/callDetails.ts's
+// call-detail route uses) rather than re-deriving customer name/phone/call
+// reason/status here, so this always reflects exactly what the call-detail
+// page itself would show at this moment. Never throws — a mail failure must
+// never affect the webhook's response to ElevenLabs.
+async function notifyCallCompleted(business: Business, conversationId: string, durationSecs: number | null): Promise<void> {
+  try {
+    if (!isCallNotifyEnabled(business.id)) return;
+    const recipients = getCallNotifyEmails(business.id);
+    const cc = getCallNotifyCcEmails(business.id);
+    const to = recipients.length > 0 ? recipients : cc;
+    const ccFinal = recipients.length > 0 ? cc : [];
+    if (to.length === 0) return;
+
+    const viewModel = buildCallDetailViewModel(business, conversationId);
+    if (!viewModel) return;
+
+    const callUrl = `${getDashboardBaseUrl(business.id)}/app/${business.id}/calls/${conversationId}`;
+    await sendCallCompletedNotificationEmail(
+      to,
+      {
+        businessName: business.name,
+        customerName: viewModel.customerName,
+        phone: viewModel.phone,
+        durationSecs,
+        callReason: viewModel.callReason,
+        isEmergency: viewModel.isEmergency,
+        isTransferred: viewModel.isTransferred,
+        callUrl,
+      },
+      ccFinal,
+    );
+  } catch (error) {
+    console.error("Call completed notification email failed:", error instanceof Error ? error.message : error);
+  }
+}
+
 export async function handlePostCallWebhook(req: Request, res: Response): Promise<void> {
   const business = req.business;
   if (!business) {
@@ -375,6 +425,8 @@ export async function handlePostCallWebhook(req: Request, res: Response): Promis
     setCallDerivedFields(business.id, data.conversation_id, failedTransfer, noBookingCreated, autoStatus);
 
     await backfillMissingCustomerInfoFromTwilio(business, data.conversation_id, extractTwilioCallSid(data));
+
+    await notifyCallCompleted(business, data.conversation_id, extractDurationSecs(data));
 
     if (data.analysis?.transcript_summary) {
       await updateLeadWithRealSummary(business.id, data.conversation_id, data.analysis.transcript_summary);

@@ -971,6 +971,11 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   }
   maybeSetBusinessSetting(business.id, "operational.leadNotifyEmail", body.leadNotifyEmail);
   maybeSetBusinessSetting(business.id, "operational.leadNotifyCc", body.leadNotifyCc);
+  if (body.callNotifyEnabled !== undefined) {
+    setBusinessSetting(business.id, "operational.callNotifyEnabled", body.callNotifyEnabled ? "true" : "false");
+  }
+  maybeSetBusinessSetting(business.id, "operational.callNotifyEmail", body.callNotifyEmail);
+  maybeSetBusinessSetting(business.id, "operational.callNotifyCc", body.callNotifyCc);
 
   res.json({ success: true });
 });

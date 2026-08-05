@@ -265,6 +265,9 @@ export interface GeneralSettings {
     leadNotifyEnabled: boolean;
     leadNotifyEmail: string;
     leadNotifyCc: string;
+    callNotifyEnabled: boolean;
+    callNotifyEmail: string;
+    callNotifyCc: string;
   };
   googleAds: {
     customerId: string;
