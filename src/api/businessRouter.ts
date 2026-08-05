@@ -14,6 +14,7 @@ import {
   patchLeadsSchema,
   chatWidgetSettingsSchema,
   setServiceTitanCallReasonSchema,
+  notificationSettingsSchema,
 } from "./schemas";
 import {
   listCallRecords,
@@ -51,6 +52,7 @@ import {
   getRawElevenLabsSettings,
   getRawServiceTitanSettings,
   getRawOperationalSettings,
+  getRawNotificationSettings,
   getRawGoogleAdsBusinessSettings,
   setBusinessSetting,
   maybeSetBusinessSetting,
@@ -966,6 +968,29 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   if (body.dynamicMemoryEnabled !== undefined) {
     setBusinessSetting(business.id, "operational.dynamicMemoryEnabled", body.dynamicMemoryEnabled ? "true" : "false");
   }
+
+  res.json({ success: true });
+});
+
+// Deliberately not platform-admin-gated — any business user can turn these
+// alerts on/off or change the recipient addresses whenever they need to,
+// same reasoning as /settings/business-info just above. Split out from
+// General Settings (which stays admin-only) into their own route/UI section
+// ("Notifications", under Business Info) for exactly that reason.
+apiBusinessRouter.get("/settings/notifications", (req, res) => {
+  const business = req.business!;
+  res.json(getRawNotificationSettings(business.id));
+});
+
+apiBusinessRouter.put("/settings/notifications", (req, res) => {
+  const business = req.business!;
+  const parsed = notificationSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    return;
+  }
+  const body = parsed.data;
+
   if (body.leadNotifyEnabled !== undefined) {
     setBusinessSetting(business.id, "operational.leadNotifyEnabled", body.leadNotifyEnabled ? "true" : "false");
   }

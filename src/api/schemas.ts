@@ -127,6 +127,12 @@ export const generalSettingsSchema = z.object({
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
   dynamicMemoryEnabled: z.boolean().optional(),
+});
+
+// Separate from generalSettingsSchema above — reachable by any business
+// user (see businessRouter.ts's PUT /settings/notifications, not gated by
+// requireApiPlatformAdmin), unlike everything else in General Settings.
+export const notificationSettingsSchema = z.object({
   leadNotifyEnabled: z.boolean().optional(),
   leadNotifyEmail: z.string().optional(),
   leadNotifyCc: z.string().optional(),

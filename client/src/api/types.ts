@@ -165,6 +165,19 @@ export interface BusinessInfoSettings {
   serviceCategories: ServiceCategory[];
 }
 
+// Reachable by any business user (see businessRouter.ts's GET/PUT
+// /settings/notifications — not platform-admin-gated), unlike the rest of
+// General Settings — surfaced under Business Info's own "Notifications"
+// section rather than Admin Settings for exactly that reason.
+export interface NotificationSettings {
+  leadNotifyEnabled: boolean;
+  leadNotifyEmail: string;
+  leadNotifyCc: string;
+  callNotifyEnabled: boolean;
+  callNotifyEmail: string;
+  callNotifyCc: string;
+}
+
 // Voice selection only — no stability/speed/similarity/style/speaker-boost
 // (removed 2026-07-20: even with settings synced exactly, Test Audio never
 // sounded the same as ElevenLabs' own dashboard, so the app no longer
@@ -262,12 +275,6 @@ export interface GeneralSettings {
     leadIntakeWebhookSecretSet: boolean;
     googleLeadFormWebhookSecretSet: boolean;
     dynamicMemoryEnabled: boolean;
-    leadNotifyEnabled: boolean;
-    leadNotifyEmail: string;
-    leadNotifyCc: string;
-    callNotifyEnabled: boolean;
-    callNotifyEmail: string;
-    callNotifyCc: string;
   };
   googleAds: {
     customerId: string;

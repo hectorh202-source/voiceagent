@@ -275,6 +275,18 @@ export function getRawOperationalSettings(businessId: number) {
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
     googleLeadFormWebhookSecretSet: !!getBusinessSetting(businessId, "operational.googleLeadFormWebhookSecret"),
     dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
+  };
+}
+
+// Split out from getRawOperationalSettings above — these are read/written by
+// the Business Info settings page (any business user can reach it, not just
+// platform admins), unlike the rest of Operational which stays under Admin
+// Settings. The underlying operational.*NotifyEnabled/*NotifyEmail/*NotifyCc
+// storage keys are unchanged — only the API route/UI section that reads and
+// writes them moved, so notifyNewLead()/notifyCallCompleted() (db/
+// inboundLeads.ts, webhooks/postCall.ts) keep working exactly as before.
+export function getRawNotificationSettings(businessId: number) {
+  return {
     leadNotifyEnabled: isLeadNotifyEnabled(businessId),
     leadNotifyEmail: getBusinessSetting(businessId, "operational.leadNotifyEmail") ?? "",
     leadNotifyCc: getBusinessSetting(businessId, "operational.leadNotifyCc") ?? "",
