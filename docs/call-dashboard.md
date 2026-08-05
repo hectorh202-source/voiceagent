@@ -282,6 +282,12 @@ Reuses `dashboard/callDetails.ts`'s `buildCallDetailViewModel()` — the same as
 
 Requires the platform's global SMTP settings to be configured (`Global Admin Settings`) — same as every other email this app sends. Verified end-to-end (2026-08-05) via a real signed webhook POST to `/b/1/webhooks/elevenlabs/post-call`: with the toggle on and a recipient configured, the call recorded correctly and `notifyCallCompleted` attempted the send (confirmed via the expected "Email is not configured" log line in this local environment, which has no SMTP configured — proving the full gate → assemble → send path runs); with the toggle off, no attempt was logged at all. The settings UI itself was also verified round-trip through the real save button (checkbox → `PUT /settings/notifications` → `GET /settings/notifications` confirming the persisted value) — including once more after the Business Info move, logged in as a real non-platform-admin business user with no `Admin Settings` nav link at all, confirming the route genuinely isn't admin-gated.
 
+### Call-completed Teams notifications
+
+A separate, independent toggle — "Post completed calls to Microsoft Teams" (`operational.callNotifyTeamsEnabled`, same shared `teamsWebhookUrl` as the Leads-inbox side, see [leads-inbox.md](leads-inbox.md#new-lead-email-notifications) for the caveat about Teams' current webhook setup and payload-schema uncertainty). Built into the same `notifyCallCompleted()`, using the same `buildCallDetailViewModel()` data already assembled for the email — customer name, phone, a formatted duration, Call Reason, and whether the call was transferred, sent as `facts` via `sendTeamsMessage()`. Its own try/catch, separate from the email block, so a Teams failure (or the toggle being off) never affects whether the email sends, and vice versa.
+
+Verified independently of email (2026-08-05) using a local mock HTTP receiver in place of a real Teams webhook URL, via the same real signed webhook POST used for the email test above: with Teams on and email off, only the Teams POST fired (correct `title`/`text`/`facts` shape received, no email attempt logged); with Teams off and email on, only the email attempt was logged (correctly failing on "not configured" in this environment) and no Teams POST arrived. Confirms the two channels are genuinely independent per the toggle, not just independently labeled in the UI.
+
 ## Deferred
 
 - Confirming the real shape of `metadata.call_duration_secs`/`analysis.data_collection_results` against an actual ElevenLabs payload (see above).

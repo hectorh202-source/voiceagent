@@ -74,6 +74,9 @@ export function BusinessInfoSettingsPage() {
   const [callNotifyEnabled, setCallNotifyEnabled] = useState(false);
   const [callNotifyEmail, setCallNotifyEmail] = useState("");
   const [callNotifyCc, setCallNotifyCc] = useState("");
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
+  const [leadNotifyTeamsEnabled, setLeadNotifyTeamsEnabled] = useState(false);
+  const [callNotifyTeamsEnabled, setCallNotifyTeamsEnabled] = useState(false);
   const [notifySavedMessage, setNotifySavedMessage] = useState("");
 
   useEffect(() => {
@@ -84,6 +87,9 @@ export function BusinessInfoSettingsPage() {
     setCallNotifyEnabled(notifyData.callNotifyEnabled);
     setCallNotifyEmail(notifyData.callNotifyEmail);
     setCallNotifyCc(notifyData.callNotifyCc);
+    setTeamsWebhookUrl(notifyData.teamsWebhookUrl);
+    setLeadNotifyTeamsEnabled(notifyData.leadNotifyTeamsEnabled);
+    setCallNotifyTeamsEnabled(notifyData.callNotifyTeamsEnabled);
   }, [notifyData]);
 
   const saveNotificationsMutation = useMutation({
@@ -95,6 +101,9 @@ export function BusinessInfoSettingsPage() {
         callNotifyEnabled,
         callNotifyEmail,
         callNotifyCc,
+        teamsWebhookUrl,
+        leadNotifyTeamsEnabled,
+        callNotifyTeamsEnabled,
       }),
     onSuccess: () => {
       setNotifySavedMessage("Notification settings saved.");
@@ -167,6 +176,20 @@ export function BusinessInfoSettingsPage() {
       <div className="card" style={{ marginTop: 24 }}>
         <h2>Notifications</h2>
         <div className="form-row">
+          <label>Microsoft Teams webhook URL (optional)</label>
+          <input
+            value={teamsWebhookUrl}
+            onChange={(e) => setTeamsWebhookUrl(e.target.value)}
+            placeholder="https://..."
+          />
+          <div className="form-hint">
+            Shared by both alerts below — add a "Workflows" app to a Teams channel and build a flow from the "Post
+            to a channel when a webhook request is received" template to get a URL (Microsoft retired the old
+            one-click Incoming Webhook connector). Each alert below has its own toggle to post here, independent of
+            its email toggle.
+          </div>
+        </div>
+        <div className="form-row">
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
             <input
               type="checkbox"
@@ -204,6 +227,20 @@ export function BusinessInfoSettingsPage() {
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
             <input
               type="checkbox"
+              checked={leadNotifyTeamsEnabled}
+              onChange={(e) => setLeadNotifyTeamsEnabled(e.target.checked)}
+            />
+            Post new leads to Microsoft Teams
+          </label>
+          <div className="form-hint">
+            Independent of "Email me new leads" above — turn on either, both, or neither. Requires the Teams
+            webhook URL above.
+          </div>
+        </div>
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input
+              type="checkbox"
               checked={callNotifyEnabled}
               onChange={(e) => setCallNotifyEnabled(e.target.checked)}
             />
@@ -232,6 +269,20 @@ export function BusinessInfoSettingsPage() {
             placeholder="office@yourbusiness.com"
           />
           <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
+        </div>
+        <div className="form-row">
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={callNotifyTeamsEnabled}
+              onChange={(e) => setCallNotifyTeamsEnabled(e.target.checked)}
+            />
+            Post completed calls to Microsoft Teams
+          </label>
+          <div className="form-hint">
+            Independent of "Email me completed calls" above — turn on either, both, or neither. Requires the Teams
+            webhook URL above.
+          </div>
         </div>
         <button
           className="btn btn-primary"

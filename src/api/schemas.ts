@@ -139,6 +139,9 @@ export const notificationSettingsSchema = z.object({
   callNotifyEnabled: z.boolean().optional(),
   callNotifyEmail: z.string().optional(),
   callNotifyCc: z.string().optional(),
+  teamsWebhookUrl: z.string().optional(),
+  leadNotifyTeamsEnabled: z.boolean().optional(),
+  callNotifyTeamsEnabled: z.boolean().optional(),
 });
 
 // The OAuth Client ID/Secret and Developer Token this platform's Google Ads

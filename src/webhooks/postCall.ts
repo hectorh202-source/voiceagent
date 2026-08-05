@@ -9,6 +9,8 @@ import {
   getCallNotifyEmails,
   getCallNotifyCcEmails,
   getDashboardBaseUrl,
+  isCallNotifyTeamsEnabled,
+  getTeamsWebhookUrl,
 } from "../settings/store";
 import { verifyElevenLabsSignature } from "./signature";
 import { upsertCallTranscription, setCallAudioPath, setCallDerivedFields } from "../db/callRecords";
@@ -28,6 +30,7 @@ import { getCallFromNumber } from "../twilio/httpClient";
 import { lookupCustomerByPhone } from "../servicetitan/customers";
 import { getCachedCallerName } from "../db/callerIdCache";
 import { sendCallCompletedNotificationEmail } from "../settings/email";
+import { sendTeamsMessage } from "../settings/teams";
 import type { Business } from "../db/businesses";
 
 interface TranscriptTurn {
@@ -340,34 +343,66 @@ export async function backfillMissingCustomerInfoFromTwilio(
 // page itself would show at this moment. Never throws — a mail failure must
 // never affect the webhook's response to ElevenLabs.
 async function notifyCallCompleted(business: Business, conversationId: string, durationSecs: number | null): Promise<void> {
-  try {
-    if (!isCallNotifyEnabled(business.id)) return;
-    const recipients = getCallNotifyEmails(business.id);
-    const cc = getCallNotifyCcEmails(business.id);
-    const to = recipients.length > 0 ? recipients : cc;
-    const ccFinal = recipients.length > 0 ? cc : [];
-    if (to.length === 0) return;
+  // Email and Teams are independently switchable — each has its own
+  // enabled flag (see settings/store.ts) and its own try/catch, so one
+  // failing (or being off) never affects the other, and neither ever
+  // affects the webhook's response to ElevenLabs.
+  const emailEnabled = isCallNotifyEnabled(business.id);
+  const teamsEnabled = isCallNotifyTeamsEnabled(business.id);
+  if (!emailEnabled && !teamsEnabled) return;
 
-    const viewModel = buildCallDetailViewModel(business, conversationId);
-    if (!viewModel) return;
+  const viewModel = buildCallDetailViewModel(business, conversationId);
+  if (!viewModel) return;
 
-    const callUrl = `${getDashboardBaseUrl(business.id)}/app/${business.id}/calls/${conversationId}`;
-    await sendCallCompletedNotificationEmail(
-      to,
-      {
-        businessName: business.name,
-        customerName: viewModel.customerName,
-        phone: viewModel.phone,
-        durationSecs,
-        callReason: viewModel.callReason,
-        isEmergency: viewModel.isEmergency,
-        isTransferred: viewModel.isTransferred,
-        callUrl,
-      },
-      ccFinal,
-    );
-  } catch (error) {
-    console.error("Call completed notification email failed:", error instanceof Error ? error.message : error);
+  const callUrl = `${getDashboardBaseUrl(business.id)}/app/${business.id}/calls/${conversationId}`;
+
+  if (emailEnabled) {
+    try {
+      const recipients = getCallNotifyEmails(business.id);
+      const cc = getCallNotifyCcEmails(business.id);
+      const to = recipients.length > 0 ? recipients : cc;
+      const ccFinal = recipients.length > 0 ? cc : [];
+      if (to.length > 0) {
+        await sendCallCompletedNotificationEmail(
+          to,
+          {
+            businessName: business.name,
+            customerName: viewModel.customerName,
+            phone: viewModel.phone,
+            durationSecs,
+            callReason: viewModel.callReason,
+            isEmergency: viewModel.isEmergency,
+            isTransferred: viewModel.isTransferred,
+            callUrl,
+          },
+          ccFinal,
+        );
+      }
+    } catch (error) {
+      console.error("Call completed notification email failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  if (teamsEnabled) {
+    try {
+      const webhookUrl = getTeamsWebhookUrl(business.id);
+      if (webhookUrl) {
+        const rows: [string, string | undefined][] = [
+          ["Customer", viewModel.customerName ?? undefined],
+          ["Phone", viewModel.phone ?? undefined],
+          ["Duration", durationSecs !== null ? `${Math.floor(durationSecs / 60)}m ${Math.floor(durationSecs % 60)}s` : undefined],
+          ["Reason", viewModel.callReason ?? undefined],
+          ["Transferred", viewModel.isTransferred ? "Yes" : undefined],
+        ];
+        await sendTeamsMessage(webhookUrl, {
+          title: viewModel.isEmergency ? "Call completed — marked emergency" : "Call completed",
+          text: `A call just finished for ${business.name}. [View call details](${callUrl})`,
+          facts: rows.filter(([, v]) => v && v.trim()).map(([name, value]) => ({ name, value: value!.trim() })),
+        });
+      }
+    } catch (error) {
+      console.error("Call completed Teams notification failed:", error instanceof Error ? error.message : error);
+    }
   }
 }
 

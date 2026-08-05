@@ -1,8 +1,16 @@
 import { db } from "./index";
 import { encryptField, encryptNullable, decryptField, decryptNullable } from "../lib/encryption";
 import { getBusinessById } from "./businesses";
-import { isLeadNotifyEnabled, getLeadNotifyEmails, getLeadNotifyCcEmails, getDashboardBaseUrl } from "../settings/store";
+import {
+  isLeadNotifyEnabled,
+  getLeadNotifyEmails,
+  getLeadNotifyCcEmails,
+  getDashboardBaseUrl,
+  isLeadNotifyTeamsEnabled,
+  getTeamsWebhookUrl,
+} from "../settings/store";
 import { sendNewLeadNotificationEmail } from "../settings/email";
+import { sendTeamsMessage } from "../settings/teams";
 
 // Kept in sync by hand with client/src/lib/format.ts's own LEAD_SOURCE_LABEL —
 // this one only feeds the notification email's subject/heading, so a source
@@ -172,35 +180,64 @@ function parseStructuredFields(raw: string | null | undefined): { label: string;
 }
 
 function notifyNewLead(entry: InboundLeadEntry): void {
-  if (!isLeadNotifyEnabled(entry.businessId)) return;
-  const recipients = getLeadNotifyEmails(entry.businessId);
-  const cc = getLeadNotifyCcEmails(entry.businessId);
-  const to = recipients.length > 0 ? recipients : cc;
-  const ccFinal = recipients.length > 0 ? cc : [];
-  if (to.length === 0) return;
-
   const business = getBusinessById(entry.businessId);
   if (!business) return;
 
+  const sourceLabel = LEAD_SOURCE_LABEL[entry.source] ?? entry.source;
+  const structuredFields = parseStructuredFields(entry.structuredFields);
   const leadsUrl = `${getDashboardBaseUrl(entry.businessId)}/app/${entry.businessId}/leads`;
-  sendNewLeadNotificationEmail(
-    to,
-    {
-      businessName: business.name,
-      sourceLabel: LEAD_SOURCE_LABEL[entry.source] ?? entry.source,
-      sourceDetail: entry.sourceDetail ?? undefined,
-      name: entry.name ?? undefined,
-      phone: entry.phone ?? undefined,
-      email: entry.email ?? undefined,
-      address: entry.address ?? undefined,
-      message: entry.message ?? undefined,
-      structuredFields: parseStructuredFields(entry.structuredFields),
-      leadsUrl,
-    },
-    ccFinal,
-  ).catch((error) => {
-    console.error("New lead notification email failed:", error instanceof Error ? error.message : error);
-  });
+  const booked = entry.sourceDetail === "booked";
+
+  // Email and Teams are independently switchable — each has its own
+  // enabled flag (see settings/store.ts) and its own try/catch, so one
+  // failing (or being off) never affects the other.
+  if (isLeadNotifyEnabled(entry.businessId)) {
+    const recipients = getLeadNotifyEmails(entry.businessId);
+    const cc = getLeadNotifyCcEmails(entry.businessId);
+    const to = recipients.length > 0 ? recipients : cc;
+    const ccFinal = recipients.length > 0 ? cc : [];
+    if (to.length > 0) {
+      sendNewLeadNotificationEmail(
+        to,
+        {
+          businessName: business.name,
+          sourceLabel,
+          sourceDetail: entry.sourceDetail ?? undefined,
+          name: entry.name ?? undefined,
+          phone: entry.phone ?? undefined,
+          email: entry.email ?? undefined,
+          address: entry.address ?? undefined,
+          message: entry.message ?? undefined,
+          structuredFields,
+          leadsUrl,
+        },
+        ccFinal,
+      ).catch((error) => {
+        console.error("New lead notification email failed:", error instanceof Error ? error.message : error);
+      });
+    }
+  }
+
+  if (isLeadNotifyTeamsEnabled(entry.businessId)) {
+    const webhookUrl = getTeamsWebhookUrl(entry.businessId);
+    if (webhookUrl) {
+      const rows: [string, string | undefined][] = [
+        ["Name", entry.name ?? undefined],
+        ["Phone", entry.phone ?? undefined],
+        ["Email", entry.email ?? undefined],
+        ["Address", entry.address ?? undefined],
+        ...structuredFields.map(({ label, value }): [string, string | undefined] => [label, value]),
+        ["Details", entry.message ?? undefined],
+      ];
+      sendTeamsMessage(webhookUrl, {
+        title: booked ? "New appointment booked" : `New lead — ${sourceLabel}`,
+        text: `A new lead came in via ${sourceLabel} for ${business.name}. [View in Leads inbox](${leadsUrl})`,
+        facts: rows.filter(([, v]) => v && v.trim()).map(([name, value]) => ({ name, value: value!.trim() })),
+      }).catch((error) => {
+        console.error("New lead Teams notification failed:", error instanceof Error ? error.message : error);
+      });
+    }
+  }
 }
 
 // Centralizing the notify-on-new-lead call here (rather than once per

@@ -1001,6 +1001,13 @@ apiBusinessRouter.put("/settings/notifications", (req, res) => {
   }
   maybeSetBusinessSetting(business.id, "operational.callNotifyEmail", body.callNotifyEmail);
   maybeSetBusinessSetting(business.id, "operational.callNotifyCc", body.callNotifyCc);
+  maybeSetBusinessSetting(business.id, "operational.teamsWebhookUrl", body.teamsWebhookUrl);
+  if (body.leadNotifyTeamsEnabled !== undefined) {
+    setBusinessSetting(business.id, "operational.leadNotifyTeamsEnabled", body.leadNotifyTeamsEnabled ? "true" : "false");
+  }
+  if (body.callNotifyTeamsEnabled !== undefined) {
+    setBusinessSetting(business.id, "operational.callNotifyTeamsEnabled", body.callNotifyTeamsEnabled ? "true" : "false");
+  }
 
   res.json({ success: true });
 });

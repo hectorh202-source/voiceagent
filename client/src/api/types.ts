@@ -176,6 +176,12 @@ export interface NotificationSettings {
   callNotifyEnabled: boolean;
   callNotifyEmail: string;
   callNotifyCc: string;
+  // Independent of the email toggles above — one shared webhook URL, two
+  // separate enabled flags so leads and calls can post to Teams (or not)
+  // independently of each other and of email.
+  teamsWebhookUrl: string;
+  leadNotifyTeamsEnabled: boolean;
+  callNotifyTeamsEnabled: boolean;
 }
 
 // Voice selection only — no stability/speed/similarity/style/speaker-boost

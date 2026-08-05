@@ -293,7 +293,28 @@ export function getRawNotificationSettings(businessId: number) {
     callNotifyEnabled: isCallNotifyEnabled(businessId),
     callNotifyEmail: getBusinessSetting(businessId, "operational.callNotifyEmail") ?? "",
     callNotifyCc: getBusinessSetting(businessId, "operational.callNotifyCc") ?? "",
+    teamsWebhookUrl: getBusinessSetting(businessId, "operational.teamsWebhookUrl") ?? "",
+    leadNotifyTeamsEnabled: isLeadNotifyTeamsEnabled(businessId),
+    callNotifyTeamsEnabled: isCallNotifyTeamsEnabled(businessId),
   };
+}
+
+// Independent of the email toggles above — a business can post to Teams
+// without emailing, email without posting to Teams, or both, per
+// notification type. One shared webhook URL for both types (most businesses
+// only have one channel they'd want either kind of alert posted to); the
+// two enabled flags are what actually keep the two notification types
+// independently switchable.
+export function isLeadNotifyTeamsEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.leadNotifyTeamsEnabled") === "true";
+}
+
+export function isCallNotifyTeamsEnabled(businessId: number): boolean {
+  return getBusinessSetting(businessId, "operational.callNotifyTeamsEnabled") === "true";
+}
+
+export function getTeamsWebhookUrl(businessId: number): string | null {
+  return getBusinessSetting(businessId, "operational.teamsWebhookUrl");
 }
 
 // Email alerting for every Leads-inbox source — one shared setting, not one
