@@ -78,6 +78,9 @@ export function AppShell() {
               <NavLink to={`/${businessId}/settings/business-info`} className={navClass}>
                 Business Info
               </NavLink>
+              <NavLink to={`/${businessId}/settings/notifications`} className={navClass}>
+                Notifications
+              </NavLink>
             </nav>
           </>
         )}

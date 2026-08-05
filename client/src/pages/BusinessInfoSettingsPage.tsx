@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { BusinessInfoSettings, NotificationSettings, ServiceCategory } from "../api/types";
+import type { BusinessInfoSettings, ServiceCategory } from "../api/types";
 
 const CATEGORY_ROWS = 10;
 
@@ -56,57 +56,6 @@ export function BusinessInfoSettingsPage() {
   function updateCategory(index: number, field: keyof ServiceCategory, value: string) {
     setCategories((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
   }
-
-  // Own query/state/save button, independent of the business-info card
-  // above — reachable by any business user (see businessRouter.ts's GET/PUT
-  // /settings/notifications, not platform-admin-gated, unlike the rest of
-  // General Settings where these lived before). A separate mutation rather
-  // than folding into saveMutation above so saving one doesn't require
-  // touching the other.
-  const { data: notifyData } = useQuery({
-    queryKey: ["notification-settings", businessId],
-    queryFn: () => api.get<NotificationSettings>(`/api/businesses/${businessId}/settings/notifications`),
-  });
-
-  const [leadNotifyEnabled, setLeadNotifyEnabled] = useState(false);
-  const [leadNotifyEmail, setLeadNotifyEmail] = useState("");
-  const [leadNotifyCc, setLeadNotifyCc] = useState("");
-  const [callNotifyEnabled, setCallNotifyEnabled] = useState(false);
-  const [callNotifyEmail, setCallNotifyEmail] = useState("");
-  const [callNotifyCc, setCallNotifyCc] = useState("");
-  const [leadNotifyTeamsEnabled, setLeadNotifyTeamsEnabled] = useState(false);
-  const [callNotifyTeamsEnabled, setCallNotifyTeamsEnabled] = useState(false);
-  const [notifySavedMessage, setNotifySavedMessage] = useState("");
-
-  useEffect(() => {
-    if (!notifyData) return;
-    setLeadNotifyEnabled(notifyData.leadNotifyEnabled);
-    setLeadNotifyEmail(notifyData.leadNotifyEmail);
-    setLeadNotifyCc(notifyData.leadNotifyCc);
-    setCallNotifyEnabled(notifyData.callNotifyEnabled);
-    setCallNotifyEmail(notifyData.callNotifyEmail);
-    setCallNotifyCc(notifyData.callNotifyCc);
-    setLeadNotifyTeamsEnabled(notifyData.leadNotifyTeamsEnabled);
-    setCallNotifyTeamsEnabled(notifyData.callNotifyTeamsEnabled);
-  }, [notifyData]);
-
-  const saveNotificationsMutation = useMutation({
-    mutationFn: () =>
-      api.put(`/api/businesses/${businessId}/settings/notifications`, {
-        leadNotifyEnabled,
-        leadNotifyEmail,
-        leadNotifyCc,
-        callNotifyEnabled,
-        callNotifyEmail,
-        callNotifyCc,
-        leadNotifyTeamsEnabled,
-        callNotifyTeamsEnabled,
-      }),
-    onSuccess: () => {
-      setNotifySavedMessage("Notification settings saved.");
-      queryClient.invalidateQueries({ queryKey: ["notification-settings", businessId] });
-    },
-  });
 
   if (isLoading) return <div>Loading…</div>;
 
@@ -169,113 +118,6 @@ export function BusinessInfoSettingsPage() {
         Save
       </button>
       {savedMessage && <span style={{ marginLeft: 8 }} className="muted">{savedMessage}</span>}
-
-      <div className="card" style={{ marginTop: 24 }}>
-        <h2>Notifications</h2>
-        <div className="form-row">
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-            <input
-              type="checkbox"
-              checked={leadNotifyEnabled}
-              onChange={(e) => setLeadNotifyEnabled(e.target.checked)}
-            />
-            Email me new leads
-          </label>
-          <div className="form-hint">
-            Fires for every new entry in this business's Leads inbox — website form, website chat, Facebook Ads,
-            Google Ads Lead Form, Google LSA, and the AI phone agent's catch-all tool — the moment it's created,
-            regardless of which of those produced it. Requires the platform's SMTP settings to be configured in the
-            global Admin Settings.
-          </div>
-        </div>
-        <div className="form-row">
-          <label>Notification email</label>
-          <input
-            value={leadNotifyEmail}
-            onChange={(e) => setLeadNotifyEmail(e.target.value)}
-            placeholder="leads@yourbusiness.com, owner@yourbusiness.com"
-          />
-          <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
-        </div>
-        <div className="form-row">
-          <label>CC (optional)</label>
-          <input
-            value={leadNotifyCc}
-            onChange={(e) => setLeadNotifyCc(e.target.value)}
-            placeholder="office@yourbusiness.com"
-          />
-          <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
-        </div>
-        <div className="form-row">
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-            <input
-              type="checkbox"
-              checked={leadNotifyTeamsEnabled}
-              onChange={(e) => setLeadNotifyTeamsEnabled(e.target.checked)}
-            />
-            Post new leads to Microsoft Teams
-          </label>
-          <div className="form-hint">
-            Independent of "Email me new leads" above — turn on either, both, or neither. Requires an admin to
-            configure a Teams webhook URL under Admin Settings first.
-          </div>
-        </div>
-        <div className="form-row">
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-            <input
-              type="checkbox"
-              checked={callNotifyEnabled}
-              onChange={(e) => setCallNotifyEnabled(e.target.checked)}
-            />
-            Email me completed calls
-          </label>
-          <div className="form-hint">
-            Fires once for every AI phone agent call, right after it ends — separate from the Leads-inbox
-            notification above, since a business might want one alert stream but not the other. Requires the
-            platform's SMTP settings to be configured in the global Admin Settings.
-          </div>
-        </div>
-        <div className="form-row">
-          <label>Notification email</label>
-          <input
-            value={callNotifyEmail}
-            onChange={(e) => setCallNotifyEmail(e.target.value)}
-            placeholder="calls@yourbusiness.com, owner@yourbusiness.com"
-          />
-          <div className="form-hint">Primary recipients (the To line). Separate multiple addresses with commas.</div>
-        </div>
-        <div className="form-row">
-          <label>CC (optional)</label>
-          <input
-            value={callNotifyCc}
-            onChange={(e) => setCallNotifyCc(e.target.value)}
-            placeholder="office@yourbusiness.com"
-          />
-          <div className="form-hint">Additional addresses copied on every alert. Separate multiple with commas.</div>
-        </div>
-        <div className="form-row">
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-            <input
-              type="checkbox"
-              checked={callNotifyTeamsEnabled}
-              onChange={(e) => setCallNotifyTeamsEnabled(e.target.checked)}
-            />
-            Post completed calls to Microsoft Teams
-          </label>
-          <div className="form-hint">
-            Independent of "Email me completed calls" above — turn on either, both, or neither. Requires an admin
-            to configure a Teams webhook URL under Admin Settings first.
-          </div>
-        </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => saveNotificationsMutation.mutate()}
-          disabled={saveNotificationsMutation.isPending}
-        >
-          Save
-        </button>
-        {notifySavedMessage && <span style={{ marginLeft: 8 }} className="muted">{notifySavedMessage}</span>}
-      </div>
     </div>
   );
 }
