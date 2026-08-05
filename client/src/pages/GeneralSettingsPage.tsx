@@ -49,6 +49,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
   const [googleAdsRefreshToken, setGoogleAdsRefreshToken] = useState("");
   const [dynamicMemoryEnabled, setDynamicMemoryEnabled] = useState(false);
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
         googleAdsCustomerId: googleAdsCustomerId || undefined,
         googleAdsRefreshToken: googleAdsRefreshToken || undefined,
         dynamicMemoryEnabled,
+        teamsWebhookUrl: teamsWebhookUrl || undefined,
       }),
     onSuccess: () => {
       setMessage("Settings saved.");
@@ -141,6 +143,7 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
       setLeadIntakeWebhookSecret("");
       setGoogleLeadFormWebhookSecret("");
       setGoogleAdsRefreshToken("");
+      setTeamsWebhookUrl("");
       queryClient.invalidateQueries({ queryKey: ["general-settings", businessId] });
     },
   });
@@ -443,6 +446,25 @@ export function GeneralSettingsPage({ activeSection }: { activeSection: GeneralS
             summary of what a returning caller discussed last time — no separate webhook or ElevenLabs dashboard
             setup needed beyond a small prompt tweak telling the agent to use it. See docs/dynamic-memory.md.
             Off by default; disabling this here always takes effect immediately on the very next call.
+          </div>
+        </div>
+        <div className="form-row">
+          <label>
+            Microsoft Teams webhook URL{" "}
+            {data.operational.teamsWebhookUrlSet && <span className="muted">(set — leave blank to keep)</span>}
+          </label>
+          <input
+            type="password"
+            value={teamsWebhookUrl}
+            onChange={(e) => setTeamsWebhookUrl(e.target.value)}
+            placeholder={data.operational.teamsWebhookUrlSet ? MASKED_SECRET_PLACEHOLDER : undefined}
+            autoComplete="off"
+          />
+          <div className="form-hint">
+            Add a "Workflows" app to a Teams channel and build a flow from the "Post to a channel when a webhook
+            request is received" template to get a URL (Microsoft retired the old one-click Incoming Webhook
+            connector). Once set here, staff can turn "Post new leads"/"Post completed calls to Microsoft Teams" on
+            or off themselves under Business Info → Notifications, without needing this URL.
           </div>
         </div>
       </div>

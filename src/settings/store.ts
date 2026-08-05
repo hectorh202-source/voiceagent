@@ -275,6 +275,11 @@ export function getRawOperationalSettings(businessId: number) {
     leadIntakeWebhookSecretSet: !!getBusinessSetting(businessId, "operational.leadIntakeWebhookSecret"),
     googleLeadFormWebhookSecretSet: !!getBusinessSetting(businessId, "operational.googleLeadFormWebhookSecret"),
     dynamicMemoryEnabled: getBusinessSetting(businessId, "operational.dynamicMemoryEnabled") === "true",
+    // The webhook URL itself is admin-only (effectively a bearer credential,
+    // same treatment as the other webhook secrets above) — only the on/off
+    // toggles for posting to it live in the business-facing Notifications
+    // section below.
+    teamsWebhookUrlSet: !!getBusinessSetting(businessId, "operational.teamsWebhookUrl"),
   };
 }
 
@@ -293,7 +298,6 @@ export function getRawNotificationSettings(businessId: number) {
     callNotifyEnabled: isCallNotifyEnabled(businessId),
     callNotifyEmail: getBusinessSetting(businessId, "operational.callNotifyEmail") ?? "",
     callNotifyCc: getBusinessSetting(businessId, "operational.callNotifyCc") ?? "",
-    teamsWebhookUrl: getBusinessSetting(businessId, "operational.teamsWebhookUrl") ?? "",
     leadNotifyTeamsEnabled: isLeadNotifyTeamsEnabled(businessId),
     callNotifyTeamsEnabled: isCallNotifyTeamsEnabled(businessId),
   };

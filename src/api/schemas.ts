@@ -127,6 +127,10 @@ export const generalSettingsSchema = z.object({
   googleAdsCustomerId: z.string().optional(),
   googleAdsRefreshToken: z.string().optional(),
   dynamicMemoryEnabled: z.boolean().optional(),
+  // Admin-only, unlike the on/off toggles for it in notificationSettingsSchema
+  // below — treated as a bearer credential (same "leave blank to keep"
+  // pattern as the other webhook secrets above), not a plain visible field.
+  teamsWebhookUrl: z.string().optional(),
 });
 
 // Separate from generalSettingsSchema above — reachable by any business
@@ -139,7 +143,6 @@ export const notificationSettingsSchema = z.object({
   callNotifyEnabled: z.boolean().optional(),
   callNotifyEmail: z.string().optional(),
   callNotifyCc: z.string().optional(),
-  teamsWebhookUrl: z.string().optional(),
   leadNotifyTeamsEnabled: z.boolean().optional(),
   callNotifyTeamsEnabled: z.boolean().optional(),
 });

@@ -961,6 +961,7 @@ apiBusinessRouter.put("/settings/general", requireApiPlatformAdmin, (req, res) =
   maybeSetBusinessSetting(business.id, "operational.twilioPhoneNumber", body.twilioPhoneNumber);
   maybeSetBusinessSetting(business.id, "operational.leadIntakeWebhookSecret", body.leadIntakeWebhookSecret);
   maybeSetBusinessSetting(business.id, "operational.googleLeadFormWebhookSecret", body.googleLeadFormWebhookSecret);
+  maybeSetBusinessSetting(business.id, "operational.teamsWebhookUrl", body.teamsWebhookUrl);
   maybeSetBusinessSetting(business.id, "googleAds.customerId", body.googleAdsCustomerId);
   maybeSetBusinessSetting(business.id, "googleAds.refreshToken", body.googleAdsRefreshToken);
   // Checkbox-backed, not a secret — same "always write, no blank state to
@@ -1001,7 +1002,6 @@ apiBusinessRouter.put("/settings/notifications", (req, res) => {
   }
   maybeSetBusinessSetting(business.id, "operational.callNotifyEmail", body.callNotifyEmail);
   maybeSetBusinessSetting(business.id, "operational.callNotifyCc", body.callNotifyCc);
-  maybeSetBusinessSetting(business.id, "operational.teamsWebhookUrl", body.teamsWebhookUrl);
   if (body.leadNotifyTeamsEnabled !== undefined) {
     setBusinessSetting(business.id, "operational.leadNotifyTeamsEnabled", body.leadNotifyTeamsEnabled ? "true" : "false");
   }

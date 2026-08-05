@@ -176,10 +176,11 @@ export interface NotificationSettings {
   callNotifyEnabled: boolean;
   callNotifyEmail: string;
   callNotifyCc: string;
-  // Independent of the email toggles above — one shared webhook URL, two
-  // separate enabled flags so leads and calls can post to Teams (or not)
-  // independently of each other and of email.
-  teamsWebhookUrl: string;
+  // Independent of the email toggles above — an admin configures the shared
+  // webhook URL itself under Admin Settings (see GeneralSettings.operational.
+  // teamsWebhookUrlSet); these two flags are the only Teams-related fields
+  // any business user can control here, so leads and calls can post (or
+  // not) independently of each other and of email.
   leadNotifyTeamsEnabled: boolean;
   callNotifyTeamsEnabled: boolean;
 }
@@ -281,6 +282,7 @@ export interface GeneralSettings {
     leadIntakeWebhookSecretSet: boolean;
     googleLeadFormWebhookSecretSet: boolean;
     dynamicMemoryEnabled: boolean;
+    teamsWebhookUrlSet: boolean;
   };
   googleAds: {
     customerId: string;
