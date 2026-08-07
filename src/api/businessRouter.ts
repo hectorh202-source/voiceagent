@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -567,6 +567,52 @@ apiBusinessRouter.delete("/leads/:id", requireApiPlatformAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// Buffer counterpart to dashboard/routes.ts's streamAudioFile() — same real
+// bug, same fix, just for an in-memory buffer instead of a file on disk
+// (Google LSA recordings are fetched fresh from Google's API on every
+// request, not cached locally, so there's no file to stream from). This
+// route used to just do a plain 200 with the whole buffer every time,
+// which silently broke seek/skip in the <audio> player: browsers issue
+// HTTP Range requests to seek, and a server that always answers 200 with
+// the full body regardless of Range never lets the browser jump to an
+// arbitrary point — it can only ever play from wherever it already
+// buffered. Must respond 206 with the exact requested byte range instead.
+function sendAudioBuffer(req: Request, res: Response, buffer: Buffer, contentType: string): void {
+  const fileSize = buffer.length;
+  const range = req.headers.range;
+
+  if (!range) {
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": fileSize,
+      "Accept-Ranges": "bytes",
+    });
+    res.end(buffer);
+    return;
+  }
+
+  const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+  if (!match) {
+    res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+    return;
+  }
+
+  const start = parseInt(match[1], 10);
+  const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+  if (start >= fileSize || end >= fileSize || start > end) {
+    res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+    return;
+  }
+
+  res.writeHead(206, {
+    "Content-Type": contentType,
+    "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+    "Accept-Ranges": "bytes",
+    "Content-Length": end - start + 1,
+  });
+  res.end(buffer.subarray(start, end + 1));
+}
+
 // Proxies the actual recording audio (see googleLsa/recordings.ts for why
 // this can't just be a raw <audio src="..."> pointed at Google's own URL —
 // it requires a bearer token the browser has no way to attach). 404s for
@@ -598,8 +644,7 @@ apiBusinessRouter.get("/leads/:id/recording", async (req, res) => {
   }
   try {
     const audio = await fetchRecordingAudio(config, recordingUrl);
-    res.set("Content-Type", audio.contentType);
-    res.send(audio.data);
+    sendAudioBuffer(req, res, audio.data, audio.contentType);
   } catch (error) {
     res.status(502).json({ error: describeError(error) });
   }
