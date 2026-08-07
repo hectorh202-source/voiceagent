@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { lookupCustomerByPhone, createCustomer } from "../servicetitan/customers";
 import { createJob as createServiceTitanJob } from "../servicetitan/jobs";
+import { checkAvailability } from "../servicetitan/capacity";
 import { buildLeadSummary, buildInitialNarrative } from "../servicetitan/leadSummary";
 import { runCreateLeadFlow, booleanish, type CreateLeadFlowInput } from "./createLead";
 import { logToolCall } from "../db/callLog";
@@ -34,13 +35,17 @@ export interface BookJobFlowInput extends CreateLeadFlowInput {
   selectedEnd?: string;
 }
 
-// Which of the three paths the flow actually took, so both callers (the HTTP
+// Which of the four paths the flow actually took, so both callers (the HTTP
 // handler below and the chat engine in src/chat/*) can log/render accordingly
 // without re-deriving it:
-//   emergency_lead — an emergency short-circuited to the proven Lead path
+//   emergency_lead — an emergency with no real near-term slot found; fell
+//                    back to the proven Lead path
+//   emergency_job  — an emergency that found and booked a real near-term
+//                    slot (including on-call capacity, if ServiceTitan's
+//                    Adaptive Capacity is configured to surface it)
 //   no_slot        — book_job reached without a selected appointment time
-//   job            — a real ServiceTitan Job was created
-export type BookJobOutcome = "emergency_lead" | "no_slot" | "job";
+//   job            — a real ServiceTitan Job was created (non-emergency)
+export type BookJobOutcome = "emergency_lead" | "emergency_job" | "no_slot" | "job";
 
 export interface BookJobFlowResult {
   outcome: BookJobOutcome;
@@ -57,29 +62,73 @@ export interface BookJobFlowResult {
 // engine share one implementation and one set of guardrails. Throws on
 // ServiceTitan errors (ServiceTitanNotConfiguredError / request failures) —
 // callers own the try/catch and their own logging/HTTP shaping.
+// How far out to look for a real near-term slot on an emergency call — a
+// deliberately short window (a genuine emergency means "as soon as
+// possible," not "sometime in the next two weeks," which is capacity.ts's
+// own MAX_RANGE_DAYS for the normal check_availability path).
+const EMERGENCY_WINDOW_HOURS = 24;
+
+// Looks for a real bookable slot in the next EMERGENCY_WINDOW_HOURS —
+// including on-call capacity, if ServiceTitan's Adaptive Capacity is
+// configured to surface it (see docs/servicetitan-integration.md) — so an
+// emergency call can actually be booked when real capacity genuinely
+// exists, instead of always falling back to a Lead. Deliberately done here,
+// server-side, rather than trusted to the agent's own multi-turn
+// check_availability -> book_job conversation flow: that's exactly the
+// reliability gap a real past incident (the Emergency Dispatch transfer
+// failure) already showed isn't safe enough for something this urgent. A
+// failed capacity check (ServiceTitan error, misconfiguration) is treated
+// the same as "no slot found" — never thrown, always falls through to the
+// existing Lead safety net below.
+async function findEmergencySlot(
+  businessId: number,
+  serviceCategory: string | undefined,
+): Promise<{ start: string; end: string } | null> {
+  try {
+    const overrides = await resolveJobTypeOverrides(businessId, serviceCategory);
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + EMERGENCY_WINDOW_HOURS * 60 * 60 * 1000);
+    const result = await checkAvailability(businessId, now.toISOString(), windowEnd.toISOString(), overrides);
+    const soonest = result.slots[0];
+    return soonest ? { start: soonest.start, end: soonest.end } : null;
+  } catch (error) {
+    console.error("findEmergencySlot: capacity check failed, falling back to the Lead safety net:", error);
+    return null;
+  }
+}
+
 export async function runBookJobFlow(businessId: number, input: BookJobFlowInput): Promise<BookJobFlowResult> {
-  // Safety net, enforced here rather than trusted to the system prompt alone:
-  // an emergency never gets auto-booked, regardless of which tool the agent
-  // actually called. Falls back to the exact same proven Lead path
-  // create_lead uses. We already found once (Emergency Dispatch) that relying
-  // on the agent to route correctly on its own isn't reliable enough for
-  // something this consequential.
+  let selectedStart = input.selectedStart;
+  let selectedEnd = input.selectedEnd;
+
   if (input.isEmergency) {
-    const result = await runCreateLeadFlow(businessId, input);
-    return {
-      outcome: "emergency_lead",
-      success: result.success,
-      jobId: null,
-      leadId: result.leadId,
-      email: result.email,
-      equipmentAge: result.equipmentAge,
-      confirmationMessage: result.success
-        ? "A team member will confirm your appointment shortly."
-        : "We had trouble saving your request, but a team member will follow up with you directly.",
-    };
+    const slot = await findEmergencySlot(businessId, input.serviceCategory);
+    if (slot) {
+      // Real near-term capacity exists — fall through to the same booking
+      // logic below as any other job, just with a server-found slot instead
+      // of an agent-selected one.
+      selectedStart = slot.start;
+      selectedEnd = slot.end;
+    } else {
+      // No real near-term slot found (or the capacity check itself failed)
+      // — fall back to the exact same proven Lead path create_lead uses,
+      // same safety net as before this change.
+      const result = await runCreateLeadFlow(businessId, input);
+      return {
+        outcome: "emergency_lead",
+        success: result.success,
+        jobId: null,
+        leadId: result.leadId,
+        email: result.email,
+        equipmentAge: result.equipmentAge,
+        confirmationMessage: result.success
+          ? "A team member will confirm your appointment shortly."
+          : "We had trouble saving your request, but a team member will follow up with you directly.",
+      };
+    }
   }
 
-  if (!input.selectedStart || !input.selectedEnd) {
+  if (!selectedStart || !selectedEnd) {
     return {
       outcome: "no_slot",
       success: false,
@@ -113,7 +162,7 @@ export async function runBookJobFlow(businessId: number, input: BookJobFlowInput
     state: input.state,
     zip: input.zip,
     preferredTiming: input.preferredTiming,
-    isEmergency: false,
+    isEmergency: input.isEmergency,
   });
   const summary = buildLeadSummary(businessId, {
     narrative,
@@ -132,14 +181,14 @@ export async function runBookJobFlow(businessId: number, input: BookJobFlowInput
     customerId,
     locationId,
     summary,
-    appointmentStart: input.selectedStart,
-    appointmentEnd: input.selectedEnd,
+    appointmentStart: selectedStart,
+    appointmentEnd: selectedEnd,
     businessUnitId,
     jobTypeId,
   });
 
   return {
-    outcome: "job",
+    outcome: input.isEmergency ? "emergency_job" : "job",
     success: jobResult.success,
     jobId: jobResult.jobId,
     leadId: null,
@@ -194,12 +243,17 @@ export async function handleBookJob(req: Request, res: Response): Promise<void> 
       confirmationMessage: result.confirmationMessage,
     };
 
-    // An emergency actually created a Lead, so it's logged as create_lead (not
-    // book_job) — it needs to be found by findCreateLeadLogByConversationId
-    // (the dashboard/post-call-rebuild code), not the book_job finder, which
-    // is meant to mean "an actual Job exists." email/equipmentAge ride along
-    // in the logged response only so the post-call webhook can rebuild the
-    // summary with the real AI call summary once it's available.
+    // An emergency that fell back to the Lead safety net (outcome
+    // "emergency_lead") actually created a Lead, so it's logged as
+    // create_lead (not book_job) — it needs to be found by
+    // findCreateLeadLogByConversationId (the dashboard/post-call-rebuild
+    // code), not the book_job finder, which is meant to mean "an actual Job
+    // exists." An emergency that found and booked a real slot (outcome
+    // "emergency_job") did create a real Job, so it correctly falls through
+    // to the "book_job" branch below like any other booked job.
+    // email/equipmentAge ride along in the logged response only so the
+    // post-call webhook can rebuild the summary with the real AI call
+    // summary once it's available.
     logToolCall({
       businessId: business.id,
       toolName: result.outcome === "emergency_lead" ? "create_lead" : "book_job",
