@@ -209,7 +209,6 @@ export function getRawServiceTitanSettings(businessId: number) {
     jobTypeId: getBusinessSetting(businessId, "servicetitan.jobTypeId") ?? "",
     tagName: getBusinessSetting(businessId, "servicetitan.tagName") ?? "",
     bookingMode: getBookingMode(businessId),
-    serviceCategories: getServiceCategories(businessId),
   };
 }
 
@@ -224,41 +223,11 @@ export function getBookingMode(businessId: number): BookingMode {
   return (getBusinessSetting(businessId, "servicetitan.bookingMode") as BookingMode | null) ?? "lead";
 }
 
-export interface ServiceCategory {
-  name: string;
-  businessUnitId: string;
-  jobTypeId: string;
-}
-
-// Lets a business categorize calls (e.g. "Plumbing" vs "HVAC") into the
-// correct business unit + job type, instead of every lead/job getting the
-// same single default regardless of what the call was about. Stored as one
-// JSON-encoded array rather than a new table — business_settings is a flat
-// key-value store and this list is small, so a dedicated table/migration
-// isn't worth it.
-export function getServiceCategories(businessId: number): ServiceCategory[] {
-  const raw = getBusinessSetting(businessId, "servicetitan.serviceCategories");
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as ServiceCategory[];
-  } catch {
-    return [];
-  }
-}
-
-// {} (both fields undefined) when no category name is given or none match —
-// callers treat that identically to "no override," falling back to their
-// own config defaults. This keeps every caller's zero-config behavior
-// exactly unchanged.
-export function resolveServiceCategory(
-  businessId: number,
-  categoryName: string | undefined,
-): { businessUnitId?: string; jobTypeId?: string } {
-  if (!categoryName) return {};
-  const normalized = categoryName.trim().toLowerCase();
-  const match = getServiceCategories(businessId).find((c) => c.name.trim().toLowerCase() === normalized);
-  return match ? { businessUnitId: match.businessUnitId, jobTypeId: match.jobTypeId } : {};
-}
+// Service Categories (a hand-maintained name → business unit/job type
+// mapping stored here) used to be how a call's business unit/job type was
+// resolved. Replaced by a live lookup against ServiceTitan's own real job
+// types — see servicetitan/jobTypes.ts's findJobTypeByName() — so a business
+// changing its ServiceTitan setup never needs a matching change here.
 
 export function getRawOperationalSettings(businessId: number) {
   return {

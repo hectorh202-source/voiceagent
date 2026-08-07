@@ -6,7 +6,7 @@ import { buildLeadSummary, buildInitialNarrative } from "../servicetitan/leadSum
 import { runCreateLeadFlow, booleanish, type CreateLeadFlowInput } from "./createLead";
 import { logToolCall } from "../db/callLog";
 import { ServiceTitanNotConfiguredError, describeError } from "../servicetitan/httpClient";
-import { resolveServiceCategory } from "../settings/store";
+import { resolveJobTypeOverrides } from "../servicetitan/jobTypes";
 
 const bodySchema = z.object({
   phone: z.string().min(4),
@@ -127,7 +127,7 @@ export async function runBookJobFlow(businessId: number, input: BookJobFlowInput
     conversationId: input.conversationId,
   });
 
-  const { businessUnitId, jobTypeId } = resolveServiceCategory(businessId, input.serviceCategory);
+  const { businessUnitId, jobTypeId } = await resolveJobTypeOverrides(businessId, input.serviceCategory);
   const jobResult = await createServiceTitanJob(businessId, {
     customerId,
     locationId,

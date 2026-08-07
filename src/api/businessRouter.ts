@@ -713,7 +713,6 @@ apiBusinessRouter.get("/settings/business-info", (req, res) => {
     serviceTitanBusinessUnitId: st.businessUnitId,
     serviceTitanCampaignId: st.campaignId,
     serviceTitanJobTypeId: st.jobTypeId,
-    serviceCategories: st.serviceCategories,
   });
 });
 
@@ -730,9 +729,6 @@ apiBusinessRouter.put("/settings/business-info", (req, res) => {
   maybeSetBusinessSetting(business.id, "servicetitan.businessUnitId", body.serviceTitanBusinessUnitId);
   maybeSetBusinessSetting(business.id, "servicetitan.campaignId", body.serviceTitanCampaignId);
   maybeSetBusinessSetting(business.id, "servicetitan.jobTypeId", body.serviceTitanJobTypeId);
-  if (body.serviceCategories) {
-    setBusinessSetting(business.id, "servicetitan.serviceCategories", JSON.stringify(body.serviceCategories));
-  }
 
   res.json({ success: true });
 });
