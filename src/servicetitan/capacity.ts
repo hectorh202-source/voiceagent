@@ -65,9 +65,12 @@ export async function checkAvailability(
         endsOnOrBefore: clampedEndDate,
         businessUnitIds: businessUnitId ? [Number(businessUnitId)] : undefined,
         jobTypeId: jobTypeId ? Number(jobTypeId) : undefined,
-        // No skill-based scheduling in use today — required by the API but
-        // always false for this integration.
-        skillBasedAvailability: false,
+        // Turned on (2026-08-07) to test whether skill-aware matching
+        // surfaces capacity the non-skill-based calculation was missing
+        // (e.g. a real case where Saturday showed no availability under the
+        // default calculation) — was hardcoded false before. Revisit if
+        // this turns out to make results narrower/worse instead of better.
+        skillBasedAvailability: true,
       },
     });
     const availabilities = response.availabilities ?? [];
