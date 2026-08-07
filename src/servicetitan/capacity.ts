@@ -44,8 +44,9 @@ export async function checkAvailability(
   startDate: string,
   endDate: string,
   // Overrides the business's single default business unit/job type when a
-  // matching service category was resolved (see settings/store.ts's
-  // resolveServiceCategory) — falls back to the config defaults when not given.
+  // matching job type was resolved live by name (see
+  // servicetitan/jobTypes.ts's resolveJobTypeOverrides) — falls back to the
+  // config defaults when not given.
   overrides: { businessUnitId?: string; jobTypeId?: string } = {},
 ): Promise<AvailabilityResult> {
   const config = requireServiceTitanConfig(businessId);
