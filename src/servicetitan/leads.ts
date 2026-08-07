@@ -9,9 +9,9 @@ export interface CreateLeadInput {
   summary: string;
   isEmergency: boolean;
   // Overrides the business's single default business unit/job type when a
-  // matching job type was resolved live by name (see
-  // servicetitan/jobTypes.ts's resolveJobTypeOverrides) — falls back to the
-  // config defaults below when not given, so this is fully optional.
+  // matching service category was resolved (see settings/store.ts's
+  // resolveServiceCategory) — falls back to the config defaults below when
+  // not given, so this is fully optional.
   businessUnitId?: string;
   jobTypeId?: string;
 }

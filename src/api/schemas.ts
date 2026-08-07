@@ -80,6 +80,15 @@ export const businessInfoSchema = z.object({
   serviceTitanBusinessUnitId: z.string().optional(),
   serviceTitanCampaignId: z.string().optional(),
   serviceTitanJobTypeId: z.string().optional(),
+  serviceCategories: z
+    .array(
+      z.object({
+        name: z.string(),
+        businessUnitId: z.string(),
+        jobTypeId: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 export const emailSettingsSchema = z.object({

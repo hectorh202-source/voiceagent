@@ -125,7 +125,7 @@ GET /jbce/v2/tenant/{tenantId}/call-reasons
 
 **Resolution order in `createLead()`**: `defaultCallReasonName` (new, preferred) → looked up live → if that resolves, use it; if the name is set but doesn't match anything (typo, deleted reason), log a warning and fall through; either way, fall back to the raw `defaultCallReasonId` (existing field, untouched, still works standalone) if still unresolved. Same "new field wins, nothing forced to migrate" pattern used elsewhere in this app's settings (e.g. the Leads-inbox notification consolidation) — a business that already has a numeric ID configured keeps working exactly as before with zero changes required.
 
-**Settings UI**: General Settings gained a "Call reason name" field (paired with the existing "Call reason ID," now relabeled "(fallback)") — same "name-based happy path with a raw-ID escape hatch underneath it" pattern used for Business Unit/Job Type resolution (see below).
+**Settings UI**: General Settings gained a "Call reason name" field (paired with the existing "Call reason ID," now relabeled "(fallback)") — same two-field pattern as Business Unit/Job Type ID vs. Service Categories: a name-based happy path with a raw-ID escape hatch underneath it.
 
 **A second, separate "ServiceTitan Call Reason" field on the Call Detail page — not the same thing as the field above.** The `defaultCallReasonName`/`defaultCallReasonId` config above sets one fixed Call Reason automatically applied to *every* lead this business creates. The Call Detail page's own "ServiceTitan Call Reason" dropdown is different: a per-call, staff-picked value from that business's real Call Reasons list — the human-CSR-oriented taxonomy described above. It's shown for **every** call, not just ones with a real Lead/Job, and sits above the app's own AI-outcome "Call Reason"/Bookability dropdowns on the same page.
 
@@ -185,22 +185,25 @@ The direct-booking alternative to Lead creation, only used for businesses with `
 
 **ElevenLabs-side setup required, per business, only for job-mode businesses** (see [elevenlabs-tools.md](elevenlabs-tools.md) for the full tool/prompt configuration) — a business staying in lead mode needs zero ElevenLabs-side changes.
 
-### 6. Dynamic business unit/job type — resolved live, not configured
+### 6. Dynamic business unit/job type via service categories
 
 Every business had exactly one static default business unit and job type, used for *every* lead/job regardless of what the call was about — a real gap, since a business with distinct trades (TitanZ has 10 real business units: Plumbing Install/Maintenance/Sales/Service, HVAC Service/Maintenance/Sales/Install, Re-pipe Install/Sales) was categorizing a leaking pipe and a broken AC identically.
 
-**First fix (since retired): a hand-maintained "Service Categories" table** — a business typed in category names mapped to business unit/job type IDs, stored as JSON in `business_settings`. Worked, but meant the mapping silently went stale the moment ServiceTitan-side business units/job types were renamed, added, or removed — nothing here would know.
-
-**Current approach — [`servicetitan/jobTypes.ts`](../src/servicetitan/jobTypes.ts): resolve by name against ServiceTitan's real job types, live, on every call.** Every real Job Type ServiceTitan returns already carries its own associated business unit(s) (confirmed against the real OpenAPI spec — `Jpm.V2.JobTypeResponse.businessUnitIds`), so a single name lookup resolves both pieces at once, with nothing to keep in sync on our side:
+**Storage — one JSON-encoded setting, not a new table.** `business_settings` is already a flat encrypted key-value store; a small list of categories doesn't justify a new table/migration. `settings/store.ts` stores them as a JSON array under `servicetitan.serviceCategories`:
 ```ts
-export async function findJobTypeByName(businessId: number, name: string): Promise<ResolvedJobType | null>
-export async function resolveJobTypeOverrides(businessId: number, serviceType: string | undefined): Promise<{ businessUnitId?: string; jobTypeId?: string }>
+export interface ServiceCategory { name: string; businessUnitId: string; jobTypeId: string }
+export function getServiceCategories(businessId: number): ServiceCategory[]
+export function resolveServiceCategory(businessId: number, categoryName: string | undefined): { businessUnitId?: string; jobTypeId?: string }
 ```
-`findJobTypeByName()` calls `GET /jpm/v2/tenant/{tenantId}/job-types?name={name}&active=true`, then does a case-insensitive exact match client-side against the results (same "exact match only, no fuzzy guessing" discipline as `findTagTypeIdByName()`/`findCallReasonIdByName()` — a wrong fuzzy match would silently book the wrong kind of job, worse than falling through to the default). No caching — booking calls are infrequent enough that the extra read is cheap, and it means a job type renamed or added in ServiceTitan today is picked up on the very next call, not after a redeploy or a settings-page edit.
+`resolveServiceCategory()` does a case-insensitive name match and returns `{}` (both fields `undefined`) when no name is given or nothing matches — every caller treats that identically to "no override," so a business with no categories configured behaves exactly as before this feature existed.
 
-`resolveJobTypeOverrides()` is the drop-in replacement for the old `resolveServiceCategory()` — same `{businessUnitId?: string; jobTypeId?: string}` shape, same `{}` ("no override, use this business's configured default") for an empty/unmatched name — so every call site (`check_availability`, `create_lead`, `book_job`'s `serviceCategory` body field, and `runCreateLeadFlow()`'s shared emergency-safety-net path) needed only its function call swapped from sync to `await`ed async, not a redesign.
+**Settings UI**: `/b/:businessId/settings` has a fixed **10 rows** (Name / Business Unit ID / Job Type ID), not a dynamic add/remove list — avoids needing client-side JS to manage rows. Blank-name rows are dropped on save. The existing "Default business unit ID"/"Default job type ID" fields remain — relabeled to clarify they're the fallback when no category matches, not deprecated.
 
-**The old Service Categories settings UI is gone** — Business Info's "Default business unit ID"/"Default job type ID" fields remain as the fallback for whenever the agent's captured service type doesn't match any real job type by name (or wasn't captured at all), relabeled "(fallback)" to make that explicit. Campaign ID is unaffected by any of this — it stays a required, business-configured value on every lead, since there's no signal in a phone call that identifies which ServiceTitan marketing campaign to attribute it to.
+**Resolution flows through all three tools, additively**: `servicetitan/leads.ts`'s `CreateLeadInput`, `servicetitan/jobs.ts`'s `CreateJobInput`, and `servicetitan/capacity.ts`'s `checkAvailability()` each gained optional `businessUnitId`/`jobTypeId` overrides — `const businessUnitId = input.businessUnitId ?? config.defaultBusinessUnitId` (same for jobTypeId) — a small additive change, not a restructure. `createJob()`'s existing fail-fast missing-config check uses these *resolved* values so it correctly passes when a category supplies what the single default doesn't.
+
+At the tool layer, `check_availability`, `create_lead`, and `book_job` each gained an optional `serviceCategory` body field; each handler calls `resolveServiceCategory()` and passes the result through. `runCreateLeadFlow()` (shared between `create_lead` and `book_job`'s emergency safety net) also gained `serviceCategory` for the same reason — an emergency call that already classified itself as "HVAC" should still get the right business unit on its fallback Lead.
+
+**Found and fixed in passing**: `check_availability`'s body schema had a `jobType` field that was parsed but never actually wired up to filter anything — dead code, discovered while building this. Replaced with `serviceCategory`, which does what `jobType` apparently was meant to.
 
 ## Error handling philosophy
 

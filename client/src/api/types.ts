@@ -151,11 +151,18 @@ export interface CallMetrics {
   durationSecsPerDay: { date: string; durationSecs: number }[];
 }
 
+export interface ServiceCategory {
+  name: string;
+  businessUnitId: string;
+  jobTypeId: string;
+}
+
 export interface BusinessInfoSettings {
   name: string;
   serviceTitanBusinessUnitId: string;
   serviceTitanCampaignId: string;
   serviceTitanJobTypeId: string;
+  serviceCategories: ServiceCategory[];
 }
 
 // Reachable by any business user (see businessRouter.ts's GET/PUT
@@ -264,6 +271,7 @@ export interface GeneralSettings {
     jobTypeId: string;
     tagName: string;
     bookingMode: "lead" | "job";
+    serviceCategories: ServiceCategory[];
   };
   operational: {
     toolWebhookSecretSet: boolean;
