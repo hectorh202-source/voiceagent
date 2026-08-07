@@ -229,6 +229,44 @@ export function getBookingMode(businessId: number): BookingMode {
 // types — see servicetitan/jobTypes.ts's findJobTypeByName() — so a business
 // changing its ServiceTitan setup never needs a matching change here.
 
+export interface JobTypeAlias {
+  alias: string;
+  jobTypeName: string;
+}
+
+// Fallback layer for servicetitan/jobTypes.ts's resolveJobTypeOverrides:
+// the agent's captured serviceCategory only matches a real job type on an
+// exact (case-insensitive) name — deliberately no fuzzy matching, to avoid
+// silently resolving to the wrong job type. In practice the agent tends to
+// say a generic category ("Plumbing", "HVAC") rather than one of a
+// business's actual, more specific job type names ("Water Heater", "Drain
+// Cleaning"), which never matches and falls back to the single configured
+// default every time regardless of the real issue. This lets a business map
+// those generic phrases to one of its real job types. Each alias still
+// points at a real job type by NAME, not a stored ID — findJobTypeByName()
+// re-resolves it live every time an alias matches, so this stays consistent
+// with the rest of the dynamic-lookup design: renaming a job type in
+// ServiceTitan only requires updating the alias's target name here, never a
+// redeploy, and the resolved ID/business unit is always current.
+export function getJobTypeAliases(businessId: number): JobTypeAlias[] {
+  const raw = getBusinessSetting(businessId, "servicetitan.jobTypeAliases");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (a): a is JobTypeAlias =>
+        !!a && typeof a === "object" && typeof a.alias === "string" && typeof a.jobTypeName === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function setJobTypeAliases(businessId: number, aliases: JobTypeAlias[]): void {
+  setBusinessSetting(businessId, "servicetitan.jobTypeAliases", JSON.stringify(aliases));
+}
+
 export function getRawOperationalSettings(businessId: number) {
   return {
     toolWebhookSecretSet: !!getBusinessSetting(businessId, "operational.toolWebhookSecret"),

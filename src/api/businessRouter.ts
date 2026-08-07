@@ -60,6 +60,8 @@ import {
   getRawChatWidgetSettings,
   getOrCreateWidgetEmbedKey,
   getWidgetServiceBaseUrl,
+  getJobTypeAliases,
+  setJobTypeAliases,
   type ServiceTitanEnvironment,
   type BookingMode,
 } from "../settings/store";
@@ -713,6 +715,7 @@ apiBusinessRouter.get("/settings/business-info", (req, res) => {
     serviceTitanBusinessUnitId: st.businessUnitId,
     serviceTitanCampaignId: st.campaignId,
     serviceTitanJobTypeId: st.jobTypeId,
+    serviceTitanJobTypeAliases: getJobTypeAliases(business.id),
   });
 });
 
@@ -729,6 +732,7 @@ apiBusinessRouter.put("/settings/business-info", (req, res) => {
   maybeSetBusinessSetting(business.id, "servicetitan.businessUnitId", body.serviceTitanBusinessUnitId);
   maybeSetBusinessSetting(business.id, "servicetitan.campaignId", body.serviceTitanCampaignId);
   maybeSetBusinessSetting(business.id, "servicetitan.jobTypeId", body.serviceTitanJobTypeId);
+  if (body.serviceTitanJobTypeAliases) setJobTypeAliases(business.id, body.serviceTitanJobTypeAliases);
 
   res.json({ success: true });
 });

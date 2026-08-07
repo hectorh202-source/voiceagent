@@ -75,11 +75,17 @@ export const setServiceTitanCallReasonSchema = z.object({
   callReason: z.string().min(1).nullable(),
 });
 
+export const jobTypeAliasSchema = z.object({
+  alias: z.string().min(1),
+  jobTypeName: z.string().min(1),
+});
+
 export const businessInfoSchema = z.object({
   name: z.string().min(1).optional(),
   serviceTitanBusinessUnitId: z.string().optional(),
   serviceTitanCampaignId: z.string().optional(),
   serviceTitanJobTypeId: z.string().optional(),
+  serviceTitanJobTypeAliases: z.array(jobTypeAliasSchema).optional(),
 });
 
 export const emailSettingsSchema = z.object({

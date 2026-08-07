@@ -16,6 +16,7 @@ export function BusinessInfoSettingsPage() {
   const [businessUnitId, setBusinessUnitId] = useState("");
   const [campaignId, setCampaignId] = useState("");
   const [jobTypeId, setJobTypeId] = useState("");
+  const [jobTypeAliasesText, setJobTypeAliasesText] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export function BusinessInfoSettingsPage() {
     setBusinessUnitId(data.serviceTitanBusinessUnitId);
     setCampaignId(data.serviceTitanCampaignId);
     setJobTypeId(data.serviceTitanJobTypeId);
+    setJobTypeAliasesText(data.serviceTitanJobTypeAliases.map((a) => `${a.alias} | ${a.jobTypeName}`).join("\n"));
   }, [data]);
 
   const saveMutation = useMutation({
@@ -33,6 +35,13 @@ export function BusinessInfoSettingsPage() {
         serviceTitanBusinessUnitId: businessUnitId,
         serviceTitanCampaignId: campaignId,
         serviceTitanJobTypeId: jobTypeId,
+        serviceTitanJobTypeAliases: jobTypeAliasesText
+          .split("\n")
+          .map((line) => {
+            const [alias, jobTypeName] = line.split("|").map((part) => part.trim());
+            return alias && jobTypeName ? { alias, jobTypeName } : null;
+          })
+          .filter((a): a is { alias: string; jobTypeName: string } => a !== null),
       }),
     onSuccess: () => {
       setSavedMessage("Settings saved.");
@@ -71,7 +80,29 @@ export function BusinessInfoSettingsPage() {
         </div>
       </div>
 
-      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+      <div className="card" style={{ marginTop: 24 }}>
+        <h2 style={{ marginTop: 0 }}>Service type aliases</h2>
+        <div className="form-hint" style={{ marginBottom: 12 }}>
+          The AI agent often describes what a caller needs with a general word (e.g. "Plumbing", "HVAC") rather than
+          one of this business's exact ServiceTitan job type names. When that happens, the exact-name lookup misses
+          and the call falls back to the single default job type above — regardless of what the caller actually
+          needs. Add a mapping here to catch those cases: one per line, the phrase the agent might use, then a{" "}
+          <code>|</code>, then the exact real ServiceTitan job type name it should resolve to instead.
+        </div>
+        <textarea
+          rows={6}
+          style={{ width: "100%", fontFamily: "monospace" }}
+          placeholder={"Plumbing | Misc. Plumbing\nHVAC | HVAC Repair"}
+          value={jobTypeAliasesText}
+          onChange={(e) => setJobTypeAliasesText(e.target.value)}
+        />
+        <div className="form-hint" style={{ marginTop: 8 }}>
+          The target still has to match a real, current ServiceTitan job type name exactly (case-insensitive) — this
+          only adds another phrase that can resolve to it, it doesn't create or rename anything in ServiceTitan.
+        </div>
+      </div>
+
+      <button className="btn btn-primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} style={{ marginTop: 16 }}>
         Save
       </button>
       {savedMessage && <span style={{ marginLeft: 8 }} className="muted">{savedMessage}</span>}

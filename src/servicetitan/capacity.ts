@@ -39,6 +39,20 @@ function formatSlotLabel(startUtc: string, businessId: number): string {
 // (e.g. an agent asking about "the next few weeks") fail outright.
 const MAX_RANGE_DAYS = 14;
 
+// The agent sends bare "YYYY-MM-DD" dates (e.g. asking about one specific
+// day), which parse as midnight UTC. Left as-is, a same-day request (e.g.
+// startDate === endDate === "2026-08-10") turns into a zero-width window —
+// startsOnOrAfter and endsOnOrBefore both midnight of the same instant —
+// which ServiceTitan can never return availability for regardless of real
+// capacity. Confirmed via real production logs: every single/narrow-day
+// request came back empty while the same day inside a wider window
+// correctly returned slots. Expanding a date-only end boundary to the last
+// instant of that day fixes this without affecting requests that already
+// carry a real time component.
+function endOfDayIfDateOnly(dateStr: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T23:59:59.999Z` : dateStr;
+}
+
 export async function checkAvailability(
   businessId: number,
   startDate: string,
@@ -55,8 +69,9 @@ export async function checkAvailability(
   const businessUnitId = overrides.businessUnitId ?? config.defaultBusinessUnitId;
   const jobTypeId = overrides.jobTypeId ?? config.defaultJobTypeId;
 
+  const normalizedEndDate = endOfDayIfDateOnly(endDate);
   const maxEnd = new Date(new Date(startDate).getTime() + MAX_RANGE_DAYS * 24 * 60 * 60 * 1000);
-  const clampedEndDate = new Date(endDate) > maxEnd ? maxEnd.toISOString() : endDate;
+  const clampedEndDate = new Date(normalizedEndDate) > maxEnd ? maxEnd.toISOString() : normalizedEndDate;
 
   try {
     const response = await stRequest<{ availabilities?: CapacityAvailability[] }>(config, "POST", path, {

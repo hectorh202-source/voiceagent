@@ -1,4 +1,5 @@
 import { requireServiceTitanConfig, stRequest } from "./httpClient";
+import { getJobTypeAliases } from "../settings/store";
 
 interface STJobType {
   id: number;
@@ -51,18 +52,38 @@ export async function findJobTypeByName(businessId: number, name: string): Promi
   }
 }
 
+// Fallback for when the agent's captured serviceCategory doesn't exactly
+// match any real job type name — checked against this business's configured
+// alias list (settings/store.ts's getJobTypeAliases) before giving up.
+// Confirmed via real production logs (2026-08-07): the agent consistently
+// sends generic category words ("Plumbing", "HVAC") rather than one of a
+// business's actual, more specific job type names, so the exact match above
+// alone was silently missing on every real call and falling back to the
+// single configured default regardless of the real issue. Re-resolves via
+// findJobTypeByName using the alias's target NAME (not a stored ID), so a
+// renamed job type in ServiceTitan only needs the alias's target updated
+// here, same "live, not stale" guarantee as the exact-match path.
+async function findJobTypeByAlias(businessId: number, name: string): Promise<ResolvedJobType | null> {
+  const aliases = getJobTypeAliases(businessId);
+  if (aliases.length === 0) return null;
+  const normalized = name.trim().toLowerCase();
+  const aliasEntry = aliases.find((a) => a.alias.trim().toLowerCase() === normalized);
+  if (!aliasEntry) return null;
+  return findJobTypeByName(businessId, aliasEntry.jobTypeName);
+}
+
 // Thin convenience wrapper matching the exact {businessUnitId?, jobTypeId?}
 // string-typed shape createLead/createJob/checkAvailability all expect
 // (same shape the old settings/store.ts's resolveServiceCategory returned)
 // — {} for "no override, use this business's configured default" whenever
 // no service type was captured on the call or nothing in ServiceTitan
-// matches it by name.
+// matches it by name (directly or via an alias).
 export async function resolveJobTypeOverrides(
   businessId: number,
   serviceType: string | undefined,
 ): Promise<{ businessUnitId?: string; jobTypeId?: string }> {
   if (!serviceType) return {};
-  const match = await findJobTypeByName(businessId, serviceType);
+  const match = (await findJobTypeByName(businessId, serviceType)) ?? (await findJobTypeByAlias(businessId, serviceType));
   if (!match) return {};
   return {
     jobTypeId: String(match.jobTypeId),

@@ -151,11 +151,17 @@ export interface CallMetrics {
   durationSecsPerDay: { date: string; durationSecs: number }[];
 }
 
+export interface JobTypeAlias {
+  alias: string;
+  jobTypeName: string;
+}
+
 export interface BusinessInfoSettings {
   name: string;
   serviceTitanBusinessUnitId: string;
   serviceTitanCampaignId: string;
   serviceTitanJobTypeId: string;
+  serviceTitanJobTypeAliases: JobTypeAlias[];
 }
 
 // Reachable by any business user (see businessRouter.ts's GET/PUT
