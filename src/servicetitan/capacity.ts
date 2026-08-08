@@ -60,13 +60,23 @@ export async function checkAvailability(
   // Overrides the business's single default business unit/job type when a
   // matching job type was resolved live by name (see
   // servicetitan/jobTypes.ts's resolveJobTypeOverrides) — falls back to the
-  // config defaults when not given.
-  overrides: { businessUnitId?: string; jobTypeId?: string } = {},
+  // config defaults when not given. businessUnitIds (plural, every business
+  // unit the resolved job type is actually associated with) is preferred
+  // over businessUnitId (singular, first only) when present — confirmed via
+  // real production data (2026-08-08) that a job type's real, working
+  // technicians aren't guaranteed to be on the first-listed business unit,
+  // and scoping to just that one silently hid real, bookable capacity that
+  // existed on a different business unit under the same job type.
+  overrides: { businessUnitId?: string; businessUnitIds?: string[]; jobTypeId?: string } = {},
 ): Promise<AvailabilityResult> {
   const config = requireServiceTitanConfig(businessId);
   const path = `/dispatch/v2/tenant/${config.tenantId}/capacity`;
 
-  const businessUnitId = overrides.businessUnitId ?? config.defaultBusinessUnitId;
+  const businessUnitIds = overrides.businessUnitIds?.length
+    ? overrides.businessUnitIds.map(Number)
+    : (overrides.businessUnitId ?? config.defaultBusinessUnitId)
+      ? [Number(overrides.businessUnitId ?? config.defaultBusinessUnitId)]
+      : undefined;
   const jobTypeId = overrides.jobTypeId ?? config.defaultJobTypeId;
 
   const normalizedEndDate = endOfDayIfDateOnly(endDate);
@@ -78,7 +88,7 @@ export async function checkAvailability(
       data: {
         startsOnOrAfter: startDate,
         endsOnOrBefore: clampedEndDate,
-        businessUnitIds: businessUnitId ? [Number(businessUnitId)] : undefined,
+        businessUnitIds,
         jobTypeId: jobTypeId ? Number(jobTypeId) : undefined,
         // Turned on (2026-08-07) to test whether skill-aware matching
         // surfaces capacity the non-skill-based calculation was missing

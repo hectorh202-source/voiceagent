@@ -14,11 +14,20 @@ interface STJobType {
 
 export interface ResolvedJobType {
   jobTypeId: number;
-  // First associated business unit, if any — a job type can technically
-  // list more than one, but every caller here only ever needs a single
-  // businessUnitId override (same shape createLead/createJob/checkAvailability
-  // already expect), so the first is as good a choice as any.
+  // First associated business unit — used for createLead/createJob, which
+  // each write to exactly one business unit, so a single value is required
+  // there regardless of how many the job type actually lists.
   businessUnitId: number | null;
+  // Every associated business unit, not just the first. Confirmed via real
+  // production data (2026-08-08, TitanZ): a job type's real, working
+  // technicians are not guaranteed to be on its first-listed business unit —
+  // "Plumbing Install/ Repair" listed [386, 26465665], and every real
+  // technician/open slot lived under 26465665 (the second one). Scoping the
+  // capacity check to businessUnitId (first only) silently returned zero
+  // availability from a job type that genuinely had real, bookable capacity.
+  // checkAvailability() uses this full list; createLead/createJob still use
+  // the single businessUnitId above.
+  businessUnitIds: number[];
 }
 
 // Replaces the old static Service Categories settings table — instead of a
@@ -46,6 +55,7 @@ export async function findJobTypeByName(businessId: number, name: string): Promi
     return {
       jobTypeId: match.id,
       businessUnitId: match.businessUnitIds?.[0] ?? null,
+      businessUnitIds: match.businessUnitIds ?? [],
     };
   } catch {
     return null;
@@ -72,21 +82,26 @@ async function findJobTypeByAlias(businessId: number, name: string): Promise<Res
   return findJobTypeByName(businessId, aliasEntry.jobTypeName);
 }
 
-// Thin convenience wrapper matching the exact {businessUnitId?, jobTypeId?}
-// string-typed shape createLead/createJob/checkAvailability all expect
-// (same shape the old settings/store.ts's resolveServiceCategory returned)
-// — {} for "no override, use this business's configured default" whenever
-// no service type was captured on the call or nothing in ServiceTitan
-// matches it by name (directly or via an alias).
+// Thin convenience wrapper matching the {businessUnitId?, businessUnitIds?,
+// jobTypeId?} string-typed shape createLead/createJob/checkAvailability
+// expect — {} for "no override, use this business's configured default"
+// whenever no service type was captured on the call or nothing in
+// ServiceTitan matches it by name (directly or via an alias).
+// businessUnitId (singular, first) is for createLead/createJob, which each
+// write to exactly one business unit. businessUnitIds (plural, all) is for
+// checkAvailability, which should check every business unit a job type is
+// actually associated with — see ResolvedJobType's comment for why using
+// only the first silently hid real, bookable capacity.
 export async function resolveJobTypeOverrides(
   businessId: number,
   serviceType: string | undefined,
-): Promise<{ businessUnitId?: string; jobTypeId?: string }> {
+): Promise<{ businessUnitId?: string; businessUnitIds?: string[]; jobTypeId?: string }> {
   if (!serviceType) return {};
   const match = (await findJobTypeByName(businessId, serviceType)) ?? (await findJobTypeByAlias(businessId, serviceType));
   if (!match) return {};
   return {
     jobTypeId: String(match.jobTypeId),
     businessUnitId: match.businessUnitId !== null ? String(match.businessUnitId) : undefined,
+    businessUnitIds: match.businessUnitIds.length ? match.businessUnitIds.map(String) : undefined,
   };
 }
